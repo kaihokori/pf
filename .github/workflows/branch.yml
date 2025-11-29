@@ -1,0 +1,31 @@
+name: Branch
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  prefix-check:
+    name: Prefix Check
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    steps:
+      - name: Check branch prefix and rename if needed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branch_name="${GITHUB_REF#refs/heads/}"
+          if [[ "$branch_name" =~ ^(feature/|bugfix/|chore/|admin/) ]]; then
+            echo "Branch prefix is valid: $branch_name"
+            exit 0
+          fi
+          echo "Branch prefix is invalid: $branch_name. Renaming to unknown/$branch_name."
+          git config --global user.name "$(git log -n 1 --pretty=format:%an)"
+          git config --global user.email "$(git log -n 1 --pretty=format:%ae)"
+          git fetch origin $branch_name
+          git checkout $branch_name
+          git checkout -b unknown/$branch_name
+          git push origin unknown/$branch_name
+          git push origin --delete $branch_name
+          echo "Branch renamed to unknown/$branch_name."

@@ -1,0 +1,23 @@
+name: "Bug Report"
+description: "Alert the team to a bug in the application"
+labels:
+  - bugfix
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the bug in detail
+      placeholder: |
+        When I do '...', '...' happens.
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information (Optional)
+      description: Provide any additional information that may be helpful
+      placeholder: |
+        - Screenshots
+        - Error messages / Logs
+        - etc.

@@ -11,7 +11,7 @@ import SwiftUI
 struct Pump_FitnessApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
     }
 }

@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  RootView.swift
 //  Pump Fitness
 //
 //  Created by Kyle Graham on 30/11/2025.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct ContentView: View {
+struct RootView: View {
     var body: some View {
         VStack {
             Image(systemName: "globe")
@@ -19,6 +19,7 @@ struct ContentView: View {
     }
 }
 
+
 #Preview {
-    ContentView()
+    RootView()
 }

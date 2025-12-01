@@ -8,6 +8,14 @@ The frontend is built using Swift and SwiftUI, targeting iOS 26 and above.
 > 
 > This repository only contains the iOS application. The backend services, including APIs and database management, are hosted separately and are not included here.
 
+## Theme Configuration
+
+- The active UI theme is stored under the `selectedTheme` key in `UserDefaults` and exposed to the iOS Settings app via `Settings.bundle`.
+- Users can switch themes inside the **Account → Appearance** panel or from the Settings app; both surfaces stay in sync at runtime.
+- Selecting **Multicolour** restores the original Pump Fitness gradient backgrounds per tab, while any other theme applies a global gradient + accent override.
+- Aurora, Midnight, Solar Flare, and Obsidian now ship with light/dark palettes (background + accent) so copy stays legible regardless of system appearance.
+- The `ThemeManager` observable object keeps SwiftUI views updated (background gradients + accent colour) and listens for external preference changes.
+
 ## Tech Stack Summary
 
 | Layer           | Tech                                |
@@ -21,6 +29,7 @@ The new Nutrition tab interacts with the Cloud Functions API described in `/func
 - A Firebase project with Authentication enabled and an email/Apple test account.
 - The Pump Fitness Cloud Functions instance running (or the deployed URL in `APIConfig.baseURL`).
 - A valid USDA API key stored in `USDA_API_KEY` for food search.
+- FatSecret API credentials configured via `FATSECRET_CLIENT_ID` and `FATSECRET_CLIENT_SECRET` Info.plist entries (or corresponding xcconfig substitutions) so the Quick Add sheet can query the FatSecret Foods Search API.
 
 After signing in, use the Nutrition tab to:
 

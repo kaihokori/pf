@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Appearance</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Theme</string>
+			<key>Key</key>
+			<string>selectedTheme</string>
+			<key>DefaultValue</key>
+			<string>multiColour</string>
+			<key>Values</key>
+			<array>
+				<string>multiColour</string>
+				<string>aurora</string>
+				<string>midnight</string>
+				<string>solarFlare</string>
+				<string>obsidian</string>
+			</array>
+			<key>Titles</key>
+			<array>
+				<string>Multicolour</string>
+				<string>Aurora</string>
+				<string>Midnight</string>
+				<string>Solar Flare</string>
+				<string>Obsidian</string>
+			</array>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Week Starts On</string>
+			<key>Key</key>
+			<string>weekStartPreference</string>
+			<key>DefaultValue</key>
+			<string>monday</string>
+			<key>Values</key>
+			<array>
+				<string>sunday</string>
+				<string>monday</string>
+			</array>
+			<key>Titles</key>
+			<array>
+				<string>Sunday</string>
+				<string>Monday</string>
+			</array>
+		</dict>
+	</array>
+	<key>StringsTable</key>
+	<string>Root</string>
+</dict>
+</plist>

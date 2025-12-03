@@ -75,8 +75,7 @@ private extension RootView {
                         systemImage: AppTab.coaching.systemImage,
                         value: AppTab.coaching
                     ) {
-                        /*WorkoutTabView()*/
-                        Text("Coaching")
+                        CoachingTabView()
                     }
                 }
             }

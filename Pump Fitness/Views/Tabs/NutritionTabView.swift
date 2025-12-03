@@ -9,13 +9,32 @@ struct NutritionTabView: View {
     @State private var showAddSheet = false
     @State private var showCalorieGoalSheet = false
     @State private var calorieGoal: Int = 2500
-    @State private var selectedMacroGoal: MacroFocusOption = .balanced
+    @State private var selectedMacroGoal: MacroFocusOption?
     @State private var showMacroEditorSheet = false
     @State private var macroMetrics: [MacroMetric] = MacroPreset.defaultActiveMetrics
+    @State private var selectedMacroForLog: MacroMetric?
+    @State private var consumedCalories: Int = 3100
+    @State private var showConsumedSheet = false
 
     private let maintenanceCalories: Int = 2200
-    private let consumedCalories: Int = 3100
 
+    private let caloriesBurnedToday: Int = 620
+    private let caloriesBurnGoal: Int = 800
+    private let stepsTakenToday: Int = 8_500
+    private let stepsGoalToday: Int = 10_000
+
+    private var stepsProgress: Double {
+        guard stepsGoalToday > 0 else { return 0 }
+        return min(max(Double(stepsTakenToday) / Double(stepsGoalToday), 0), 1)
+    }
+
+    private var formattedStepsTaken: String {
+        NumberFormatter.withComma.string(from: NSNumber(value: stepsTakenToday)) ?? "\(stepsTakenToday)"
+    }
+
+    private var formattedStepsGoal: String {
+        NumberFormatter.withComma.string(from: NSNumber(value: stepsGoalToday)) ?? "\(stepsGoalToday)"
+    }
     var body: some View {
         NavigationStack {
             ZStack {
@@ -42,9 +61,10 @@ struct NutritionTabView: View {
                             caloriesMaintenance: maintenanceCalories,
                             caloriesConsumed: consumedCalories,
                             calorieGoal: calorieGoal,
-                            onEditGoal: { showCalorieGoalSheet = true }
+                            onEditGoal: { showCalorieGoalSheet = true },
+                            onAdjustConsumed: { showConsumedSheet = true }
                         )
-                        .padding(.top, 20)
+                        .padding(.top, 14)
 
                         Button {
                             // 
@@ -56,7 +76,7 @@ struct NutritionTabView: View {
                                 .glassEffect(in: .rect(cornerRadius: 16.0))
                         }
                         .padding(.horizontal, 18)
-                        .padding(.top, 12)
+                        .padding(.top, 18)
                         .buttonStyle(.plain)
 
                         Text("Macro Tracking")
@@ -70,7 +90,10 @@ struct NutritionTabView: View {
                         MacroSummary(
                             accentColorOverride: accentOverride,
                             macros: macroMetrics,
-                            onEditMacros: { showMacroEditorSheet = true }
+                            onEditMacros: { showMacroEditorSheet = true },
+                            onMacroTap: { metric in
+                                selectedMacroForLog = metric
+                            }
                         )
 
                         Text("Daily Summary")
@@ -80,6 +103,42 @@ struct NutritionTabView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
                             .padding(.top, 48)
+
+                        HStack(alignment: .top, spacing: 12) {
+                            ActivityProgressCard(
+                                title: "Calories Burned",
+                                iconName: "flame.fill",
+                                tint: accentOverride ?? .orange,
+                                currentValueText: "\(caloriesBurnedToday)",
+                                goalValueText: "Goal \(caloriesBurnGoal)",
+                                progress: Double(caloriesBurnedToday) / Double(caloriesBurnGoal)
+                            )
+                            .frame(maxWidth: .infinity)
+
+                            ActivityProgressCard(
+                                title: "Steps Taken",
+                                iconName: "figure.walk",
+                                tint: accentOverride ?? .green,
+                                currentValueText: "\(formattedStepsTaken)",
+                                goalValueText: "Goal \(formattedStepsGoal)",
+                                progress: stepsProgress
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 18)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Synced with Apple Health.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 8)
                         
                         DailyMealLogSection(
                             accentColorOverride: accentOverride
@@ -103,6 +162,7 @@ struct NutritionTabView: View {
                             .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
+                            .padding(.top, 48)
 
                         FastingTimerCard(
                             accentColorOverride: accentOverride
@@ -110,19 +170,7 @@ struct NutritionTabView: View {
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
-                            .padding(.vertical, 24)
-                        
-                        Button {
-                            // 
-                        } label: {
-                            Label("Hide/Show Sections", systemImage: "eye.slash")
-                                .font(.callout.weight(.semibold))
-                                .padding(.vertical, 18)
-                                .frame(maxWidth: .infinity, minHeight: 52)
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
-                        }
-                        .padding(.horizontal, 18)
-                        .buttonStyle(.plain)
+                            .padding(.bottom, 24)
                     }
                 }
                 if showCalendar {
@@ -142,6 +190,8 @@ struct NutritionTabView: View {
             MacroEditorSheet(
                 macros: $macroMetrics,
                 tint: accentOverride ?? .accentColor,
+                isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                macroFocus: selectedMacroGoal,
                 onDone: { showMacroEditorSheet = false }
             )
             .presentationDetents([.large])
@@ -157,8 +207,29 @@ struct NutritionTabView: View {
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAddSheet) {
-            AddNutritionView()
-                .environmentObject(themeManager)
+            // 
+        }
+        .sheet(isPresented: $showConsumedSheet) {
+            CalorieConsumedAdjustmentSheet(
+                currentCalories: $consumedCalories,
+                tint: accentOverride ?? .accentColor
+            )
+            .presentationDetents([.fraction(0.38)])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedMacroForLog) { metric in
+            MacroLogEntrySheet(
+                metric: metric,
+                initialValue: numericValue(from: metric.currentLabel) ?? 0,
+                unitSuffix: inferredUnitSuffix(for: metric)
+            ) { newValue in
+                updateMacro(metric, with: newValue)
+                selectedMacroForLog = nil
+            } onCancel: {
+                selectedMacroForLog = nil
+            }
+            .presentationDetents([.fraction(0.38)])
+            .presentationDragIndicator(.visible)
         }
     }
 }
@@ -187,6 +258,44 @@ private extension NutritionTabView {
         guard themeManager.selectedTheme != .multiColour else { return nil }
         return themeManager.selectedTheme.accent(for: colorScheme)
     }
+
+    func numericValue(from label: String) -> Double? {
+        let allowed = CharacterSet(charactersIn: "0123456789.")
+        let filteredScalars = label.unicodeScalars.filter { allowed.contains($0) }
+        guard !filteredScalars.isEmpty else { return nil }
+        return Double(String(String.UnicodeScalarView(filteredScalars)))
+    }
+
+    func unitSuffix(from label: String) -> String {
+        let disallowed = CharacterSet(charactersIn: "0123456789.").union(.whitespacesAndNewlines)
+        let scalars = label.unicodeScalars.filter { !disallowed.contains($0) }
+        return String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespaces)
+    }
+
+    func inferredUnitSuffix(for metric: MacroMetric) -> String {
+        let currentSuffix = unitSuffix(from: metric.currentLabel)
+        if !currentSuffix.isEmpty {
+            return currentSuffix
+        }
+        let targetSuffix = unitSuffix(from: metric.targetLabel)
+        return targetSuffix
+    }
+
+    func formattedMacroValue(_ value: Double, suffix: String) -> String {
+        let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
+        let formatted = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
+        return suffix.isEmpty ? formatted : "\(formatted)\(suffix)"
+    }
+
+    func updateMacro(_ metric: MacroMetric, with newValue: Double) {
+        guard let index = macroMetrics.firstIndex(where: { $0.id == metric.id }) else { return }
+        let suffix = inferredUnitSuffix(for: metric)
+        macroMetrics[index].currentLabel = formattedMacroValue(newValue, suffix: suffix)
+        if let targetValue = numericValue(from: macroMetrics[index].targetLabel), targetValue > 0 {
+            let percent = min(max(newValue / targetValue, 0), 1)
+            macroMetrics[index].percent = percent
+        }
+    }
 }
 
 struct CalorieSummary: View {
@@ -195,44 +304,64 @@ struct CalorieSummary: View {
     var caloriesConsumed: Int = 3100
     var calorieGoal: Int
     var onEditGoal: () -> Void
+    var onAdjustConsumed: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 16) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .center, spacing: 2) {
                     Text("Maintenance")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("\(caloriesMaintenance)")
                         .font(.title2)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer()
-                VStack {
-                    Text("Consumed")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(caloriesConsumed)")
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.red)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text("Goal")
+                Button(action: onAdjustConsumed) {
+                    VStack(spacing: 2) {
+                        Text("Consumed")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button(action: onEditGoal) {
+                        Text("\(caloriesConsumed)")
+                            .font(.largeTitle)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(caloriesConsumed > calorieGoal ? .red : .primary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                Spacer()
+                Button(action: onEditGoal) {
+                    VStack(alignment: .center, spacing: 2) {
+                        HStack(alignment: .bottom, spacing: 4) {
+                            Text("Goal")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Image(systemName: "pencil")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.primary)
                         }
-                        .buttonStyle(.plain)
+                        Text("\(calorieGoal)")
+                            .font(.title2)
                     }
-                    Text("\(calorieGoal)")
-                        .font(.title2)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Values are in calories (cal).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, -8)
+            .padding(.bottom, -8)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 18)
@@ -245,6 +374,7 @@ struct MacroSummary: View {
     var accentColorOverride: Color?
     var macros: [MacroMetric]
     var onEditMacros: () -> Void
+    var onMacroTap: (MacroMetric) -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -275,32 +405,37 @@ struct MacroSummary: View {
                         ForEach(macroRows[rowIdx]) { item in
                             switch item {
                             case let .metric(metric):
-                                let displayColor = accentColorOverride ?? metric.color
-                                VStack(spacing: 2) {
-                                    ZStack {
-                                        Circle()
-                                            .stroke(displayColor.opacity(0.18), lineWidth: 6)
-                                            .frame(width: 54, height: 54)
-                                        Circle()
-                                            .trim(from: 0, to: metric.percent)
-                                            .stroke(displayColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                                            .rotationEffect(.degrees(-90))
-                                            .frame(width: 54, height: 54)
-                                        Text(metric.consumedLabel)
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundColor(displayColor)
+                                Button {
+                                    onMacroTap(metric)
+                                } label: {
+                                    let displayColor = accentColorOverride ?? metric.color
+                                    VStack(spacing: 2) {
+                                        ZStack {
+                                            Circle()
+                                                .stroke(displayColor.opacity(0.18), lineWidth: 6)
+                                                .frame(width: 54, height: 54)
+                                            Circle()
+                                                .trim(from: 0, to: metric.percent)
+                                                .stroke(displayColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                                                .rotationEffect(.degrees(-90))
+                                                .frame(width: 54, height: 54)
+                                            Text(metric.consumedLabel)
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(displayColor)
+                                        }
+                                        .padding(.bottom, 10)
+                                        Text("\(metric.allowedLabel)")
+                                            .font(.caption)
+                                            .foregroundStyle(.tertiary)
+                                        Text(metric.title)
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.secondary)
+                                            .padding(.top, 0)
                                     }
-                                    .padding(.bottom, 10)
-                                    Text("\(metric.allowedLabel)")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                    Text(metric.title)
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                        .padding(.top, 0)
+                                    .frame(maxWidth: .infinity, minHeight: NutritionLayout.macroTileMinHeight, alignment: .top)
                                 }
-                                .frame(maxWidth: .infinity, minHeight: NutritionLayout.macroTileMinHeight, alignment: .top)
+                                .buttonStyle(.plain)
                             case .add:
                                 MacroEditButton(
                                     tint: Color(.systemGray3),
@@ -309,9 +444,10 @@ struct MacroSummary: View {
                                 )
                             }
                         }
-                        .padding(.bottom, -10)
+                        .padding(.bottom, -30)
                         Spacer(minLength: 0)
                     }
+                    .padding(.bottom, 20)
                 }
                 .padding(.top, 10)
             }
@@ -320,12 +456,12 @@ struct MacroSummary: View {
         }
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
-        .padding(.top, 24)
+        .padding(.top, 14)
     }
 }
 
 private struct CalorieGoalEditorSheet: View {
-    @Binding var selectedMacroFocus: MacroFocusOption
+    @Binding var selectedMacroFocus: MacroFocusOption?
     @Binding var calorieGoal: Int
     var maintenanceCalories: Int
     var tint: Color
@@ -334,7 +470,7 @@ private struct CalorieGoalEditorSheet: View {
     @State private var goalText: String = ""
     @State private var isApplyingPreset = false
     @State private var originalGoal: Int = 0
-    @State private var originalFocus: MacroFocusOption = .balanced
+    @State private var originalFocus: MacroFocusOption?
     @FocusState private var isGoalFieldFocused: Bool
 
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
@@ -374,13 +510,13 @@ private struct CalorieGoalEditorSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .surfaceCard(16)
                     }
 
-                    if selectedMacroFocus != .other {
-                        let recommendation = CalorieGoalPlanner.recommendation(for: selectedMacroFocus, maintenanceCalories: maintenanceCalories)
+                    if let focus = selectedMacroFocus, focus != .custom {
+                        let recommendation = CalorieGoalPlanner.recommendation(for: focus, maintenanceCalories: maintenanceCalories)
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Recommended for \(selectedMacroFocus.displayName)")
+                            Text("Recommended for \(focus.displayName)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text("\(maintenanceCalories) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentPercentText) = \(recommendation.value) cal")
@@ -391,11 +527,15 @@ private struct CalorieGoalEditorSheet: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
-                    } else {
+                    } else if selectedMacroFocus == .custom {
                         Text("Custom targets override the preset strategy.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+
+                    Text("Pump estimates maintenance with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier to reach this calorie target.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
@@ -429,7 +569,7 @@ private struct CalorieGoalEditorSheet: View {
 
     private func handleMacroSelection(_ option: MacroFocusOption) {
         selectedMacroFocus = option
-        guard option != .other else { return }
+        guard option != .custom else { return }
         let recommended = CalorieGoalPlanner.recommendation(for: option, maintenanceCalories: maintenanceCalories).value
         isApplyingPreset = true
         goalText = String(recommended)
@@ -450,8 +590,8 @@ private struct CalorieGoalEditorSheet: View {
 
         guard let value = Int(sanitized), value > 0 else { return }
         calorieGoal = value
-        if selectedMacroFocus != .other {
-            selectedMacroFocus = .other
+        if selectedMacroFocus != .custom {
+            selectedMacroFocus = .custom
         }
     }
 
@@ -468,7 +608,7 @@ private struct CalorieGoalEditorSheet: View {
     }
 }
 
-private enum CalorieGoalPlanner {
+enum CalorieGoalPlanner {
     struct Recommendation {
         let value: Int
         let adjustmentPercent: Double
@@ -509,7 +649,7 @@ private enum CalorieGoalPlanner {
             return 0
         case .lowCarb:
             return -0.1
-        case .other:
+        case .custom:
             return 0
         }
     }
@@ -667,19 +807,15 @@ enum MacroPreset: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
-        case .protein: return .green
-        case .carbs: return .blue
+        case .protein: return .red
+        case .carbs: return Color(.systemTeal)
         case .fats: return .orange
-        case .fibre: return Color(.systemTeal)
+        case .fibre: return .green
         case .water: return .cyan
-        case .sodium: return .pink
+        case .sodium: return Color(.systemGray3)
         case .potassium: return Color(.systemPurple)
-        case .sugar: return .red
+        case .sugar: return .yellow
         }
-    }
-
-    var detail: String {
-        "Target \(allowedLabel)"
     }
 }
 
@@ -716,6 +852,8 @@ private extension MacroMetric {
 struct MacroEditorSheet: View {
     @Binding var macros: [MacroMetric]
     var tint: Color
+    var isMultiColourTheme: Bool
+    var macroFocus: MacroFocusOption?
     var onDone: () -> Void
 
     @State private var workingMacros: [MacroMetric] = []
@@ -742,34 +880,41 @@ struct MacroEditorSheet: View {
                     )
 
                     if !workingMacros.isEmpty {
-                        MacroEditorSection(title: "Tracked Macros") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Tracked Macros")
                             VStack(spacing: 16) {
-                                ForEach($workingMacros) { $metric in
+                                ForEach(Array(workingMacros.enumerated()), id: \.element.id) { index, element in
+                                    let binding = $workingMacros[index]
+                                    let currentMetric = element
                                     MacroTargetEditorRow(
-                                        metric: $metric,
+                                        metric: binding,
                                         tint: tint,
-                                        onRemove: { removeMetric(metric.id) }
+                                        displayColor: displayColor(for: currentMetric),
+                                        onRemove: { removeMetric(currentMetric.id) }
                                     )
                                 }
                             }
                         }
                     }
 
-                    MacroEditorSection(title: "Quick Add") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Quick Add")
                         VStack(spacing: 12) {
-                            ForEach(MacroPreset.allCases) { preset in
+                            ForEach(MacroPreset.allCases.filter { !isPresetSelected($0) }) { preset in
                                 MacroPresetRow(
                                     preset: preset,
                                     isSelected: isPresetSelected(preset),
                                     canAddMore: canAddMoreMacros,
                                     tint: tint,
+                                    color: displayColor(for: preset),
                                     onToggle: { togglePreset(preset) }
                                 )
                             }
                         }
                     }
 
-                    MacroEditorSection(title: "Custom Macros") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Custom Macros")
                         VStack(spacing: 16) {
                             CustomMacroComposer(
                                 name: $newCustomName,
@@ -785,6 +930,8 @@ struct MacroEditorSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    MacroCalculationExplainer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
@@ -811,6 +958,14 @@ struct MacroEditorSheet: View {
         guard !hasLoadedState else { return }
         workingMacros = macros
         hasLoadedState = true
+    }
+
+    private func displayColor(for metric: MacroMetric) -> Color {
+        isMultiColourTheme ? metric.color : tint
+    }
+
+    private func displayColor(for preset: MacroPreset) -> Color {
+        isMultiColourTheme ? preset.color : tint
     }
 
     private func togglePreset(_ preset: MacroPreset) {
@@ -848,21 +1003,15 @@ struct MacroEditorSheet: View {
     }
 }
 
-private struct MacroEditorSection<Content: View>: View {
+private struct MacroEditorSectionHeader: View {
     var title: String
-    @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(title.uppercased())
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 16, content: content)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 20.0))
+        Text(title.uppercased())
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 4)
     }
 }
 
@@ -871,26 +1020,22 @@ private struct MacroPresetRow: View {
     var isSelected: Bool
     var canAddMore: Bool
     var tint: Color
+    var color: Color
     var onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
             Circle()
-                .fill(preset.color.opacity(0.15))
+                .fill(color.opacity(0.15))
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "chart.bar.fill")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(preset.color)
+                        .foregroundStyle(color)
                 )
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(preset.displayName)
-                    .font(.subheadline.weight(.semibold))
-                Text(preset.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(preset.displayName)
+                .font(.subheadline.weight(.semibold))
 
             Spacer()
 
@@ -905,24 +1050,25 @@ private struct MacroPresetRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .glassEffect(in: .rect(cornerRadius: 18.0))
+        .surfaceCard(18)
     }
 }
 
 private struct MacroTargetEditorRow: View {
     @Binding var metric: MacroMetric
     var tint: Color
+    var displayColor: Color
     var onRemove: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Circle()
-                    .fill(metric.color.opacity(0.18))
+                    .fill(displayColor.opacity(0.18))
                     .frame(width: 36, height: 36)
                     .overlay(
                         Circle()
-                            .stroke(metric.color.opacity(0.6), lineWidth: 1)
+                            .stroke(displayColor.opacity(0.6), lineWidth: 1)
                     )
 
                 if metric.isCustom {
@@ -941,6 +1087,7 @@ private struct MacroTargetEditorRow: View {
                         .font(.system(size: 16, weight: .semibold))
                 }
                 .buttonStyle(.plain)
+                .padding(.trailing, 8)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -952,11 +1099,11 @@ private struct MacroTargetEditorRow: View {
                         .textFieldStyle(.plain)
                 }
                 .padding()
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .surfaceCard(16)
             }
         }
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 20.0))
+        .surfaceCard(20)
     }
 }
 
@@ -970,21 +1117,17 @@ private struct CustomMacroComposer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Create your own")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
             TextField("Macro name", text: $name)
                 .textInputAutocapitalization(.words)
                 .padding()
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .surfaceCard(16)
 
             HStack(spacing: 12) {
                 TextField("Target (e.g. 30g)", text: $target)
                     .textInputAutocapitalization(.never)
                     .textFieldStyle(.plain)
                     .padding()
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                    .surfaceCard(16)
 
                 Button(action: onAdd) {
                     Image(systemName: "plus")
@@ -1029,7 +1172,166 @@ private struct MacroEditorSummaryChip: View {
                 .frame(width: 120)
         }
         .padding()
-        .glassEffect(in: .rect(cornerRadius: 18.0))
+        .surfaceCard(18)
+    }
+}
+
+private struct CalorieConsumedAdjustmentSheet: View {
+    @Binding var currentCalories: Int
+    var tint: Color
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var inputValue: String = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Adjust Consumed Calories")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Text("Enter the amount to add or remove from today's total.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 8) {
+                    TextField("0", text: $inputValue)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                    Text("cal")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .surfaceCard(16)
+
+                HStack(spacing: 16) {
+                    Button(action: { handleAction(isAddition: false) }) {
+                        Label("Remove", systemImage: "minus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { handleAction(isAddition: true) }) {
+                        Label("Add", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Consumed Calories")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func handleAction(isAddition: Bool) {
+        guard let delta = Int(inputValue), delta > 0 else { return }
+        let signedDelta = isAddition ? delta : -delta
+        currentCalories = max(0, currentCalories + signedDelta)
+        dismiss()
+    }
+}
+
+private struct MacroLogEntrySheet: View {
+    var metric: MacroMetric
+    var initialValue: Double
+    var unitSuffix: String
+    var onSave: (Double) -> Void
+    var onCancel: () -> Void
+
+    @State private var inputValue: String = ""
+
+    init(metric: MacroMetric, initialValue: Double, unitSuffix: String, onSave: @escaping (Double) -> Void, onCancel: @escaping () -> Void) {
+        self.metric = metric
+        self.initialValue = max(0, initialValue)
+        self.unitSuffix = unitSuffix
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Log \(metric.title)")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Text("Enter the amount to add or remove")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                TextField("0", text: $inputValue)
+                    .keyboardType(.decimalPad)
+                    .padding()
+                    .surfaceCard(16)
+
+                HStack(spacing: 16) {
+                    Button(action: { handleAction(isAddition: false) }) {
+                        Label("Remove", systemImage: "minus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { handleAction(isAddition: true) }) {
+                        Label("Add", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle(metric.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { onCancel() }
+                }
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    private func formattedValue(_ value: Double) -> String {
+        let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
+        let formatted = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
+        return unitSuffix.isEmpty ? formatted : "\(formatted)\(unitSuffix)"
+    }
+
+    private func handleAction(isAddition: Bool) {
+        guard let delta = Double(inputValue), delta > 0 else { return }
+        let signedDelta = isAddition ? delta : -delta
+        let updatedValue = max(0, initialValue + signedDelta)
+        onSave(updatedValue)
     }
 }
 
@@ -1093,6 +1395,7 @@ struct DailyMealLogSection: View {
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.top, 10)
             }
         }
         .padding(20)
@@ -1202,15 +1505,12 @@ struct FastingTimerCard: View {
                 Button {
                     showProtocolSheet = true
                 } label: {
-                    Label("\(elapsedTimeString)", systemImage: "pencil")
+                    Label("Edit", systemImage: "pencil")
                         .font(.callout)
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(tint.opacity(0.15))
-                        )
+                        .glassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -1273,103 +1573,8 @@ struct FastingTimerCard: View {
     }
 }
 
-struct SupplementTrackingView: View {
-    var accentColorOverride: Color?
-    @State private var supplements: [SupplementItem] = SupplementItem.defaultSupplements
-
-    var body: some View {
-        let supplementTint = accentColorOverride ?? .orange
-        let displayItems: [SupplementSummaryItem] =
-            Array(supplements.enumerated()).map { .supplement(index: $0.offset, item: $0.element) } + [.add]
-
-        let rows: [[SupplementSummaryItem]] = {
-            let count = displayItems.count
-            if count <= 4 {
-                return [displayItems]
-            } else if count == 5 {
-                return [Array(displayItems.prefix(3)), Array(displayItems.suffix(2))]
-            } else if count == 6 {
-                return [Array(displayItems.prefix(3)), Array(displayItems.suffix(3))]
-            } else if count == 7 {
-                return [Array(displayItems.prefix(4)), Array(displayItems.suffix(3))]
-            } else {
-                return stride(from: 0, to: count, by: 4).map { index in
-                    Array(displayItems[index..<min(index + 4, count)])
-                }
-            }
-        }()
-
-        VStack(spacing: 16) {
-            VStack(spacing: 16) {
-                ForEach(rows.indices, id: \.self) { rowIdx in
-                    HStack {
-                        Spacer(minLength: 0)
-                        ForEach(rows[rowIdx]) { item in
-                            switch item {
-                            case let .supplement(index, supplement):
-                                SupplementRing(
-                                    item: supplement,
-                                    tint: supplementTint
-                                ) {
-                                    toggleSupplement(at: index)
-                                } onRemove: {
-                                    removeSupplement(supplement)
-                                }
-                            case .add:
-                                SupplementAddButton(
-                                    tint: Color(.systemGray3),
-                                    minHeight: NutritionLayout.supplementTileMinHeight
-                                ) {
-                                    addSupplement()
-                                }
-                            }
-                        }
-                        .padding(.bottom, -10)
-                        Spacer(minLength: 0)
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 10)
-            .padding(.bottom, -30)
-        }
-        .padding(.vertical, 20)
-        .frame(maxWidth: .infinity)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
-        .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 48)
-    }
-
-    private func toggleSupplement(at index: Int) {
-        guard supplements.indices.contains(index) else { return }
-        supplements[index].isTaken.toggle()
-    }
-
-    private func removeSupplement(_ supplement: SupplementItem) {
-        supplements.removeAll { $0.id == supplement.id }
-    }
-
-    private func addSupplement() {
-        // placeholder flow: append a generic supplement entry for now
-        let unit = SupplementMeasurementUnit.allCases[supplements.count % SupplementMeasurementUnit.allCases.count]
-        let defaultAmount: Double
-        switch unit {
-        case .gram:
-            defaultAmount = 1.0
-        case .milligram:
-            defaultAmount = 50
-        case .microgram:
-            defaultAmount = 100
-        }
-        let newSupplement = SupplementItem(
-            name: "Supplement #\(supplements.count + 1)",
-            amount: defaultAmount,
-            unit: unit
-        )
-        supplements.append(newSupplement)
-    }
-}
+// SupplementTrackingView has been moved to `Components/SupplementTrackingView.swift`.
+// Use the component and pass initial supplements if desired.
 
 private struct ShareProgressCTA: View {
     var accentColor: Color
@@ -1440,153 +1645,7 @@ private struct ShareProgressCTA: View {
     }
 }
 
-private enum SupplementSummaryItem: Identifiable {
-    case supplement(index: Int, item: SupplementItem)
-    case add
-
-    var id: String {
-        switch self {
-        case let .supplement(_, item):
-            return item.id.uuidString
-        case .add:
-            return "supplement-add"
-        }
-    }
-}
-
-private struct SupplementRing: View {
-    var item: SupplementItem
-    var tint: Color
-    var onToggle: () -> Void
-    var onRemove: () -> Void
-
-    var body: some View {
-        Button(action: onToggle) {
-            VStack(spacing: 2) {
-                ZStack {
-                    Circle()
-                        .stroke(tint.opacity(0.18), lineWidth: 6)
-                        .frame(width: 54, height: 54)
-                    Circle()
-                        .trim(from: 0, to: item.isTaken ? 1 : 0)
-                        .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 54, height: 54)
-                    Image(systemName: item.isTaken ? "checkmark" : "plus")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(tint)
-                }
-                .padding(.bottom, 10)
-                VStack(spacing: 2) {
-                    Text(item.measurementDescription)
-                          .font(.caption)
-                          .foregroundStyle(.tertiary)
-                          .padding(.top, 0)
-                    Text(item.name)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                        .foregroundStyle(.secondary)
-                        .frame(minHeight: 32, alignment: .top)
-                }
-                .frame(minHeight: 60, alignment: .top)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: NutritionLayout.supplementTileMinHeight, alignment: .top)
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button(role: .destructive, action: onRemove) {
-                Label("Remove", systemImage: "trash")
-            }
-        }
-    }
-}
-
-private struct SupplementAddButton: View {
-    var tint: Color
-    var minHeight: CGFloat
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 2) {
-                ZStack {
-                    Circle()
-                        .stroke(tint.opacity(0.18), lineWidth: 6)
-                        .frame(width: 54, height: 54)
-                    Circle()
-                        .stroke(style: StrokeStyle(lineWidth: 6, dash: [4]))
-                        .foregroundStyle(tint.opacity(0.35))
-                        .frame(width: 54, height: 54)
-                    Image(systemName: "pencil")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(tint)
-                }
-                .padding(.bottom, 10)
-                Text("Edit Supplement")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-        }
-        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .top)
-        .buttonStyle(.plain)
-    }
-}
-
-private struct SupplementItem: Identifiable, Equatable {
-    let id: UUID
-    let name: String
-    let amount: Double
-    let unit: SupplementMeasurementUnit
-    var isTaken: Bool
-
-    init(id: UUID = UUID(), name: String, amount: Double, unit: SupplementMeasurementUnit, isTaken: Bool = false) {
-        self.id = id
-        self.name = name
-        self.amount = amount
-        self.unit = unit
-        self.isTaken = isTaken
-    }
-
-    var measurementDescription: String {
-        let whole = amount.rounded(.towardZero)
-        let isWhole = amount.truncatingRemainder(dividingBy: 1) == 0
-        let formattedAmount = isWhole ? String(Int(whole)) : String(format: "%.1f", amount)
-        return "\(formattedAmount) \(unit.symbol)"
-    }
-
-    static let defaultSupplements: [SupplementItem] = [
-        SupplementItem(name: "Vitamin C", amount: 1000, unit: .milligram),
-        SupplementItem(name: "Vitamin D", amount: 50, unit: .microgram),
-        SupplementItem(name: "Zinc", amount: 30, unit: .milligram),
-        SupplementItem(name: "Iron", amount: 18, unit: .milligram),
-        SupplementItem(name: "Magnesium", amount: 400, unit: .milligram),
-        SupplementItem(name: "Magnesium Glycinate", amount: 2.5, unit: .gram),
-        SupplementItem(name: "Melatonin", amount: 5, unit: .milligram)
-    ]
-}
-
-private enum SupplementMeasurementUnit: CaseIterable {
-    case gram
-    case milligram
-    case microgram
-
-    var symbol: String {
-        switch self {
-        case .gram:
-            return "g"
-        case .milligram:
-            return "mg"
-        case .microgram:
-            return "μg"
-        }
-    }
-}
+// Supplement UI moved to `Components/SupplementTrackingView.swift`.
 
 private struct FastingProtocolSheet: View {
     @Binding var selectedProtocol: FastingProtocolOption

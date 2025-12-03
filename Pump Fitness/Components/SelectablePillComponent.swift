@@ -37,7 +37,10 @@ public struct SelectablePillComponent<Label: View>: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .padding(.horizontal, 16)
-                .glassEffect(in: .rect(cornerRadius: 12.0))
+                .surfaceCard(
+                    12,
+                    fill: isSelected ? selectedTint.opacity(0.18) : Color(.secondarySystemBackground)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(isSelected ? selectedTint : Color.clear, lineWidth: 1)

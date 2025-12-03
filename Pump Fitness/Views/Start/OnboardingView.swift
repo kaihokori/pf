@@ -38,6 +38,8 @@ struct OnboardingView: View {
                                 BodyBasicsStepView(viewModel: viewModel)
                             case .routine:
                                 RoutineStepView(viewModel: viewModel)
+                            case .calorieTarget:
+                                CalorieTargetStepView(viewModel: viewModel)
                             case .macroTargets:
                                 MacroTargetsStepView(viewModel: viewModel)
                             case .supplements:
@@ -57,7 +59,7 @@ struct OnboardingView: View {
                                     .foregroundColor(Color.accentColor)
                                     .frame(maxWidth: .infinity)
                                     .padding()
-                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    .surfaceCard(16)
                             }
                             .transition(.move(edge: .leading).combined(with: .opacity))
                         }
@@ -67,7 +69,7 @@ struct OnboardingView: View {
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                                .glassEffect(.regular.tint(.accentColor), in: .rect(cornerRadius: 16.0))
+                                .surfaceCard(16, fill: Color.accentColor, shadowOpacity: 0.12)
                         }
                     }
                     .animation(.easeInOut(duration: 0.3), value: viewModel.isFirstStep)
@@ -92,7 +94,9 @@ struct OnboardingView: View {
                 onComplete?()
                 dismiss()
             } else {
-                _ = viewModel.advance()
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    _ = viewModel.advance()
+                }
             }
         } else {
             alertMessage = validationErrorMessage()
@@ -136,13 +140,15 @@ struct OnboardingView: View {
                 return "Please select your primary goal."
             }
             return "Please complete all fields."
-        case .macroTargets:
+        case .calorieTarget:
             if viewModel.selectedMacroFocus == nil {
                 return "Please select your macro focus."
             }
             if let error = validateMacroField(value: viewModel.calorieValue, label: "Calorie target", min: 0, max: 20000) {
                 return error
             }
+            return "Please complete all fields."
+        case .macroTargets:
             if let error = validateMacroField(value: viewModel.proteinValue, label: "Protein target", min: 0, max: 10000) {
                 return error
             }
@@ -238,7 +244,6 @@ private struct AboutYouStepView: View {
                     isError: !viewModel.isValidBirthDate
                 )
                 .padding(.vertical, 5)
-                .glassEffect(in: .rect(cornerRadius: 18.0))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -251,7 +256,9 @@ private struct BodyBasicsStepView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            SectionTitle("Gender")
+            Text("Gender")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
                 ForEach(GenderOption.allCases) { option in
                     SelectablePillComponent(
@@ -263,7 +270,9 @@ private struct BodyBasicsStepView: View {
                 }
             }
 
-            SectionTitle("Height & Weight")
+            Text("Unit of Measurement")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             MetricToggleView(unitSystem: viewModel.unitSystem) { newSystem in
                 viewModel.updateUnitSystem(to: newSystem)
             }
@@ -285,7 +294,7 @@ private struct BodyBasicsStepView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding()
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .surfaceCard(12)
                             }
                             VStack(alignment: .leading, spacing: 0) {
                                 HStack {
@@ -297,7 +306,7 @@ private struct BodyBasicsStepView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding()
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .surfaceCard(12)
                             }
                         }
                     } else {
@@ -325,7 +334,9 @@ private struct RoutineStepView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            SectionTitle("Primary goal")
+            Text("Primary goal")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
                 ForEach(GoalOption.allCases) { option in
                     SelectablePillComponent(
@@ -337,7 +348,9 @@ private struct RoutineStepView: View {
                 }
             }
 
-            SectionTitle("Workouts per week")
+            Text("Workout days each week")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             WorkoutsPerWeekView(selectedDays: viewModel.selectedWorkoutDays) { day in
                 viewModel.toggleDay(day)
             }
@@ -346,13 +359,15 @@ private struct RoutineStepView: View {
     }
 }
 
-private struct MacroTargetsStepView: View {
+private struct CalorieTargetStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     private let pillColumns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            SectionTitle("Macro focus")
+            Text("Macro focus")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
                 ForEach(MacroFocusOption.allCases) { option in
                     SelectablePillComponent(
@@ -364,17 +379,51 @@ private struct MacroTargetsStepView: View {
                 }
             }
 
-            SectionTitle("Daily targets")
-            VStack(spacing: 16) {
-                LabeledNumericField(
-                    label: "Calories",
-                    value: Binding(
-                        get: { viewModel.calorieValue },
-                        set: { viewModel.updateMacroField(.calories, newValue: $0) }
-                    ),
-                    unitLabel: "kcal"
-                )
+            LabeledNumericField(
+                label: "Calorie Target",
+                value: Binding(
+                    get: { viewModel.calorieValue },
+                    set: { viewModel.updateMacroField(.calories, newValue: $0) }
+                ),
+                unitLabel: "cal"
+            )
 
+                if let maintenance = viewModel.estimatedMaintenanceCalories,
+                    let focus = viewModel.selectedMacroFocus,
+                    focus != .custom {
+                let recommendation = CalorieGoalPlanner.recommendation(for: focus, maintenanceCalories: maintenance)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Recommended for \(focus.displayName)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(maintenance) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentPercentText) = \(recommendation.value) cal")
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.accentColor)
+                    Text("We base this on your estimated maintenance of \(maintenance) cal. Adjust manually if you need a custom target.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else if viewModel.selectedMacroFocus == .custom {
+                Text("Custom targets override the preset strategy.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Pump estimates maintenance with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct MacroTargetsStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(spacing: 16) {
                 LabeledNumericField(
                     label: "Protein",
                     value: Binding(
@@ -429,6 +478,8 @@ private struct MacroTargetsStepView: View {
                     unitLabel: "ml"
                 )
             }
+
+            MacroCalculationExplainer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -465,7 +516,7 @@ private struct SupplementsStepView: View {
                         .foregroundStyle(.secondary)
                     TextField("Enter supplement name(s)", text: $viewModel.otherSupplementName)
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 10.0))
+                        .surfaceCard(10)
                 }
             }
         }
@@ -503,12 +554,15 @@ private struct WorkoutsPerWeekView: View {
                     Text(day.shortLabel)
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(isSelected ? Color.accentColor : .primary)
                         .frame(width: 40, height: 40)
-                        .glassEffect(.regular, in: .circle)
+                        .surfaceCard(
+                            20,
+                            fill: isSelected ? Color.accentColor.opacity(0.15) : Color(.secondarySystemBackground)
+                        )
                         .overlay(
                             Circle()
-                                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
+                                .stroke(isSelected ? Color.accentColor : PumpPalette.cardBorder, lineWidth: 1)
                         )
                 }
                 .buttonStyle(.plain)
@@ -530,7 +584,7 @@ private struct MetricToggleView: View {
                         .fontWeight(.semibold)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
-                        .glassEffect(in: .rect(cornerRadius: 12.0))
+                        .surfaceCard(12)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(system == unitSystem ? Color.accentColor : Color.clear, lineWidth: 1)
@@ -566,7 +620,7 @@ public struct LabeledNumericField: View {
                     .foregroundStyle(.secondary)
             }
             .padding()
-            .glassEffect(in: .rect(cornerRadius: 12.0))
+            .surfaceCard(12)
         }
     }
 }
@@ -590,7 +644,7 @@ public struct TextFieldWithLabel: View {
             TextField("", text: $text, prompt: prompt)
                 .textInputAutocapitalization(.words)
                 .padding()
-                .glassEffect(in: .rect(cornerRadius: 10.0))
+                .surfaceCard(10)
         }
     }
 }
@@ -648,6 +702,19 @@ final class OnboardingViewModel: ObservableObject {
 
     var buttonTitle: String { isLastStep ? "Finish" : "Continue" }
 
+    var estimatedMaintenanceCalories: Int? {
+        MacroCalculator.estimateMaintenanceCalories(
+            genderOption: selectedGender,
+            birthDate: birthDate,
+            unitSystem: unitSystem,
+            heightValue: heightValue,
+            heightFeet: heightFeet,
+            heightInches: heightInches,
+            weightValue: weightValue,
+            workoutDays: selectedWorkoutDays.count
+        )
+    }
+
     var canContinue: Bool {
         switch currentStep {
         case .aboutYou:
@@ -660,10 +727,10 @@ final class OnboardingViewModel: ObservableObject {
             }
         case .routine:
             return selectedGoal != nil
+        case .calorieTarget:
+            return selectedMacroFocus != nil && Double(calorieValue) != nil
         case .macroTargets:
-            return selectedMacroFocus != nil
-                && Double(calorieValue) != nil
-                && Double(proteinValue) != nil
+            return Double(proteinValue) != nil
                 && Double(fatValue) != nil
                 && Double(carbohydrateValue) != nil
                 && Double(fibreValue) != nil
@@ -737,15 +804,15 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-    func markMacroFocusAsOther() {
-        selectedMacroFocus = .other
+    func markMacroFocusAsCustom() {
+        selectedMacroFocus = .custom
         lastCalculatedTargets = nil
     }
 
     func selectMacroFocus(_ option: MacroFocusOption) {
         selectedMacroFocus = option
 
-        guard option != .other else {
+        guard option != .custom else {
             lastCalculatedTargets = nil
             return
         }
@@ -791,15 +858,15 @@ final class OnboardingViewModel: ObservableObject {
         case .water: waterIntakeValue = newValue
         }
 
-        guard selectedMacroFocus != .other else { return }
+        guard selectedMacroFocus != .custom else { return }
         guard let snapshot = lastCalculatedTargets else {
-            markMacroFocusAsOther()
+            markMacroFocusAsCustom()
             return
         }
 
         if snapshot.value(for: field) != newValue {
             lastCalculatedTargets = nil
-            markMacroFocusAsOther()
+            markMacroFocusAsCustom()
         }
     }
 }
@@ -808,6 +875,7 @@ enum OnboardingStep: CaseIterable, Equatable {
     case aboutYou
     case bodyBasics
     case routine
+    case calorieTarget
     case macroTargets
     case supplements
 
@@ -816,6 +884,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .aboutYou: return "About You"
         case .bodyBasics: return "Body Basics"
         case .routine: return "Your Routine"
+        case .calorieTarget: return "Calorie Target"
         case .macroTargets: return "Macro Targets"
         case .supplements: return "Supplements"
         }
@@ -826,7 +895,8 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .aboutYou: return "Tell us who we're training"
         case .bodyBasics: return "Dial in the essentials"
         case .routine: return "Tune your weekly rhythm"
-        case .macroTargets: return "Lock in your daily nutrition"
+        case .calorieTarget: return "Lock in your daily calories"
+        case .macroTargets: return "Fine-tune your macro mix"
         case .supplements: return "Optimise your nutrition"
         }
     }
@@ -852,7 +922,6 @@ enum GoalOption: String, CaseIterable, Identifiable {
     case maintain
     case gainMuscle
     case recomposition
-
     var id: String { rawValue }
 
     var displayName: String {
@@ -869,8 +938,7 @@ enum MacroFocusOption: String, CaseIterable, Identifiable {
     case highProtein
     case balanced
     case lowCarb
-    case other
-
+    case custom
     var id: String { rawValue }
 
     var displayName: String {
@@ -878,8 +946,19 @@ enum MacroFocusOption: String, CaseIterable, Identifiable {
         case .highProtein: return "High-Protein"
         case .balanced: return "Balanced"
         case .lowCarb: return "Low-Carb"
-        case .other: return "Other"
+        case .custom: return "Custom"
         }
+    }
+
+    init?(rawValue: String) {
+        if rawValue == "other" {
+            self = .custom
+            return
+        }
+        guard let match = MacroFocusOption.allCases.first(where: { $0.rawValue == rawValue }) else {
+            return nil
+        }
+        self = match
     }
 }
 

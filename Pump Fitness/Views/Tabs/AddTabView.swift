@@ -145,22 +145,16 @@ private extension QuickAddSheetView {
     var nutritionQuickActions: [QuickAddOption] {
         [
             QuickAddOption(
-                title: "Log Meal",
-                subtitle: "Search USDA foods or scan a barcode",
+                title: "Food Lookup",
+                subtitle: "Automatic calorie + macro info",
                 iconName: "fork.knife.circle.fill",
                 tint: .orange
             ),
             QuickAddOption(
-                title: "Track Water",
-                subtitle: "Add the last bottle or glass",
-                iconName: "drop.circle.fill",
+                title: "Manual Input",
+                subtitle: "Enter calories and macros yourself",
+                iconName: "slider.horizontal.3",
                 tint: .cyan
-            ),
-            QuickAddOption(
-                title: "Supplements",
-                subtitle: "Record vitamins or creatine",
-                iconName: "pills.circle.fill",
-                tint: .purple
             )
         ]
     }

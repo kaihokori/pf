@@ -195,7 +195,7 @@ struct MacroCalculator {
         case .highProtein: return .highProtein
         case .balanced: return .balanced
         case .lowCarb: return .lowCarb
-        case .other: return nil
+        case .custom: return nil
         }
     }
 
@@ -233,7 +233,7 @@ extension MacroCalculator {
     ) -> Input? {
         guard let genderOption = genderOption,
               let goal = goal,
-              macroFocus != .other,
+              macroFocus != .custom,
               let heightCm = heightInCentimeters(unitSystem: unitSystem, heightValue: heightValue, heightFeet: heightFeet, heightInches: heightInches),
               let weightKg = weightInKilograms(unitSystem: unitSystem, weightValue: weightValue) else {
             return nil
@@ -251,6 +251,43 @@ extension MacroCalculator {
             goal: goal,
             macroFocus: macroFocus
         )
+    }
+
+    static func estimateMaintenanceCalories(
+        genderOption: GenderOption?,
+        birthDate: Date,
+        unitSystem: UnitSystem,
+        heightValue: String,
+        heightFeet: String,
+        heightInches: String,
+        weightValue: String,
+        workoutDays: Int,
+        referenceDate: Date = Date()
+    ) -> Int? {
+        guard let genderOption = genderOption,
+              let heightCm = heightInCentimeters(
+                  unitSystem: unitSystem,
+                  heightValue: heightValue,
+                  heightFeet: heightFeet,
+                  heightInches: heightInches
+              ),
+              let weightKg = weightInKilograms(unitSystem: unitSystem, weightValue: weightValue),
+              let ageYears = age(inYearsAt: referenceDate, birthDate: birthDate) else {
+            return nil
+        }
+
+        let gender: Gender = (genderOption == .male) ? .male : .female
+        let bmr: Double
+        if gender == .male {
+            bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5
+        } else {
+            bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears - 161
+        }
+
+        let activityLevel = ActivityLevel.fromWorkoutDays(workoutDays)
+        let tdee = bmr * activityLevel.multiplier
+        guard tdee.isFinite else { return nil }
+        return Int(round(tdee))
     }
 
     private static func heightInCentimeters(

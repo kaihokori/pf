@@ -64,7 +64,7 @@ struct AccountsView: View {
                                     ),
                                     range: PumpDateRange.birthdate
                                 )
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .surfaceCard(12)
                             }
                         }
 
@@ -360,7 +360,7 @@ private struct AccountSection: View {
             .foregroundStyle(role == .destructive ? Color.red : foregroundColor)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .surfaceCard(16)
         }
         .buttonStyle(.plain)
     }
@@ -419,7 +419,7 @@ private struct OtherSection: View {
             .foregroundStyle(role == .destructive ? Color.red : foregroundColor)
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .surfaceCard(16)
         }
         .buttonStyle(.plain)
     }
@@ -507,10 +507,10 @@ private struct IdentitySection: View {
         .font(.subheadline.weight(.semibold))
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassEffect(.regular.tint(Color.white.opacity(0.12)), in: .capsule)
-        .overlay(
+        .background(
             Capsule(style: .continuous)
-                .stroke(PumpPalette.cardBorder, lineWidth: 1)
+                .fill(Color(.secondarySystemBackground))
+                .shadow(color: Color.black.opacity(0.05), radius: 8, y: 4)
         )
         .foregroundStyle(.primary)
     }
@@ -552,7 +552,10 @@ private struct UnitToggleView: View {
                         .fontWeight(.semibold)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
-                        .glassEffect(in: .rect(cornerRadius: 12.0))
+                        .surfaceCard(
+                            12,
+                            fill: system == unitSystem ? Color.accentColor.opacity(0.15) : Color(.secondarySystemBackground)
+                        )
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(system == unitSystem ? Color.accentColor : Color.clear, lineWidth: 1)
@@ -621,7 +624,7 @@ private struct WorkoutsPerWeekSelector: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionTitle("Workouts per week")
+            SectionTitle("Workout days each week")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.top, 12)
@@ -633,12 +636,15 @@ private struct WorkoutsPerWeekSelector: View {
                         Text(day.shortLabel)
                             .font(.caption)
                             .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(isSelected ? Color.accentColor : .primary)
                             .frame(width: 40, height: 40)
-                            .glassEffect(.regular, in: .circle)
+                            .surfaceCard(
+                                20,
+                                fill: isSelected ? Color.accentColor.opacity(0.15) : Color(.secondarySystemBackground)
+                            )
                             .overlay(
                                 Circle()
-                                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
+                                    .stroke(isSelected ? Color.accentColor : PumpPalette.cardBorder, lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -678,14 +684,7 @@ private struct AppearanceSection: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(PumpPalette.cardBorder, lineWidth: 1)
-                            )
-                    )
+                    .surfaceCard(18)
                 }
             }
 
@@ -946,7 +945,7 @@ final class AccountsViewModel: ObservableObject {
     func selectMacroFocus(_ option: MacroFocusOption) {
         draft.selectedMacroFocus = option
 
-        guard option != .other else {
+        guard option != .custom else {
             lastCalculatedTargets = nil
             return
         }
@@ -998,8 +997,8 @@ final class AccountsViewModel: ObservableObject {
         draft.weekStart = option
     }
 
-    func markMacroFocusAsOther() {
-        draft.selectedMacroFocus = .other
+    func markMacroFocusAsCustom() {
+        draft.selectedMacroFocus = .custom
         lastCalculatedTargets = nil
     }
 
@@ -1014,15 +1013,15 @@ final class AccountsViewModel: ObservableObject {
         case .water: draft.waterIntakeValue = newValue
         }
 
-        guard draft.selectedMacroFocus != .other else { return }
+        guard draft.selectedMacroFocus != .custom else { return }
         guard let snapshot = lastCalculatedTargets else {
-            markMacroFocusAsOther()
+            markMacroFocusAsCustom()
             return
         }
 
         if snapshot.value(for: field) != newValue {
             lastCalculatedTargets = nil
-            markMacroFocusAsOther()
+            markMacroFocusAsCustom()
         }
     }
 

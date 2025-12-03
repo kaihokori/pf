@@ -18,7 +18,7 @@ struct DateComponent: View {
                     .font(.body)
                     .foregroundStyle(PumpPalette.secondaryText)
             }
-            .pumpInputStyle(isError: isError)
+            .frame(minHeight: 30)
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $isPresentingPicker) {
@@ -61,31 +61,6 @@ struct DateComponent: View {
 struct PumpPalette {
     static let secondaryText = Color.secondary.opacity(0.8)
     static let cardBorder = Color.white.opacity(0.16)
-}
-
-struct PumpInputModifier: ViewModifier {
-    var isError: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(isError ? Color.red : PumpPalette.cardBorder, lineWidth: isError ? 1.5 : 1)
-                    )
-            )
-    }
-}
-
-extension View {
-    func pumpInputStyle(isError: Bool = false) -> some View {
-        modifier(PumpInputModifier(isError: isError))
-    }
 }
 
 enum PumpDateRange {

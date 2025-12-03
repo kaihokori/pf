@@ -75,7 +75,7 @@ private extension RootView {
                         systemImage: AppTab.coaching.systemImage,
                         value: AppTab.coaching
                     ) {
-                        CoachingTabView()
+                        IgnoreView()
                     }
                 }
             }

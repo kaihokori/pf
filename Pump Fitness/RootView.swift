@@ -77,6 +77,13 @@ private extension RootView {
                     ) {
                         IgnoreView()
                     }
+                    Tab(
+                        "Lookup",
+                        systemImage: AppTab.lookup.systemImage,
+                        value: AppTab.lookup
+                    ) {
+                        LookupTabView()
+                    }
                 }
             }
         }
@@ -108,6 +115,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
     case nutrition
     case workout
     case coaching
+    case lookup
 
     var id: String { rawValue }
 
@@ -116,6 +124,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
         case .nutrition: return "Nutrition"
         case .workout: return "Workout"
         case .coaching: return "Coaching"
+        case .lookup: return "Search"
         }
     }
 
@@ -124,6 +133,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
         case .nutrition: return "fork.knife.circle.fill"
         case .workout: return "figure.strengthtraining.traditional"
         case .coaching: return "person.2.wave.2"
+        case .lookup: return "menucard.fill"
         }
     }
 }

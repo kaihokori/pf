@@ -32,6 +32,36 @@ struct WelcomeView: View {
                 }
                 Spacer()
                 VStack(spacing: 12) {
+                    Button(action: {}) {
+                        HStack(spacing: 12) {
+                            Text("Continue with Google")
+                                .font(.headline)
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+
+                    Button(action: {}) {
+                        HStack(spacing: 12) {
+                            Text("Continue with Facebook")
+                                .font(.headline)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(red: 59/255, green: 89/255, blue: 152/255))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+
                     Button(action: startOnboarding) {
                         HStack(spacing: 12) {
                             Image(systemName: "applelogo")

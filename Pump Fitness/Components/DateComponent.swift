@@ -10,15 +10,21 @@ struct DateComponent: View {
         Button {
             isPresentingPicker = true
         } label: {
-            HStack {
-                Text(formattedDate)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "calendar")
-                    .font(.body)
-                    .foregroundStyle(PumpPalette.secondaryText)
-            }
-            .frame(minHeight: 30)
+                HStack {
+                    Text(formattedDate)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "calendar")
+                        .font(.body)
+                        .foregroundStyle(PumpPalette.secondaryText)
+                }
+                .frame(minHeight: 26)
+                .padding()
+                .surfaceCard(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(isError ? Color.red : Color.clear, lineWidth: 1)
+                )
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $isPresentingPicker) {

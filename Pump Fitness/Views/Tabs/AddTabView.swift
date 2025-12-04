@@ -66,7 +66,7 @@ private extension QuickAddSheetView {
     @ViewBuilder
     var backgroundView: some View {
         if themeManager.selectedTheme == .multiColour {
-            GradientBackground(theme: .add)
+            GradientBackground(theme: .lookup)
         } else {
             themeManager.selectedTheme.background(for: colorScheme)
                 .ignoresSafeArea()

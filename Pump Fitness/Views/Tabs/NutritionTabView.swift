@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct NutritionTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
@@ -15,6 +17,22 @@ struct NutritionTabView: View {
     @State private var selectedMacroForLog: MacroMetric?
     @State private var consumedCalories: Int = 3100
     @State private var showConsumedSheet = false
+
+    // Weekly progress state (lifted so header Add button can open editor)
+    @State private var weeklyEntries: [WeeklyProgressEntry] = {
+        let cal = Calendar.current
+        let today = Date()
+        let generated = (0..<7).map { offset in
+            let date = cal.date(byAdding: .day, value: -offset, to: today) ?? today
+            return WeeklyProgressEntry(date: date, weight: Double(165 + offset % 5), imagesCount: offset % 3, waterPercent: offset % 2 == 0 ? Double(60 + offset) : nil, bodyFatPercent: offset % 4 == 0 ? Double(18 + offset % 3) : nil)
+        }
+        return generated.sorted { $0.date < $1.date }
+    }()
+    @State private var weeklySelectedEntry: WeeklyProgressEntry? = nil
+    @State private var weeklyShowEditor: Bool = false
+    @State private var previewImageEntry: WeeklyProgressEntry? = nil
+    // store in-memory picked images for entries (id -> image data)
+    @State private var weeklyEntryImages: [UUID: Data] = [:]
 
     private let maintenanceCalories: Int = 2200
 
@@ -141,7 +159,9 @@ struct NutritionTabView: View {
                         .padding(.top, 8)
                         
                         DailyMealLogSection(
-                            accentColorOverride: accentOverride
+                            accentColorOverride: accentOverride,
+                            weeklyEntries: weeklyEntries,
+                            weekStartsOnMonday: false
                         )
 
                         Text("Supplement Tracking")
@@ -155,6 +175,40 @@ struct NutritionTabView: View {
                         SupplementTrackingView(
                             accentColorOverride: accentOverride
                         )
+                        
+                        HStack {
+                            Text("Weekly Progress")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                // Create a new empty entry and show editor
+                                weeklySelectedEntry = WeeklyProgressEntry(date: Date(), weight: 0)
+                                weeklyShowEditor = true
+                            } label: {
+                                Label("Add", systemImage: "plus")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+
+                        WeeklyProgressCarousel(accentColorOverride: accentOverride,
+                                               entries: $weeklyEntries,
+                                               selectedEntry: $weeklySelectedEntry,
+                                               showEditor: $weeklyShowEditor,
+                                               previewImageEntry: $previewImageEntry)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 12)
 
                         Text("Intermittent Fasting")
                             .font(.title3)
@@ -230,6 +284,51 @@ struct NutritionTabView: View {
             }
             .presentationDetents([.fraction(0.38)])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $weeklyShowEditor, onDismiss: { weeklySelectedEntry = nil }) {
+            if let editing = weeklySelectedEntry {
+                WeeklyProgressEditorSheet(entry: editing, initialImageData: weeklyEntryImages[editing.id]) { saved, imageData in
+                    // Update or insert the saved entry, keep chronological order
+                    if let idx = weeklyEntries.firstIndex(where: { $0.id == saved.id }) {
+                        weeklyEntries[idx] = saved
+                    } else {
+                        weeklyEntries.append(saved)
+                    }
+                    weeklyEntries.sort { $0.date < $1.date }
+
+                    // persist image data in-memory map
+                    if let d = imageData {
+                        weeklyEntryImages[saved.id] = d
+                    } else {
+                        weeklyEntryImages.removeValue(forKey: saved.id)
+                    }
+
+                    weeklyShowEditor = false
+                    weeklySelectedEntry = nil
+                } onCancel: {
+                    weeklyShowEditor = false
+                    weeklySelectedEntry = nil
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+        
+        .fullScreenCover(item: $previewImageEntry) { entry in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let data = weeklyEntryImages[entry.id], let ui = UIImage(data: data) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
+                        .ignoresSafeArea()
+                } else {
+                    Image("placeholder")
+                        .resizable()
+                        .scaledToFit()
+                        .ignoresSafeArea()
+                }
+            }
         }
     }
 }
@@ -533,7 +632,7 @@ private struct CalorieGoalEditorSheet: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Text("Pump estimates maintenance with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier to reach this calorie target.")
+                    Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier to reach this calorie target.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -1337,11 +1436,14 @@ private struct MacroLogEntrySheet: View {
 
 struct DailyMealLogSection: View {
     var accentColorOverride: Color?
+    var weeklyEntries: [WeeklyProgressEntry] = []
+    var weekStartsOnMonday: Bool = false
     private let meals: [MealLogEntry] = MealLogEntry.sampleEntries
     private var totalCalories: Int {
         meals.reduce(0) { $0 + $1.calorieValue }
     }
     @State private var isExpanded = false
+    @State private var showWeeklyMacros = false
 
     var body: some View {
         let tint = accentColorOverride ?? .accentColor
@@ -1394,8 +1496,6 @@ struct DailyMealLogSection: View {
                         }
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-                .padding(.top, 10)
             }
         }
         .padding(20)
@@ -1404,6 +1504,185 @@ struct DailyMealLogSection: View {
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
+
+        VStack(alignment: .leading, spacing: 16) {
+            // New collapsible Weekly Macros section (separate from meals)
+            HStack {
+                Spacer()
+                Label("Weekly Intake", systemImage: "chart.bar.xaxis")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    showWeeklyMacros.toggle()
+                }
+            }
+
+            if showWeeklyMacros {
+                VStack(alignment: .leading, spacing: 10) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            let cal = Calendar.current
+                            let today = Date()
+                            let weekday = cal.component(.weekday, from: today) // 1 = Sunday
+                            let startIndex = weekStartsOnMonday ? 2 : 1
+                            let offsetToStart = (weekday - startIndex + 7) % 7
+                            let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
+
+                            let weekDates: [Date] = (0..<7).compactMap { i in
+                                cal.date(byAdding: .day, value: i, to: startOfWeek)
+                            }
+
+                            ForEach(weekDates, id: \.self) { day in
+                                // Determine whether this day should be considered a "future" day
+                                let weekday = Calendar.current.component(.weekday, from: day) // 1 = Sunday, 5 = Thursday
+                                let isFutureDay = weekday >= 5
+
+                                if let entry = weeklyEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
+                                    let idx = weeklyEntries.firstIndex(where: { $0.id == entry.id }) ?? 0
+                                    let protein = Int(60 + Double(idx) * 3)
+                                    let carbs = Int(140 - Double(idx) * 4)
+                                    let fats = Int(30 + Double(idx) * 2)
+                                    let calories = Int(1800 + Double(idx) * 120)
+                                    let waterLitres = Double(1.8 + Double(idx) * 0.1)
+                                    MacroDayColumn(date: day, tint: tint, calories: calories, protein: protein, carbs: carbs, fats: fats, waterLitres: waterLitres, isFuture: isFutureDay)
+                                } else {
+                                    let idx = Calendar.current.ordinality(of: .day, in: .year, for: day) ?? 0
+                                    let protein = 60 + (idx % 5) * 3
+                                    let carbs = 140 - (idx % 6) * 4
+                                    let fats = 30 + (idx % 4) * 2
+                                    let calories = 2000 + (idx % 7) * 100
+                                    let waterLitres = 1.8 + Double(idx % 5) * 0.1
+                                    MacroDayColumn(date: day, tint: tint, calories: calories, protein: protein, carbs: carbs, fats: fats, waterLitres: waterLitres, isFuture: isFutureDay)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.top, 6)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .padding(.horizontal, 18)
+        .padding(.top, 12)
+    }
+}
+
+private struct MacroIndicatorRow: View {
+    var label: String
+    var color: Color
+    var value: Double
+    var maxValue: Double
+    var unit: String = "g"
+
+    private var displayText: String {
+        switch unit {
+        case "L":
+            return String(format: "%.1fL", value)
+        case "cal":
+            return "\(Int(value))cal"
+        default:
+            return "\(Int(value))g"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(displayText)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+
+            ProgressView(value: min(maxValue > 0 ? value / maxValue : 0, 1.0))
+                .tint(color)
+                .frame(height: 6)
+        }
+    }
+}
+
+private struct MacroDayColumn: View {
+    var date: Date
+    var tint: Color
+    var calories: Int
+    var protein: Int
+    var carbs: Int
+    var fats: Int
+    var waterLitres: Double
+    var isFuture: Bool = false
+
+    private var dayLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "E"
+        return f.string(from: date)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(dayLabel)
+                .font(.caption)
+                .fontWeight(.semibold)
+
+            if isFuture {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    Text("Upcoming")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("No data yet")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary.opacity(0.8))
+                }
+                Spacer()
+            } else {
+                VStack(spacing: 10) {
+                    MacroIndicatorRow(label: "Calories", color: .primary, value: Double(calories), maxValue: 4000, unit: "cal")
+                    MacroIndicatorRow(label: "Protein", color: .red, value: Double(protein), maxValue: 200)
+                    MacroIndicatorRow(label: "Carbs", color: Color(.systemTeal), value: Double(carbs), maxValue: 400)
+                    MacroIndicatorRow(label: "Fats", color: .orange, value: Double(fats), maxValue: 150)
+                    MacroIndicatorRow(label: "Water", color: .cyan, value: waterLitres, maxValue: 4.0, unit: "L")
+                }
+                Spacer()
+            }
+        }
+        .padding(EdgeInsets(top: 28, leading: 12, bottom: 12, trailing: 12))
+        .frame(width: 140, height: 220)
+        .liquidGlass(cornerRadius: 14)
+    }
+}
+
+private struct LiquidGlassModifier: ViewModifier {
+    var cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 6)
+    }
+}
+
+extension View {
+    func liquidGlass(cornerRadius: CGFloat = 14) -> some View {
+        modifier(LiquidGlassModifier(cornerRadius: cornerRadius))
     }
 }
 
@@ -1653,49 +1932,84 @@ private struct FastingProtocolSheet: View {
     @Binding var customMinutes: String
     var tint: Color
     var onDone: () -> Void
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Fasting Window") {
-                    ForEach(FastingProtocolOption.allCases, id: \.self) { option in
-                        HStack {
-                            Text(option.displayName)
-                            Spacer()
-                            if selectedProtocol == option {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(tint)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Fasting Window")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
+                            ForEach(FastingProtocolOption.allCases, id: \.self) { option in
+                                SelectablePillComponent(
+                                    label: option.displayName,
+                                    isSelected: selectedProtocol == option,
+                                    selectedTint: tint
+                                ) {
+                                    selectedProtocol = option
+                                }
                             }
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture { selectedProtocol = option }
                     }
-                }
 
-                if selectedProtocol == .custom {
-                    Section("Custom Duration") {
-                        HStack {
-                            TextField("Hours", text: $customHours)
-                                .keyboardType(.numberPad)
-                            Text("hrs")
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack {
-                            TextField("Minutes", text: $customMinutes)
-                                .keyboardType(.numberPad)
-                            Text("min")
-                                .foregroundStyle(.secondary)
+                    // Always-visible custom inputs so user can immediately edit hours/minutes.
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Custom Duration")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 12) {
+                            HStack {
+                                TextField("Hours", text: $customHours)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.plain)
+                                    .onChange(of: customHours) { _, _ in
+                                        if selectedProtocol != .custom {
+                                            selectedProtocol = .custom
+                                        }
+                                    }
+                                Text("hrs")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .surfaceCard(16)
+                            .frame(maxWidth: .infinity)
+
+                            HStack {
+                                TextField("Minutes", text: $customMinutes)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.plain)
+                                    .onChange(of: customMinutes) { _, _ in
+                                        if selectedProtocol != .custom {
+                                            selectedProtocol = .custom
+                                        }
+                                    }
+                                Text("min")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .surfaceCard(16)
+                            .frame(maxWidth: .infinity)
                         }
                     }
+
+                    Text("Choose a fasting window that fits your routine. The custom option lets you specify an exact duration.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
             }
             .navigationTitle("Fasting Time")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { onDone() }
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onDone() }
+                        .fontWeight(.semibold)
                 }
             }
         }
@@ -1718,6 +2032,410 @@ private enum FastingProtocolOption: CaseIterable {
             return "16:8"
         case .custom:
             return "Custom"
+        }
+    }
+}
+
+struct WeeklyProgressEntry: Identifiable, Equatable {
+    let id: UUID
+    var date: Date
+    var weight: Double
+    var imagesCount: Int
+    var waterPercent: Double?
+    var bodyFatPercent: Double?
+
+    init(id: UUID = UUID(), date: Date, weight: Double, imagesCount: Int = 0, waterPercent: Double? = nil, bodyFatPercent: Double? = nil) {
+        self.id = id
+        self.date = date
+        self.weight = weight
+        self.imagesCount = imagesCount
+        self.waterPercent = waterPercent
+        self.bodyFatPercent = bodyFatPercent
+    }
+}
+
+private struct WeeklyProgressCarousel: View {
+    var accentColorOverride: Color?
+
+    @Binding var entries: [WeeklyProgressEntry]
+    @Binding var selectedEntry: WeeklyProgressEntry?
+    @Binding var showEditor: Bool
+    @Binding var previewImageEntry: WeeklyProgressEntry?
+    
+    private var dateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "E, MMM d"
+        return f
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    let tint = accentColorOverride ?? .accentColor
+
+                    ForEach(entries) { entry in
+                        VStack(alignment: .center, spacing: 8) {
+                            // Date centered at top
+                            Text(dateFormatter.string(from: entry.date))
+                                .font(.footnote)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 8)
+
+                            Spacer()
+
+                            // Weight always shown
+                            Text(String(format: "%.1f kg", entry.weight))
+                                .font(.title2)
+                                .fontWeight(.semibold)
+
+                            // Optional additional info
+                            HStack(spacing: 10) {
+                                if let water = entry.waterPercent {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "drop.fill")
+                                            .foregroundStyle(tint)
+                                        Text(String(format: "%.0f%%", water))
+                                    }
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                }
+
+                                if let bf = entry.bodyFatPercent {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "scalemass")
+                                            .foregroundStyle(tint)
+                                        Text(String(format: "%.1f%%", bf))
+                                    }
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            // Photo (placed under the additional info)
+                            if entry.imagesCount > 0 {
+                                Image("placeholder")
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 180, height: 240)
+                                    .aspectRatio(3/4, contentMode: .fill)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .onTapGesture {
+                                        previewImageEntry = entry
+                                    }
+                                    .accessibilityLabel("Progress photo")
+                                    .padding(.top, 6)
+                            } else {
+                                // Rounded Rectangle placeholder with .glassEffect
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(0.05))
+                                    .frame(width: 180, height: 240)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .overlay(
+                                        Text("No Photo")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    )
+                                    .padding(.top, 6)
+                            }
+
+                            HStack {
+                                Spacer()
+                                Button {
+                                    selectedEntry = entry
+                                    showEditor = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
+                                Spacer()
+                            }
+                            .padding(.top, 8)
+                            .padding(.bottom, 8)
+                        }
+                        .padding(16)
+                        .frame(width: 220)
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .id(entry.id)
+                    }
+
+                    // Add-entry tile that visually matches an entry
+                    Button {
+                        // Create a new entry and open editor for it
+                        let new = WeeklyProgressEntry(date: Date(), weight: entries.last?.weight ?? 0)
+                        entries.append(new)
+                        selectedEntry = new
+                        showEditor = true
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(new.id, anchor: .trailing)
+                        }
+                    } label: {
+                        VStack(alignment: .center, spacing: 8) {
+                            Text(Date(), style: .date)
+                                .font(.footnote)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 8)
+
+                            Spacer()
+
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(0.02))
+                                    .frame(width: 180, height: 240)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                VStack(spacing: 12) {
+                                    Circle()
+                                        .stroke(tint.opacity(0.18), lineWidth: 6)
+                                        .frame(width: 54, height: 54)
+                                        .overlay(
+                                            Image(systemName: "plus")
+                                                .font(.system(size: 20, weight: .semibold))
+                                                .foregroundStyle(tint)
+                                        )
+                                    Text("Add Entry")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            HStack {
+                                Spacer()
+                                Text(" ")
+                                Spacer()
+                            }
+                            .padding(.top, 8)
+                            .padding(.bottom, 8)
+                        }
+                        .padding(16)
+                        .frame(width: 220)
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                    }
+                    .buttonStyle(.plain)
+                    .id("weekly-add-button")
+                }
+                .padding(.vertical, 6)
+                .padding(.leading, 2)
+            }
+            .onAppear {
+                if let last = entries.last {
+                    proxy.scrollTo(last.id, anchor: .trailing)
+                }
+            }
+            .onChange(of: entries) { _, newEntries in
+                if let last = newEntries.last {
+                    withAnimation(.easeOut) {
+                        proxy.scrollTo(last.id, anchor: .trailing)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct WeeklyProgressEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var entry: WeeklyProgressEntry
+    var initialImageData: Data?
+    var onSave: (WeeklyProgressEntry, Data?) -> Void
+    var onCancel: () -> Void
+
+    @State private var weightText: String = ""
+    @State private var imagesText: String = ""
+    @State private var waterText: String = ""
+    @State private var bodyFatText: String = ""
+
+    @State private var photoItem: PhotosPickerItem? = nil
+    @State private var photoData: Data? = nil
+
+    init(entry: WeeklyProgressEntry, initialImageData: Data? = nil, onSave: @escaping (WeeklyProgressEntry, Data?) -> Void, onCancel: @escaping () -> Void) {
+        self.entry = entry
+        self.initialImageData = initialImageData
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _weightText = State(initialValue: String(format: "%.1f", entry.weight))
+        _imagesText = State(initialValue: initialImageData != nil ? "1" : String(entry.imagesCount))
+        _waterText = State(initialValue: entry.waterPercent != nil ? String(format: "%.0f", entry.waterPercent!) : "")
+        _bodyFatText = State(initialValue: entry.bodyFatPercent != nil ? String(format: "%.1f", entry.bodyFatPercent!) : "")
+        _photoData = State(initialValue: initialImageData)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Date")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(entry.date, style: .date)
+                            .font(.body)
+                            .fontWeight(.semibold)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Weight")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            TextField("Weight (kg)", text: $weightText)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("kg")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .surfaceCard(16)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Photos")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 12) {
+                            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "photo.on.rectangle.angled")
+                                    Text(photoData == nil ? "Add Photo" : "Change Photo")
+                                }
+                                .padding(.vertical, 10)
+                                .padding(.horizontal, 12)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                            }
+
+                            if let data = photoData, let ui = UIImage(data: data) {
+                                Image(uiImage: ui)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 80, height: 100)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                                    )
+                            } else {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                    .frame(width: 80, height: 100)
+                                    .overlay(Text("No Photo").font(.caption).foregroundStyle(.secondary))
+                            }
+                        }
+                        .padding(.top, 4)
+
+                        // Manual photos count fallback
+                        HStack {
+                            TextField("Photos count", text: $imagesText)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                                .padding(10)
+                                .surfaceCard(12)
+                            Spacer()
+                            if photoData != nil {
+                                Button(role: .destructive) {
+                                    photoData = nil
+                                    photoItem = nil
+                                    imagesText = "0"
+                                } label: {
+                                    Text("Remove Photo")
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Optional")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            TextField("Water %", text: $waterText)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("%")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .surfaceCard(16)
+
+                        HStack {
+                            TextField("Body fat %", text: $bodyFatText)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("%")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .surfaceCard(16)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle("Edit Progress")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        let weight = Double(weightText) ?? entry.weight
+                        let images = photoData != nil ? 1 : (Int(imagesText) ?? entry.imagesCount)
+                        let water = Double(waterText)
+                        let bf = Double(bodyFatText)
+                        var saved = entry
+                        saved.weight = weight
+                        saved.imagesCount = images
+                        saved.waterPercent = water
+                        saved.bodyFatPercent = bf
+                        onSave(saved, photoData)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onChange(of: photoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            photoData = data
+                            imagesText = "1"
+                        }
+                    }
+                }
+            }
+            .onAppear {
+                // ensure initial values
+                if photoData == nil {
+                    photoData = initialImageData
+                }
+            }
         }
     }
 }

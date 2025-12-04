@@ -410,7 +410,7 @@ private struct CalorieTargetStepView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Pump estimates maintenance with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier.")
+            Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

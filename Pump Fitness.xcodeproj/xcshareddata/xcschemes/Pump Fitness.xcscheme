@@ -50,6 +50,13 @@
             ReferencedContainer = "container:Pump Fitness.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "INFOPLIST_KEY_USDA_API_KEY"
+            value = "bPr4F8qkrxNaEFW1v3GHJZUdtSPqLS9UALRwFdDD"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

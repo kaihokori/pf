@@ -17,6 +17,17 @@ struct NutritionTabView: View {
     @State private var selectedMacroForLog: MacroMetric?
     @State private var consumedCalories: Int = 3100
     @State private var showConsumedSheet = false
+    @State private var showProtocolSheet = false
+    @State private var showSupplementEditor = false
+    @State private var supplements: [SupplementItem] = SupplementItem.defaultSupplements
+    @State private var nutritionSearchText: String = ""
+
+    // Sample cravings list
+    @State private var cravingsList: [CravingItem] = [
+        CravingItem(name: "Dick", calories: 2060),
+        CravingItem(name: "Spotted Dick", calories: 220),
+        CravingItem(name: "Lesbian Sweet Biscuits", calories: 150)
+    ]
 
     // Weekly progress state (lifted so header Add button can open editor)
     @State private var weeklyEntries: [WeeklyProgressEntry] = {
@@ -33,6 +44,9 @@ struct NutritionTabView: View {
     @State private var previewImageEntry: WeeklyProgressEntry? = nil
     // store in-memory picked images for entries (id -> image data)
     @State private var weeklyEntryImages: [UUID: Data] = [:]
+
+    // Track which meal schedule cells are checked (by name)
+    @State private var checkedMeals: Set<String> = []
 
     private let maintenanceCalories: Int = 2200
 
@@ -65,14 +79,30 @@ struct NutritionTabView: View {
                             profileImage: Image("profile"),
                             onProfileTap: { showAccountsView = true }
                         )
+                        
+                        HStack {
+                            Text("Calorie Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
 
-                        Text("Calorie Tracking")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                            Spacer()
+
+                            Button {
+                                showCalorieGoalSheet = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
 
                         CalorieSummary(
                             accentColorOverride: accentOverride,
@@ -97,13 +127,29 @@ struct NutritionTabView: View {
                         .padding(.top, 18)
                         .buttonStyle(.plain)
 
-                        Text("Macro Tracking")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                        HStack {
+                            Text("Macro Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                showMacroEditorSheet = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
 
                         MacroSummary(
                             accentColorOverride: accentOverride,
@@ -157,24 +203,198 @@ struct NutritionTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
                         .padding(.top, 8)
+
                         
+                        
+                        HStack {
+                            Text("Meal Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                // Meal Tracking edit — no action (kept for parity)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+                        
+                        MealScheduleSection(
+                            accentColorOverride: accentOverride,
+                            checkedMeals: $checkedMeals
+                        )
+
                         DailyMealLogSection(
                             accentColorOverride: accentOverride,
                             weeklyEntries: weeklyEntries,
                             weekStartsOnMonday: false
                         )
+                        
+                        HStack {
+                            Text("Supplement Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
 
-                        Text("Supplement Tracking")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                            Spacer()
+
+                            Button {
+                                showSupplementEditor = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
 
                         SupplementTrackingView(
-                            accentColorOverride: accentOverride
+                            accentColorOverride: .orange,
+                            supplements: $supplements
                         )
+
+                        HStack {
+                            Text("Cravings")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+
+                        Text("Craving something? List it below")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 6)
+                        
+                        // Cravings list card
+                        VStack(spacing: 0) {
+                            ForEach(cravingsList.indices, id: \.self) { idx in
+                                // Use a button so the entire row is tappable
+                                let isChecked = cravingsList[idx].isChecked
+
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                        cravingsList[idx].isChecked.toggle()
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(cravingsList[idx].name)
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .strikethrough(isChecked, color: .secondary)
+                                                .foregroundStyle(isChecked ? .secondary : .primary)
+
+                                            Text("\(cravingsList[idx].calories) cal")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        ZStack {
+                                            Circle()
+                                                .fill(isChecked ? (accentOverride ?? .accentColor).opacity(0.16) : Color.clear)
+                                                .frame(width: 40, height: 40)
+
+                                            Image(systemName: isChecked ? "checkmark.circle.fill" : "checkmark.circle")
+                                                .font(.title3)
+                                                .foregroundStyle(isChecked ? (accentOverride ?? .accentColor) : Color(.systemGray3))
+                                                .scaleEffect(isChecked ? 1.15 : 1.0)
+                                                .rotationEffect(.degrees(isChecked ? 0 : 0))
+                                                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isChecked)
+                                        }
+                                    }
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity)
+                                    .background(
+                                        Group {
+                                            if isChecked {
+                                                (accentOverride ?? .accentColor).opacity(0.06)
+                                            } else {
+                                                Color.clear
+                                            }
+                                        }
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+
+                                if idx != cravingsList.indices.last {
+                                    Divider()
+                                        .padding(.leading, 12)
+                                }
+                            }
+                        }
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .padding(.horizontal, 18)
+                        .padding(.top, 12)
+
+                        HStack {
+                            Text("Intermittent Fasting")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                showProtocolSheet = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+
+                        FastingTimerCard(
+                            accentColorOverride: accentOverride,
+                            showProtocolSheet: $showProtocolSheet
+                        )
+                        .padding(.horizontal, 18)
+                        .padding(.top, 12)
                         
                         HStack {
                             Text("Weekly Progress")
@@ -185,9 +405,7 @@ struct NutritionTabView: View {
                             Spacer()
 
                             Button {
-                                // Create a new empty entry and show editor
-                                weeklySelectedEntry = WeeklyProgressEntry(date: Date(), weight: 0)
-                                weeklyShowEditor = true
+                                showAddSheet = true
                             } label: {
                                 Label("Add", systemImage: "plus")
                                     .font(.callout)
@@ -209,18 +427,6 @@ struct NutritionTabView: View {
                                                previewImageEntry: $previewImageEntry)
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
-
-                        Text("Intermittent Fasting")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 48)
-
-                        FastingTimerCard(
-                            accentColorOverride: accentOverride
-                        )
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
@@ -261,7 +467,29 @@ struct NutritionTabView: View {
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAddSheet) {
-            // 
+            WeeklyProgressAddSheet(
+                tint: accentOverride ?? .accentColor,
+                onSave: { entry, data in
+                    weeklyEntries.append(entry)
+                    if let d = data {
+                        weeklyEntryImages[entry.id] = d
+                    }
+                    showAddSheet = false
+                },
+                onCancel: {
+                    showAddSheet = false
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showSupplementEditor) {
+            SupplementEditorSheet(
+                supplements: $supplements,
+                tint: accentOverride ?? .orange,
+                onDone: { showSupplementEditor = false }
+            )
+            .presentationDetents([.large, .medium])
         }
         .sheet(isPresented: $showConsumedSheet) {
             CalorieConsumedAdjustmentSheet(
@@ -285,33 +513,28 @@ struct NutritionTabView: View {
             .presentationDetents([.fraction(0.38)])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $weeklyShowEditor, onDismiss: { weeklySelectedEntry = nil }) {
-            if let editing = weeklySelectedEntry {
-                WeeklyProgressEditorSheet(entry: editing, initialImageData: weeklyEntryImages[editing.id]) { saved, imageData in
-                    // Update or insert the saved entry, keep chronological order
-                    if let idx = weeklyEntries.firstIndex(where: { $0.id == saved.id }) {
-                        weeklyEntries[idx] = saved
-                    } else {
-                        weeklyEntries.append(saved)
+        .sheet(item: $weeklySelectedEntry) { entry in
+            WeeklyProgressAddSheet(
+                tint: accentOverride ?? .accentColor,
+                initialEntry: entry,
+                initialImageData: weeklyEntryImages[entry.id],
+                onSave: { updatedEntry, data in
+                    if let idx = weeklyEntries.firstIndex(where: { $0.id == updatedEntry.id }) {
+                        weeklyEntries[idx] = updatedEntry
                     }
-                    weeklyEntries.sort { $0.date < $1.date }
-
-                    // persist image data in-memory map
-                    if let d = imageData {
-                        weeklyEntryImages[saved.id] = d
+                    if let d = data {
+                        weeklyEntryImages[updatedEntry.id] = d
                     } else {
-                        weeklyEntryImages.removeValue(forKey: saved.id)
+                        weeklyEntryImages.removeValue(forKey: updatedEntry.id)
                     }
-
-                    weeklyShowEditor = false
                     weeklySelectedEntry = nil
-                } onCancel: {
-                    weeklyShowEditor = false
+                },
+                onCancel: {
                     weeklySelectedEntry = nil
                 }
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-            }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         
         .fullScreenCover(item: $previewImageEntry) { entry in
@@ -328,6 +551,257 @@ struct NutritionTabView: View {
                         .scaledToFit()
                         .ignoresSafeArea()
                 }
+
+                // Close button in the top-right corner
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            previewImageEntry = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.white)
+                                .opacity(0.95)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 18)
+                        .padding(.top, 44)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+}
+
+private struct CravingItem: Identifiable {
+    let id = UUID()
+    var name: String
+    var calories: Int
+    var isChecked: Bool = false
+}
+private struct WeeklyProgressAddSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var date: Date = Date()
+    @State private var weightText: String = ""
+    @State private var waterText: String = ""
+    @State private var bodyFatText: String = ""
+
+    @State private var photoItem: PhotosPickerItem? = nil
+    @State private var photoData: Data? = nil
+
+    var tint: Color = .accentColor
+    var initialEntry: WeeklyProgressEntry? = nil
+    var initialImageData: Data? = nil
+    var onSave: (WeeklyProgressEntry, Data?) -> Void
+    var onCancel: () -> Void = {}
+
+    init(
+        tint: Color = .accentColor,
+        initialEntry: WeeklyProgressEntry? = nil,
+        initialImageData: Data? = nil,
+        onSave: @escaping (WeeklyProgressEntry, Data?) -> Void,
+        onCancel: @escaping () -> Void = {}
+    ) {
+        self.tint = tint
+        self.initialEntry = initialEntry
+        self.initialImageData = initialImageData
+        self.onSave = onSave
+        self.onCancel = onCancel
+
+        _date = State(initialValue: initialEntry?.date ?? Date())
+        _weightText = State(initialValue: initialEntry != nil ? String(format: "%.1f", initialEntry!.weight) : "")
+        _waterText = State(initialValue: initialEntry?.waterPercent != nil ? String(format: "%.0f", initialEntry!.waterPercent!) : "")
+        _bodyFatText = State(initialValue: initialEntry?.bodyFatPercent != nil ? String(format: "%.1f", initialEntry!.bodyFatPercent!) : "")
+        _photoData = State(initialValue: initialImageData)
+        _photoItem = State(initialValue: nil)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Date")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        
+                        DateComponent(
+                            date: Binding(
+                                get: { date },
+                                set: { date = $0 }
+                            ),
+                            range: PumpDateRange.birthdate
+                        )
+                        .surfaceCard(12)
+                    }
+
+
+                    // Weight input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Weight")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            TextField("Weight", text: $weightText)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("kg")
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .surfaceCard(16)
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    HStack {
+                        // Water % input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Water")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                TextField("e.g. 50", text: $waterText)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.plain)
+                                Text("%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .surfaceCard(16)
+                            .frame(maxWidth: .infinity)
+                        }
+
+                        Spacer()
+
+                        // Body fat % input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Body Fat")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                TextField("e.g. 18.5", text: $bodyFatText)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.plain)
+                                Text("%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .surfaceCard(16)
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+
+                    // Photo controls: Upload/Replace (PhotosPicker) and Remove
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Photo")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 12) {
+                            let uploadLabel = (photoData == nil) ? "Upload" : "Replace"
+
+                            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                                SelectablePillComponent(
+                                    label: uploadLabel,
+                                    isSelected: false,
+                                    selectedTint: tint
+                                ) {
+                                    // PhotosPicker will present the picker when tapped
+                                }
+                                .allowsHitTesting(false)
+                            }
+
+                            if photoData != nil {
+                                SelectablePillComponent(
+                                    label: "Remove",
+                                    isSelected: false,
+                                    selectedTint: tint
+                                ) {
+                                    photoData = nil
+                                    photoItem = nil
+                                }
+                            }
+                        }
+                        .padding(.bottom, 8)
+
+                        if let data = photoData, let ui = UIImage(data: data) {
+                            HStack {
+                                Spacer()
+                                Image(uiImage: ui)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 180, height: 240)
+                                    .aspectRatio(3/4, contentMode: .fill)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                Spacer()
+                            }
+                            .padding(.top, 6)
+                        } else {
+                            HStack {
+                                Spacer()
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(0.05))
+                                    .frame(width: 180, height: 240)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .overlay(
+                                        Text("No photo")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    )
+                                Spacer()
+                            }
+                            .padding(.top, 6)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle(initialEntry != nil ? "Edit Progress" : "Add Progress")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        let weight = Double(weightText) ?? 0
+                        let images = photoData != nil ? 1 : 0
+                        let water = Double(waterText)
+                        let bf = Double(bodyFatText)
+                        let entry = WeeklyProgressEntry(date: date, weight: weight, imagesCount: images, waterPercent: water, bodyFatPercent: bf)
+                        onSave(entry, photoData)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onChange(of: photoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            photoData = data
+                        }
+                    }
+                }
             }
         }
     }
@@ -339,7 +813,7 @@ private enum NutritionLayout {
 }
 
 private enum NutritionMacroLimits {
-    static let maxTrackedMacros = 11
+    static let maxTrackedMacros = 12
 }
 
 private extension NutritionTabView {
@@ -432,26 +906,17 @@ struct CalorieSummary: View {
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
                 Spacer()
-                Button(action: onEditGoal) {
-                    VStack(alignment: .center, spacing: 2) {
-                        HStack(alignment: .bottom, spacing: 4) {
-                            Text("Goal")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Image(systemName: "pencil")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.primary)
-                        }
-                        Text("\(calorieGoal)")
-                            .font(.title2)
-                    }
-                    .contentShape(Rectangle())
+                VStack(alignment: .center, spacing: 2) {
+                    Text("Goal")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    Text("\(calorieGoal)")
+                        .font(.title2)
                 }
-                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.2.circlepath")
+                Image(systemName: "info.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Values are in calories (cal).")
@@ -469,6 +934,217 @@ struct CalorieSummary: View {
     }
 }
 
+struct SupplementEditorSheet: View {
+    @Binding var supplements: [SupplementItem]
+    var tint: Color
+    var onDone: () -> Void
+
+    // local working state
+    @State private var working: [SupplementItem] = []
+    @State private var newName: String = ""
+    @State private var newTarget: String = ""
+    @State private var hasLoaded = false
+
+    // presets available in Quick Add (some may not be selected initially)
+    private var presets: [SupplementItem] {
+        [
+            // Vitamin D commonly represented in IU; approximate here as 50 μg
+            SupplementItem(name: "Vitamin D", amountLabel: "50 μg"),
+            SupplementItem(name: "Magnesium", amountLabel: "200 mg"),
+            SupplementItem(name: "Fish Oil", amountLabel: "1000 mg"),
+            SupplementItem(name: "Creatine", amountLabel: "5 g"),
+            // Multivitamin as a single scoop/serving
+            SupplementItem(name: "Multivitamin", amountLabel: "1 scoop")
+        ]
+    }
+
+    private let maxTrackedSupplements = 12
+
+    private var canAddMore: Bool { working.count < maxTrackedSupplements }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Summary chip
+                    MacroEditorSummaryChip(
+                        currentCount: working.count,
+                        maxCount: maxTrackedSupplements,
+                        tint: tint
+                    )
+
+                    // Tracked supplements
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Tracked Supplements")
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \ .element.id) { idx, item in
+                                    let binding = $working[idx]
+                                    VStack(spacing: 8) {
+                                        HStack(spacing: 12) {
+                                            Circle()
+                                                .fill(tint.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "pills.fill")
+                                                        .foregroundStyle(tint)
+                                                )
+
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                TextField("Name", text: binding.name)
+                                                    .font(.subheadline.weight(.semibold))
+                                                TextField("Amount or note (e.g. 5 g or 3 scoops)", text: Binding(
+                                                    get: { binding.customLabel.wrappedValue ?? item.measurementDescription },
+                                                    set: { binding.customLabel.wrappedValue = $0 }
+                                                ))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            }
+
+                                            Spacer()
+
+                                            Button(role: .destructive) {
+                                                removeSupplement(item.id)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .foregroundStyle(.red)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                        .padding()
+                                        .surfaceCard(12)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Add
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Quick Add")
+                        VStack(spacing: 12) {
+                            ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
+                                HStack(spacing: 14) {
+                                    Circle()
+                                        .fill(tint.opacity(0.15))
+                                        .frame(width: 44, height: 44)
+                                        .overlay(
+                                            Image(systemName: "chart.bar.fill")
+                                                .foregroundStyle(tint)
+                                        )
+
+                                    VStack(alignment: .leading) {
+                                        Text(preset.name)
+                                            .font(.subheadline.weight(.semibold))
+                                        Text(preset.measurementDescription)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Button(action: { togglePreset(preset) }) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 24, weight: .semibold))
+                                            .foregroundStyle(tint)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canAddMore)
+                                    .opacity(!canAddMore ? 0.3 : 1)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .surfaceCard(18)
+                            }
+                        }
+                    }
+
+                    // Custom composer
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Custom Supplement")
+                        VStack(spacing: 12) {
+                            TextField("Supplement name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack(spacing: 12) {
+                                TextField("Amount or note (e.g. 5 g or 3 scoops)", text: $newTarget)
+                                    .padding()
+                                    .surfaceCard(16)
+
+                                Button(action: addCustomSupplement) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(tint)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("Give it a name and amount, then tap plus to add it to your dashboard. You can track up to \(maxTrackedSupplements) supplements.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Supplements")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onDone() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        supplements = working
+                        onDone()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitialState)
+    }
+
+    private func loadInitialState() {
+        guard !hasLoaded else { return }
+        working = supplements
+        hasLoaded = true
+    }
+
+    private func togglePreset(_ preset: SupplementItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.name == preset.name }
+        } else if canAddMore {
+            working.append(preset)
+        }
+    }
+
+    private func isPresetSelected(_ preset: SupplementItem) -> Bool {
+        working.contains { $0.name == preset.name }
+    }
+
+    private func removeSupplement(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func addCustomSupplement() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let new = SupplementItem(name: trimmed, amountLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines), customLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines))
+        working.append(new)
+        newName = ""
+        newTarget = ""
+    }
+}
+
 struct MacroSummary: View {
     var accentColorOverride: Color?
     var macros: [MacroMetric]
@@ -477,7 +1153,7 @@ struct MacroSummary: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            let items: [MacroSummaryItem] = macros.map { .metric($0) } + [.add]
+            let items: [MacroSummaryItem] = macros.map { .metric($0) }
 
             let macroRows: [[MacroSummaryItem]] = {
                 let count = items.count
@@ -535,12 +1211,6 @@ struct MacroSummary: View {
                                     .frame(maxWidth: .infinity, minHeight: NutritionLayout.macroTileMinHeight, alignment: .top)
                                 }
                                 .buttonStyle(.plain)
-                            case .add:
-                                MacroEditButton(
-                                    tint: Color(.systemGray3),
-                                    minHeight: NutritionLayout.macroTileMinHeight,
-                                    action: onEditMacros
-                                )
                             }
                         }
                         .padding(.bottom, -30)
@@ -632,9 +1302,15 @@ private struct CalorieGoalEditorSheet: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier to reach this calorie target.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if maintenanceCalories <= 0 {
+                        Text("Maintenance cannot be calculated unless you select \"Male\" or \"Female\".")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier to reach this calorie target.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
@@ -756,48 +1432,16 @@ enum CalorieGoalPlanner {
 
 private enum MacroSummaryItem: Identifiable {
     case metric(MacroMetric)
-    case add
 
     var id: String {
         switch self {
         case .metric(let metric):
             return metric.id.uuidString
-        case .add:
-            return "macro-add-button"
         }
     }
 }
 
-private struct MacroEditButton: View {
-    var tint: Color
-    var minHeight: CGFloat
-    var action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                ZStack {
-                    Circle()
-                        .stroke(tint.opacity(0.18), lineWidth: 6)
-                        .frame(width: 54, height: 54)
-                    Circle()
-                        .stroke(style: StrokeStyle(lineWidth: 6, dash: [4]))
-                        .foregroundStyle(tint.opacity(0.4))
-                        .frame(width: 54, height: 54)
-                    Image(systemName: "pencil")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(tint)
-                }
-                .padding(.bottom, 10)
-                Text("Edit Macros")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .top)
-        .buttonStyle(.plain)
-    }
-}
+
 
 struct MacroMetric: Identifiable {
     enum Source: Equatable {
@@ -1503,7 +2147,6 @@ struct DailyMealLogSection: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
-        .padding(.top, 12)
 
         VStack(alignment: .leading, spacing: 16) {
             // New collapsible Weekly Macros section (separate from meals)
@@ -1572,6 +2215,78 @@ struct DailyMealLogSection: View {
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
+    }
+}
+
+// New 2x2 Meal Schedule grid section
+private struct MealScheduleSection: View {
+    var accentColorOverride: Color?
+    @Binding var checkedMeals: Set<String>
+
+    private struct MealCell: Identifiable {
+        let id = UUID()
+        let key: String
+        let icon: String
+        let displayName: String
+        let timeText: String
+    }
+
+    private let cells: [MealCell] = [
+        MealCell(key: "Breakfast", icon: "sunrise.fill", displayName: "Breakfast", timeText: "7:30 AM"),
+        MealCell(key: "Lunch", icon: "fork.knife", displayName: "Lunch", timeText: "12:30 PM"),
+        MealCell(key: "Dinner", icon: "moon.stars.fill", displayName: "Dinner", timeText: "7:00 PM"),
+        MealCell(key: "Snack", icon: "cup.and.saucer.fill", displayName: "Snack", timeText: "3:30 PM")
+    ]
+
+    var body: some View {
+        let tint = accentColorOverride ?? .accentColor
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            ForEach(cells) { cell in
+                Button(action: {
+                    withAnimation(.easeInOut) {
+                        if checkedMeals.contains(cell.key) {
+                            checkedMeals.remove(cell.key)
+                        } else {
+                            checkedMeals.insert(cell.key)
+                        }
+                    }
+                }) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill((checkedMeals.contains(cell.key) ? tint.opacity(0.18) : Color(.systemGray6)))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: cell.icon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(checkedMeals.contains(cell.key) ? tint : .primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(cell.displayName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(checkedMeals.contains(cell.key) ? tint : .primary)
+                            Text(cell.timeText)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(checkedMeals.contains(cell.key) ? tint.opacity(0.08) : Color.clear)
+                    )
+                    .glassEffect(in: .rect(cornerRadius: 12.0))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -1693,7 +2408,9 @@ private struct MealLogEntry: Identifiable {
     let items: [String]
     let iconName: String
 
-    var caloriesText: String { "\(calorieValue) cal" }
+    var caloriesText: String {
+        NumberFormatter.withComma.string(from: NSNumber(value: calorieValue)) ?? "\(calorieValue)"
+    }
     var itemsSummary: String {
         items.joined(separator: ", ")
     }
@@ -1708,10 +2425,10 @@ private struct MealLogEntry: Identifiable {
 
 struct FastingTimerCard: View {
     var accentColorOverride: Color?
+    @Binding var showProtocolSheet: Bool
     let fastingState: String = "FASTING"
     let hoursElapsed: Double = 12.5
     let nextMeal: String = "Starts at 11:10 AM"
-    @State private var showProtocolSheet = false
     @State private var selectedProtocol: FastingProtocolOption = .sixteenEight
     @State private var customHours: String = "16"
     @State private var customMinutes: String = "00"
@@ -1774,25 +2491,9 @@ struct FastingTimerCard: View {
     var body: some View {
         let tint = accentColorOverride ?? .green
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(protocolDisplayText)")
-                        .font(.title)
-                        .fontWeight(.semibold)
-                }
-                Spacer()
-                Button {
-                    showProtocolSheet = true
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                        .font(.callout)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                }
-                .buttonStyle(.plain)
-            }
+            Text("\(protocolDisplayText)")
+                .font(.title)
+                .fontWeight(.semibold)
 
             ZStack {
                 Circle()
@@ -1830,15 +2531,11 @@ struct FastingTimerCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .foregroundStyle(.white)
-                    .glassEffect(accentColorOverride == nil ? .regular.tint(tint.opacity(0.2)) : .regular, in: .rect(cornerRadius: 16.0))
+                    .glassEffect(accentColorOverride == nil ? .regular.tint(tint) : .regular, in: .rect(cornerRadius: 16.0))
             }
         }
         .padding(20)
-        // .glassEffect(accentColorOverride == nil ? .regular.tint(tint.opacity(0.2)) : .regular, in: .rect(cornerRadius: 16.0))
         .glassEffect(in: .rect(cornerRadius: 16.0))
-        .padding(.horizontal, 18)
-        .padding(.top, 12)
-        .padding(.bottom, 32)
         .sheet(isPresented: $showProtocolSheet) {
             FastingProtocolSheet(
                 selectedProtocol: $selectedProtocol,
@@ -1851,80 +2548,6 @@ struct FastingTimerCard: View {
         }
     }
 }
-
-// SupplementTrackingView has been moved to `Components/SupplementTrackingView.swift`.
-// Use the component and pass initial supplements if desired.
-
-private struct ShareProgressCTA: View {
-    var accentColor: Color
-
-    private var gradientColors: [Color] {
-        [
-            accentColor,
-            accentColor.opacity(0.75),
-            accentColor.opacity(0.35)
-        ]
-    }
-
-    private var glowColor: Color {
-        accentColor.opacity(0.45)
-    }
-
-    var body: some View {
-        Button {
-            // TODO: Hook up to share sheet when backend is ready
-        } label: {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.18))
-                        .frame(width: 48, height: 48)
-                    Image(systemName: "party.popper.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Share Your Streak")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.white)
-                    Text("Show friends what you've achieved!")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.white.opacity(0.85))
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(12)
-                    .background(accentColor.opacity(0.25))
-                    .clipShape(Circle())
-            }
-            .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: gradientColors,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    )
-                    .shadow(color: glowColor, radius: 18, x: 0, y: 18)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// Supplement UI moved to `Components/SupplementTrackingView.swift`.
 
 private struct FastingProtocolSheet: View {
     @Binding var selectedProtocol: FastingProtocolOption
@@ -2090,7 +2713,8 @@ private struct WeeklyProgressCarousel: View {
                                 .font(.title2)
                                 .fontWeight(.semibold)
 
-                            // Optional additional info
+                            // Optional additional info — reserve a fixed height so absence
+                            // of both values doesn't shift the weight vertically.
                             HStack(spacing: 10) {
                                 if let water = entry.waterPercent {
                                     HStack(spacing: 6) {
@@ -2098,8 +2722,6 @@ private struct WeeklyProgressCarousel: View {
                                             .foregroundStyle(tint)
                                         Text(String(format: "%.0f%%", water))
                                     }
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
                                 }
 
                                 if let bf = entry.bodyFatPercent {
@@ -2108,10 +2730,18 @@ private struct WeeklyProgressCarousel: View {
                                             .foregroundStyle(tint)
                                         Text(String(format: "%.1f%%", bf))
                                     }
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                }
+
+                                // If neither metric is present, add an invisible placeholder
+                                // that preserves the row height to avoid layout shifts.
+                                if entry.waterPercent == nil && entry.bodyFatPercent == nil {
+                                    Color.clear
+                                        .frame(height: 18)
                                 }
                             }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(minHeight: 18)
 
                             // Photo (placed under the additional info)
                             if entry.imagesCount > 0 {
@@ -2173,64 +2803,40 @@ private struct WeeklyProgressCarousel: View {
                         .id(entry.id)
                     }
 
-                    // Add-entry tile that visually matches an entry
-                    Button {
-                        // Create a new entry and open editor for it
-                        let new = WeeklyProgressEntry(date: Date(), weight: entries.last?.weight ?? 0)
-                        entries.append(new)
-                        selectedEntry = new
-                        showEditor = true
-                        DispatchQueue.main.async {
-                            proxy.scrollTo(new.id, anchor: .trailing)
-                        }
-                    } label: {
-                        VStack(alignment: .center, spacing: 8) {
-                            Text(Date(), style: .date)
-                                .font(.footnote)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 8)
-
-                            Spacer()
-
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.primary.opacity(0.02))
-                                    .frame(width: 180, height: 240)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(tint.opacity(0.12), lineWidth: 1)
-                                    )
-                                VStack(spacing: 12) {
-                                    Circle()
-                                        .stroke(tint.opacity(0.18), lineWidth: 6)
-                                        .frame(width: 54, height: 54)
-                                        .overlay(
-                                            Image(systemName: "plus")
-                                                .font(.system(size: 20, weight: .semibold))
-                                                .foregroundStyle(tint)
-                                        )
-                                    Text("Add Entry")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-
-                            HStack {
-                                Spacer()
-                                Text(" ")
-                                Spacer()
-                            }
+                    // Upcoming tile: shows next expected entry date (last entry date + 7 days)
+                    VStack(alignment: .center, spacing: 8) {
+                        Text("Upcoming")
+                            .font(.footnote)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 8)
-                            .padding(.bottom, 8)
+
+                        Spacer()
+
+                        // Compute next expected date (7 days after last entry)
+                        let baseDate = entries.last?.date ?? Date()
+                        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
+
+                        VStack(spacing: 12) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 28))
+                                .foregroundStyle(tint)
+
+                            Text("Next expected:")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            Text(dateFormatter.string(from: nextDate))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
                         }
-                        .padding(16)
-                        .frame(width: 220)
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+
+                        Spacer()
                     }
-                    .buttonStyle(.plain)
-                    .id("weekly-add-button")
+                    .padding(16)
+                    .frame(width: 220)
+                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                    .id("weekly-upcoming")
                 }
                 .padding(.vertical, 6)
                 .padding(.leading, 2)
@@ -2245,195 +2851,6 @@ private struct WeeklyProgressCarousel: View {
                     withAnimation(.easeOut) {
                         proxy.scrollTo(last.id, anchor: .trailing)
                     }
-                }
-            }
-        }
-    }
-}
-
-private struct WeeklyProgressEditorSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var entry: WeeklyProgressEntry
-    var initialImageData: Data?
-    var onSave: (WeeklyProgressEntry, Data?) -> Void
-    var onCancel: () -> Void
-
-    @State private var weightText: String = ""
-    @State private var imagesText: String = ""
-    @State private var waterText: String = ""
-    @State private var bodyFatText: String = ""
-
-    @State private var photoItem: PhotosPickerItem? = nil
-    @State private var photoData: Data? = nil
-
-    init(entry: WeeklyProgressEntry, initialImageData: Data? = nil, onSave: @escaping (WeeklyProgressEntry, Data?) -> Void, onCancel: @escaping () -> Void) {
-        self.entry = entry
-        self.initialImageData = initialImageData
-        self.onSave = onSave
-        self.onCancel = onCancel
-        _weightText = State(initialValue: String(format: "%.1f", entry.weight))
-        _imagesText = State(initialValue: initialImageData != nil ? "1" : String(entry.imagesCount))
-        _waterText = State(initialValue: entry.waterPercent != nil ? String(format: "%.0f", entry.waterPercent!) : "")
-        _bodyFatText = State(initialValue: entry.bodyFatPercent != nil ? String(format: "%.1f", entry.bodyFatPercent!) : "")
-        _photoData = State(initialValue: initialImageData)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Date")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text(entry.date, style: .date)
-                            .font(.body)
-                            .fontWeight(.semibold)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Weight")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            TextField("Weight (kg)", text: $weightText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.plain)
-                            Text("kg")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
-                        .surfaceCard(16)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Photos")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 12) {
-                            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "photo.on.rectangle.angled")
-                                    Text(photoData == nil ? "Add Photo" : "Change Photo")
-                                }
-                                .padding(.vertical, 10)
-                                .padding(.horizontal, 12)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
-                            }
-
-                            if let data = photoData, let ui = UIImage(data: data) {
-                                Image(uiImage: ui)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 80, height: 100)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-                                    )
-                            } else {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                    .frame(width: 80, height: 100)
-                                    .overlay(Text("No Photo").font(.caption).foregroundStyle(.secondary))
-                            }
-                        }
-                        .padding(.top, 4)
-
-                        // Manual photos count fallback
-                        HStack {
-                            TextField("Photos count", text: $imagesText)
-                                .keyboardType(.numberPad)
-                                .textFieldStyle(.plain)
-                                .padding(10)
-                                .surfaceCard(12)
-                            Spacer()
-                            if photoData != nil {
-                                Button(role: .destructive) {
-                                    photoData = nil
-                                    photoItem = nil
-                                    imagesText = "0"
-                                } label: {
-                                    Text("Remove Photo")
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Optional")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            TextField("Water %", text: $waterText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.plain)
-                            Text("%")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
-                        .surfaceCard(16)
-
-                        HStack {
-                            TextField("Body fat %", text: $bodyFatText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.plain)
-                            Text("%")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
-                        .surfaceCard(16)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-            }
-            .navigationTitle("Edit Progress")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        onCancel()
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        let weight = Double(weightText) ?? entry.weight
-                        let images = photoData != nil ? 1 : (Int(imagesText) ?? entry.imagesCount)
-                        let water = Double(waterText)
-                        let bf = Double(bodyFatText)
-                        var saved = entry
-                        saved.weight = weight
-                        saved.imagesCount = images
-                        saved.waterPercent = water
-                        saved.bodyFatPercent = bf
-                        onSave(saved, photoData)
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-            .onChange(of: photoItem) { _, newItem in
-                Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                        await MainActor.run {
-                            photoData = data
-                            imagesText = "1"
-                        }
-                    }
-                }
-            }
-            .onAppear {
-                // ensure initial values
-                if photoData == nil {
-                    photoData = initialImageData
                 }
             }
         }

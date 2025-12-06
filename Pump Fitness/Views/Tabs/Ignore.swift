@@ -455,17 +455,11 @@ extension Color {
 
 // Workout uses the shared `SupplementTrackingView` component. Provide workout-specific defaults.
 private let workoutDefaultSupplements: [SupplementItem] = [
-    SupplementItem(name: "Pre-Workout", amount: 1, unit: .scoop),
-    SupplementItem(name: "Creatine", amount: 5, unit: .gram),
-    SupplementItem(name: "BCAA", amount: 10, unit: .gram),
-    SupplementItem(name: "Protein Powder", amount: 30, unit: .gram),
-    SupplementItem(name: "Beta-Alanine", amount: 3.2, unit: .gram),
-    SupplementItem(name: "Caffeine", amount: 200, unit: .milligram),
-    SupplementItem(name: "Electrolytes", amount: 1, unit: .scoop)
+    SupplementItem(name: "Pre-Workout", amountLabel: "1 scoop"),
+    SupplementItem(name: "Creatine", amountLabel: "5 g"),
+    SupplementItem(name: "BCAA", amountLabel: "10 g"),
+    SupplementItem(name: "Protein Powder", amountLabel: "30 g"),
+    SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
+    SupplementItem(name: "Caffeine", amountLabel: "200 mg"),
+    SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
 ]
-
-private struct WorkoutSupplementTrackingView: View {
-    var body: some View {
-        SupplementTrackingView(accentColorOverride: .purple, initialSupplements: workoutDefaultSupplements, tileMinHeight: 80)
-    }
-}

@@ -71,18 +71,18 @@ private extension RootView {
                         WorkoutTabView()
                     }
                     Tab(
-                        "Coaching",
-                        systemImage: AppTab.coaching.systemImage,
-                        value: AppTab.coaching
-                    ) {
-                        IgnoreView()
-                    }
-                    Tab(
                         "Lookup",
                         systemImage: AppTab.lookup.systemImage,
                         value: AppTab.lookup
                     ) {
                         LookupTabView()
+                    }
+                    Tab(
+                        "Routine",
+                        systemImage: AppTab.routine.systemImage,
+                        value: AppTab.routine
+                    ) {
+                        RoutineTabView()
                     }
                 }
             }
@@ -114,8 +114,8 @@ extension RootView {
 private enum AppTab: String, CaseIterable, Identifiable {
     case nutrition
     case workout
-    case coaching
     case lookup
+    case routine
 
     var id: String { rawValue }
 
@@ -123,8 +123,8 @@ private enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .nutrition: return "Nutrition"
         case .workout: return "Workout"
-        case .coaching: return "Coaching"
         case .lookup: return "Search"
+        case .routine: return "Routine"
         }
     }
 
@@ -132,8 +132,8 @@ private enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .nutrition: return "fork.knife.circle.fill"
         case .workout: return "figure.strengthtraining.traditional"
-        case .coaching: return "person.2.wave.2"
         case .lookup: return "menucard.fill"
+        case .routine: return "calendar.and.person"
         }
     }
 }

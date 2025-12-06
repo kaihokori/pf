@@ -8,6 +8,7 @@ struct WorkoutTabView: View {
     @State private var showAccountsView = false
     @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.checkIn, .checkIn, .notLogged, .checkIn, .rest, .notLogged, .notLogged]
     private let coachingCurrentDayIndex = 5
+    @State private var supplements: [SupplementItem] = coachingDefaultSupplements
     
 
     var body: some View {
@@ -45,8 +46,8 @@ struct WorkoutTabView: View {
                         .padding(.top, 48)
                     
                     SupplementTrackingView(
-                        accentColorOverride: accentOverride,
-                        initialSupplements: coachingDefaultSupplements
+                        accentColorOverride: .purple,
+                        supplements: $supplements
                     )
                     
                     Text("Weights Tracking")
@@ -59,8 +60,21 @@ struct WorkoutTabView: View {
                     
                     // Weights tracking section
                     WeightsTrackingSection()
+
+                    Text("Sports Tracking")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+
+                    SportsTrackingSection()
+
+                    ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 24)
                 }
-                .padding(.bottom, 30)
             }
         }
         .navigationTitle("Coaching")
@@ -73,7 +87,7 @@ private extension WorkoutTabView {
     @ViewBuilder
     var backgroundView: some View {
         if themeManager.selectedTheme == .multiColour {
-            GradientBackground(theme: .coaching)
+            GradientBackground(theme: .workout)
         } else {
             themeManager.selectedTheme.background(for: colorScheme)
                 .ignoresSafeArea()
@@ -120,13 +134,13 @@ private enum WorkoutDayStatus {
 }
 
 private let coachingDefaultSupplements: [SupplementItem] = [
-    SupplementItem(name: "Pre-workout", amount: 1, unit: .scoop),
-    SupplementItem(name: "Creatine", amount: 5, unit: .gram),
-    SupplementItem(name: "BCAA", amount: 10, unit: .gram),
-    SupplementItem(name: "Protein Water", amount: 30, unit: .gram),
-    SupplementItem(name: "Beta-Alanine", amount: 3.2, unit: .gram),
-    SupplementItem(name: "Caffeine", amount: 200, unit: .milligram),
-    SupplementItem(name: "Electrolytes", amount: 1, unit: .scoop)
+    SupplementItem(name: "Pre-workout", amountLabel: "1 scoop"),
+    SupplementItem(name: "Creatine", amountLabel: "5 g"),
+    SupplementItem(name: "BCAA", amountLabel: "10 g"),
+    SupplementItem(name: "Protein Water", amountLabel: "30 g"),
+    SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
+    SupplementItem(name: "Caffeine", amountLabel: "200 mg"),
+    SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
 ]
 
 // Sample weekly schedule for coaching tab
@@ -273,10 +287,6 @@ private struct CoachingWorkoutProgressSection: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .glassEffect(in: .rect(cornerRadius: 18.0))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18.0)
-                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -321,10 +331,6 @@ private struct CoachingWorkoutProgressButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .glassEffect(in: .rect(cornerRadius: 12.0))
-            .background(
-                RoundedRectangle(cornerRadius: 12.0)
-                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-            )
     }
 }
 
@@ -457,37 +463,8 @@ private struct WeightsTrackingSection: View {
         .init(
             name: "Chest",
             exercises: [
-                WeightExercise(name: "Bench Press", weight: "", sets: "", reps: "")
-            ]
-        ),
-        .init(
-            name: "Back",
-            exercises: [
-                WeightExercise(name: "Barbell Row", weight: "", sets: "", reps: "")
-            ]
-        ),
-        .init(
-            name: "Legs",
-            exercises: [
-                WeightExercise(name: "Squat", weight: "", sets: "", reps: "")
-            ]
-        ),
-        .init(
-            name: "Shoulders",
-            exercises: [
-                WeightExercise(name: "Overhead Press", weight: "", sets: "", reps: "")
-            ]
-        ),
-        .init(
-            name: "Arms",
-            exercises: [
-                WeightExercise(name: "Barbell Curl", weight: "", sets: "", reps: "")
-            ]
-        ),
-        .init(
-            name: "Core",
-            exercises: [
-                WeightExercise(name: "Hanging Leg Raise", weight: "", sets: "", reps: "")
+                WeightExercise(name: "Bench Press", weight: "", sets: "", reps: ""),
+                WeightExercise(name: "", weight: "", sets: "", reps: "")
             ]
         )
     ]

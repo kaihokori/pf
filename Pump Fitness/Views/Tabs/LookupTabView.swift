@@ -8,24 +8,6 @@ private struct FoodItem: Identifiable, Hashable {
     let protein: Int
     let carbs: Int
     let fat: Int
-
-    static let sampleData: [FoodItem] = [
-        FoodItem(name: "Chicken Breast", calories: 165, protein: 31, carbs: 0, fat: 4),
-        FoodItem(name: "Chicken Thigh", calories: 209, protein: 26, carbs: 0, fat: 10),
-        FoodItem(name: "Chicken Wings", calories: 203, protein: 27, carbs: 0, fat: 8),
-        FoodItem(name: "Chicken Drumstick", calories: 185, protein: 22, carbs: 0, fat: 9),
-        FoodItem(name: "Chicken Nuggets", calories: 290, protein: 15, carbs: 20, fat: 18),
-        FoodItem(name: "Grilled Chicken Salad", calories: 350, protein: 30, carbs: 15, fat: 20),
-        FoodItem(name: "Chicken Stir Fry", calories: 400, protein: 35, carbs: 30, fat: 15),
-        FoodItem(name: "Chicken Soup", calories: 150, protein: 20, carbs: 10, fat: 5),
-        FoodItem(name: "Chicken Sandwich", calories: 450, protein: 40, carbs: 35, fat: 15),
-        FoodItem(name: "Chicken Curry", calories: 500, protein: 45, carbs: 25, fat: 20),
-        FoodItem(name: "Avocado Toast", calories: 250, protein: 6, carbs: 20, fat: 18),
-        FoodItem(name: "Banana Smoothie", calories: 300, protein: 8, carbs: 50, fat: 5),
-        FoodItem(name: "Quinoa Salad", calories: 350, protein: 12, carbs: 45, fat: 10),
-        FoodItem(name: "Greek Yogurt", calories: 100, protein: 10, carbs: 5, fat: 0),
-        FoodItem(name: "Oatmeal Bowl", calories: 200, protein: 6, carbs: 30, fat: 4)
-    ]
 }
 
 struct LookupTabView: View {
@@ -37,7 +19,10 @@ struct LookupTabView: View {
 
     // Search state
     @State private var searchText: String = ""
-    @State private var foundItems: [FoodItem] = FoodItem.sampleData
+    @State private var foundItems: [FoodItem] = []
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
+    @State private var portionSizeGrams: String = "100"
 
     // Detail sheet
     @State private var showDetail = false
@@ -50,34 +35,101 @@ struct LookupTabView: View {
                 VStack(spacing: 12) {
                     HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, profileImage: Image("profile"), onProfileTap: { showAccountsView = true })
 
-                    // Search bar + button
+                    // Search bar + portion size + button (inline)
                     HStack(spacing: 8) {
-                        TextField("Search foods...", text: $searchText)
-                            .textFieldStyle(.roundedBorder)
-                            .autocapitalization(.none)
+                        // styled search field with prompt
+                        TextField("", text: $searchText, prompt: Text("Search foods..."))
+                            .textInputAutocapitalization(.words)
                             .disableAutocorrection(true)
+                            .padding()
+                            .glassEffect(in: .rect(cornerRadius: 8.0))
                             .onSubmit {
                                 performSearch()
                             }
 
-                        Button(action: { performSearch() }) {
-                            Text("Search")
-                                .bold()
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 12)
-                                .background(currentAccent.opacity(0.15))
-                                .cornerRadius(8)
+                        // Portion size input (inline)
+                        HStack {
+                            TextField("0", text: $portionSizeGrams)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("g")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
+                        .padding()
+                        .frame(width: 100)
+                        .glassEffect(in: .rect(cornerRadius: 8.0))
+                        .onChange(of: portionSizeGrams) { _, newValue in
+                            // keep only digits
+                            let filtered = newValue.filter { "0123456789".contains($0) }
+                            if filtered != newValue {
+                                portionSizeGrams = filtered
+                            }
+                            if portionSizeGrams.isEmpty {
+                                portionSizeGrams = "0"
+                            }
+                        }
+
                     }
                     .padding(.horizontal)
+                    .padding(.top, 48)
+
+                    // Full-width search button on its own line (thinner, with icon)
+                    Button(action: { performSearch() }) {
+                        Label("Search", systemImage: "magnifyingglass")
+                            .font(.callout.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .padding(.vertical, 8)
+                            .glassEffect(in: .rect(cornerRadius: 12.0))
+                    }
+                    .padding(.horizontal, 18)
+                    // .padding(.top, 8)
+                    .buttonStyle(.plain)
+
+                    // Attribution / disclaimer for USDA data
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Data sourced from the U.S. Department of Agriculture")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+
+                    // Loading / error / empty state (wrapped in Group so modifiers apply)
+                    Group {
+                        if isLoading {
+                            HStack { Spacer(); ProgressView().padding(); Spacer() }
+                        } else if let msg = errorMessage {
+                            HStack { Spacer(); Text(msg).foregroundColor(.red).font(.caption); Spacer() }
+                        }
+                    }
+                    .padding(.top, 48)
 
                     // Results
                     LazyVStack(spacing: 10, pinnedViews: []) {
                         ForEach(foundItems) { item in
+                        // compute scaled macros for the selected portion size (visible to entire row)
+                        let grams = Double(portionSizeGrams) ?? 100.0
+                        let scaledCalories = Int(round(Double(item.calories) * grams / 100.0))
+                        let scaledProtein = Int(round(Double(item.protein) * grams / 100.0))
+                        let scaledCarbs = Int(round(Double(item.carbs) * grams / 100.0))
+                        let scaledFat = Int(round(Double(item.fat) * grams / 100.0))
+
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(item.name)
                                         .font(.headline)
+
+                                    Text("\(Int(grams))g")
+                                        .font(.caption2)
+                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, 6)
+                                        .background(currentAccent.opacity(0.15))
+                                        .cornerRadius(6)
+
                                     Spacer()
                                     Button {
                                         selectedItem = item
@@ -94,7 +146,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(Color.primary.opacity(0.8))
                                             .frame(width: 8, height: 8)
-                                        Text("\(item.calories) cal")
+                                        Text("\(scaledCalories) cal")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -103,7 +155,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(.red)
                                             .frame(width: 8, height: 8)
-                                        Text("\(item.protein)g")
+                                        Text("\(scaledProtein)g")
                                             .font(.caption2)
                                     }
 
@@ -111,7 +163,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(Color(.systemTeal))
                                             .frame(width: 8, height: 8)
-                                        Text("\(item.carbs)g")
+                                        Text("\(scaledCarbs)g")
                                             .font(.caption2)
                                     }
 
@@ -119,7 +171,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(.orange)
                                             .frame(width: 8, height: 8)
-                                        Text("\(item.fat)g")
+                                        Text("\(scaledFat)g")
                                             .font(.caption2)
                                     }
 
@@ -134,14 +186,6 @@ struct LookupTabView: View {
                         }
                     }
                     .padding(.bottom, 24)
-                }
-                .padding(.top)
-                .onAppear {
-                    // When testing, default the search to "Chicken" so related items show up immediately
-                    if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        searchText = "Chicken"
-                        performSearch()
-                    }
                 }
             }
         }
@@ -164,7 +208,7 @@ private extension LookupTabView {
     @ViewBuilder
     var backgroundView: some View {
         if themeManager.selectedTheme == .multiColour {
-            GradientBackground(theme: .lookup)
+            GradientBackground(theme: .routine)
         } else {
             themeManager.selectedTheme.background(for: colorScheme)
                 .ignoresSafeArea()
@@ -174,10 +218,155 @@ private extension LookupTabView {
     func performSearch() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty {
-            foundItems = FoodItem.sampleData
-        } else {
-            foundItems = FoodItem.sampleData.filter { $0.name.localizedCaseInsensitiveContains(query) }
+            foundItems = []
+            return
         }
+
+        // Run async fetch to USDA Food API
+        isLoading = true
+        errorMessage = nil
+        Task {
+            print("LookupTabView: performSearch -> \(query)")
+            do {
+                let results = try await fetchUSDA(query: query)
+                if results.isEmpty {
+                    foundItems = []
+                    errorMessage = "No results found for \(query)."
+                } else {
+                    foundItems = results
+                    errorMessage = nil
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+                foundItems = []
+                print("LookupTabView: fetchUSDA error -> \(error)")
+            }
+            isLoading = false
+        }
+    }
+
+    // Fetch USDA FoodData Central search results (requires API key in Info.plist under `USDA_API_KEY` or env `USDA_API_KEY`)
+    func fetchUSDA(query: String) async throws -> [FoodItem] {
+        // read API key from multiple sources: Info.plist, environment variables, UserDefaults
+        let candidates = [
+            "USDA_API_KEY",
+            "INFOPLIST_KEY_USDA_API_KEY"
+        ]
+
+        var apiKey: String? = nil
+        for key in candidates {
+            if let val = Bundle.main.object(forInfoDictionaryKey: key) as? String, !val.isEmpty {
+                apiKey = val
+                break
+            }
+            if let val = ProcessInfo.processInfo.environment[key], !val.isEmpty {
+                apiKey = val
+                break
+            }
+            if let val = Bundle.main.infoDictionary?[key] as? String, !val.isEmpty {
+                apiKey = val
+                break
+            }
+            if let val = UserDefaults.standard.string(forKey: key), !val.isEmpty {
+                apiKey = val
+                break
+            }
+        }
+
+        // treat placeholder values as missing
+        if let k = apiKey, k == "REPLACE_ME_USDA_API_KEY" {
+            apiKey = nil
+        }
+
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            let guidance = "USDA API key not found. Add `USDA_API_KEY` as an environment variable in your Xcode scheme (Edit Scheme → Run → Environment Variables) or add a build setting `INFOPLIST_KEY_USDA_API_KEY` (set value in target Build Settings)."
+            throw NSError(domain: "USDA", code: 0, userInfo: [NSLocalizedDescriptionKey: guidance])
+        }
+
+        guard let url = URL(string: "https://api.nal.usda.gov/fdc/v1/foods/search?api_key=\(apiKey)") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "query": query,
+            "pageSize": 25
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let msg = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            throw NSError(domain: "USDA", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+
+        struct SearchResponse: Codable {
+            let foods: [FoodData]?
+        }
+
+        struct FoodData: Codable {
+            let description: String?
+            let foodNutrients: [Nutrient]?
+        }
+
+        struct Nutrient: Codable {
+            let nutrientName: String?
+            let value: Double?
+        }
+
+        let decoder = JSONDecoder()
+        let resp = try decoder.decode(SearchResponse.self, from: data)
+        let foods = resp.foods ?? []
+
+        // Map USDA foods to local FoodItem model by picking nutrient values heuristically
+        let rawMapped: [FoodItem] = foods.compactMap { f in
+            let name = f.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown"
+            var calories = 0
+            var protein = 0
+            var carbs = 0
+            var fat = 0
+
+            if let nutrients = f.foodNutrients {
+                for n in nutrients {
+                    guard let nName = n.nutrientName?.lowercased(), let val = n.value else { continue }
+                    if nName.contains("energy") || nName.contains("kcal") || nName.contains("calorie") {
+                        calories = Int(round(val))
+                    } else if nName.contains("protein") {
+                        protein = Int(round(val))
+                    } else if nName.contains("carbohydrate") || nName.contains("carb") {
+                        carbs = Int(round(val))
+                    } else if nName.contains("fat") || nName.contains("lipid") {
+                        fat = Int(round(val))
+                    }
+                }
+            }
+
+            return FoodItem(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat)
+        }
+
+        // Deduplicate by normalized description (case-insensitive). When duplicates occur, prefer the item
+        // with the larger sum of nutrient values (more complete data).
+        var deduped: [String: FoodItem] = [:]
+        func score(_ item: FoodItem) -> Int {
+            return item.calories + item.protein + item.carbs + item.fat
+        }
+
+        for item in rawMapped {
+            let key = item.name.lowercased()
+            if let existing = deduped[key] {
+                if score(item) > score(existing) {
+                    deduped[key] = item
+                }
+            } else {
+                deduped[key] = item
+            }
+        }
+
+        let mapped = deduped.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return mapped
     }
 }
 

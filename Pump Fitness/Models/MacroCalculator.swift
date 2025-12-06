@@ -231,13 +231,14 @@ extension MacroCalculator {
         goal: GoalOption?,
         macroFocus: MacroFocusOption
     ) -> Input? {
-        guard let genderOption = genderOption,
-              let goal = goal,
-              macroFocus != .custom,
-              let heightCm = heightInCentimeters(unitSystem: unitSystem, heightValue: heightValue, heightFeet: heightFeet, heightInches: heightInches),
-              let weightKg = weightInKilograms(unitSystem: unitSystem, weightValue: weightValue) else {
-            return nil
-        }
+                guard let genderOption = genderOption,
+                            genderOption != .preferNotSay,
+                            let goal = goal,
+                            macroFocus != .custom,
+                            let heightCm = heightInCentimeters(unitSystem: unitSystem, heightValue: heightValue, heightFeet: heightFeet, heightInches: heightInches),
+                            let weightKg = weightInKilograms(unitSystem: unitSystem, weightValue: weightValue) else {
+                        return nil
+                }
 
         let gender: Gender = (genderOption == .male) ? .male : .female
         let activityLevel = ActivityLevel.fromWorkoutDays(workoutDays)
@@ -265,6 +266,7 @@ extension MacroCalculator {
         referenceDate: Date = Date()
     ) -> Int? {
         guard let genderOption = genderOption,
+              genderOption != .preferNotSay,
               let heightCm = heightInCentimeters(
                   unitSystem: unitSystem,
                   heightValue: heightValue,

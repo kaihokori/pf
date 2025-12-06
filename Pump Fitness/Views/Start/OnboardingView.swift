@@ -136,9 +136,6 @@ struct OnboardingView: View {
             }
             return "Please complete all fields."
         case .routine:
-            if viewModel.selectedGoal == nil {
-                return "Please select your primary goal."
-            }
             return "Please complete all fields."
         case .calorieTarget:
             if viewModel.selectedMacroFocus == nil {
@@ -324,6 +321,16 @@ private struct BodyBasicsStepView: View {
                 )
             }
         }
+        .onAppear {
+            // When the calorie target step appears, if a macro focus is already
+            // selected and the user hasn't entered a calorie value, populate
+            // calculated macro targets automatically.
+            if let focus = viewModel.selectedMacroFocus,
+               focus != .custom,
+               viewModel.calorieValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                viewModel.selectMacroFocus(focus)
+            }
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -334,20 +341,6 @@ private struct RoutineStepView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Primary goal")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
-                ForEach(GoalOption.allCases) { option in
-                    SelectablePillComponent(
-                        label: option.displayName,
-                        isSelected: viewModel.selectedGoal == option
-                    ) {
-                        viewModel.selectedGoal = option
-                    }
-                }
-            }
-
             Text("Workout days each week")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -410,9 +403,15 @@ private struct CalorieTargetStepView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            if viewModel.selectedGender == .preferNotSay {
+                Text("Maintenance cannot be calculated unless you select \"Male\" or \"Female\".")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -726,7 +725,7 @@ final class OnboardingViewModel: ObservableObject {
                 return selectedGender != nil && Double(heightValue) != nil && Double(weightValue) != nil
             }
         case .routine:
-            return selectedGoal != nil
+            return true
         case .calorieTarget:
             return selectedMacroFocus != nil && Double(calorieValue) != nil
         case .macroTargets:
@@ -817,34 +816,42 @@ final class OnboardingViewModel: ObservableObject {
             return
         }
 
-        guard let input = MacroCalculator.makeInput(
-                  genderOption: selectedGender,
-                  birthDate: birthDate,
-                  unitSystem: unitSystem,
-                  heightValue: heightValue,
-                  heightFeet: heightFeet,
-                  heightInches: heightInches,
-                  weightValue: weightValue,
-                  workoutDays: selectedWorkoutDays.count,
-                  goal: selectedGoal,
-                  macroFocus: option
-              ),
-              let result = MacroCalculator.calculateTargets(for: input) else {
-            return
-        }
+        // Calculate the simple recommended calories shown in the UI so we can
+        // insert the same value into the calorie field.
+        let maintenance = estimatedMaintenanceCalories ?? 0
+        let recommended = CalorieGoalPlanner.recommendation(for: option, maintenanceCalories: maintenance).value
 
-        applyMacroTargets(result)
+        // Try to compute full macro targets; if available, apply them but
+        // override the calories with the UI recommendation so values match.
+        if let input = MacroCalculator.makeInput(
+            genderOption: selectedGender,
+            birthDate: birthDate,
+            unitSystem: unitSystem,
+            heightValue: heightValue,
+            heightFeet: heightFeet,
+            heightInches: heightInches,
+            weightValue: weightValue,
+            workoutDays: selectedWorkoutDays.count,
+            goal: selectedGoal,
+            macroFocus: option
+        ), let result = MacroCalculator.calculateTargets(for: input) {
+            applyMacroTargets(result, overrideCalories: recommended)
+        } else {
+            // Fallback: set only the calorie value to the recommendation
+            calorieValue = String(recommended)
+            lastCalculatedTargets = nil
+        }
     }
 
-    private func applyMacroTargets(_ result: MacroCalculator.Result) {
-        calorieValue = String(result.calories)
+    private func applyMacroTargets(_ result: MacroCalculator.Result, overrideCalories: Int? = nil) {
+        calorieValue = String(overrideCalories ?? result.calories)
         proteinValue = String(result.protein)
         carbohydrateValue = String(result.carbohydrates)
         fatValue = String(result.fats)
         fibreValue = String(result.fibre)
         sodiumValue = String(result.sodiumMg)
         waterIntakeValue = String(result.waterMl)
-        lastCalculatedTargets = MacroTargetsSnapshot(result: result)
+        lastCalculatedTargets = MacroTargetsSnapshot(result: result, overrideCalories: overrideCalories)
     }
 
     func updateMacroField(_ field: MacroField, newValue: String) {
@@ -881,7 +888,7 @@ enum OnboardingStep: CaseIterable, Equatable {
 
     var title: String {
         switch self {
-        case .aboutYou: return "About You"
+        case .aboutYou: return "Basic Details"
         case .bodyBasics: return "Body Basics"
         case .routine: return "Your Routine"
         case .calorieTarget: return "Calorie Target"
@@ -892,7 +899,7 @@ enum OnboardingStep: CaseIterable, Equatable {
 
     var subtitle: String {
         switch self {
-        case .aboutYou: return "Tell us who we're training"
+        case .aboutYou: return "Tell us a little about yourself"
         case .bodyBasics: return "Dial in the essentials"
         case .routine: return "Tune your weekly rhythm"
         case .calorieTarget: return "Lock in your daily calories"
@@ -903,7 +910,7 @@ enum OnboardingStep: CaseIterable, Equatable {
 }
 
 enum GenderOption: String, CaseIterable, Identifiable {
-    case male, female, nonbinary, other
+    case male, female, preferNotSay
 
     var id: String { rawValue }
 
@@ -911,8 +918,7 @@ enum GenderOption: String, CaseIterable, Identifiable {
         switch self {
         case .male: return "Male"
         case .female: return "Female"
-        case .nonbinary: return "Nonbinary"
-        case .other: return "Other"
+        case .preferNotSay: return "Prefer Not Say"
         }
     }
 }
@@ -973,7 +979,7 @@ extension OnboardingViewModel {
         case water
     }
 
-    private struct MacroTargetsSnapshot {
+        private struct MacroTargetsSnapshot {
         let calories: String
         let protein: String
         let carbohydrates: String
@@ -982,8 +988,8 @@ extension OnboardingViewModel {
         let sodium: String
         let water: String
 
-        init(result: MacroCalculator.Result) {
-            calories = String(result.calories)
+        init(result: MacroCalculator.Result, overrideCalories: Int? = nil) {
+            calories = String(overrideCalories ?? result.calories)
             protein = String(result.protein)
             carbohydrates = String(result.carbohydrates)
             fats = String(result.fats)

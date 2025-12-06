@@ -9,28 +9,53 @@ struct HeaderComponent: View {
     var onProfileTap: (() -> Void)? = nil
 
     var body: some View {
-        HStack {
-            HStack(spacing: 4) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.dayOfWeek(selectedDate))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                    Text(Self.formattedDate(selectedDate))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Image(systemName: "chevron.down")
-                    .font(.caption)
-                    .padding(.leading, 5)
+        HStack(alignment: .center) {
+            if themeManager.selectedTheme == .multiColour {
+                Image("logo")
+                    .resizable()
+                    .renderingMode(.original)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 28)
+                    .padding(.leading, 4)
+                    .offset(y: 6)
+            } else {
+                Image("logo")
+                    .resizable()
+                    .renderingMode(.template)
+                    .foregroundStyle(themeManager.selectedTheme.accent(for: colorScheme))
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: 28)
+                    .padding(.leading, 4)
+                    .offset(y: 6)
             }
-            .contentShape(Rectangle())
-            .onTapGesture { showCalendar = true }
+
             Spacer()
-            ThemeSwitcherButton(
-                selectedTheme: themeManager.selectedTheme,
-                colorScheme: colorScheme,
-                onSelectTheme: { themeManager.setTheme($0) }
-            )
+
+            HStack(spacing: 12) {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(Self.dayOfWeek(selectedDate))
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .multilineTextAlignment(.trailing)
+                    HStack(spacing: 6) {
+                        Text(Self.formattedDate(selectedDate))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { showCalendar = true }
+
+                ThemeSwitcherButton(
+                    selectedTheme: themeManager.selectedTheme,
+                    colorScheme: colorScheme,
+                    onSelectTheme: { themeManager.setTheme($0) }
+                )
+            }
+            .offset(y: 6)
         }
         .overlay(alignment: .center) {
             profileAvatar
@@ -43,7 +68,7 @@ struct HeaderComponent: View {
         (profileImage ?? Image(systemName: "person.crop.circle"))
             .resizable()
             .aspectRatio(1, contentMode: .fill)
-            .frame(width: 52, height: 52)
+            .frame(width: 58, height: 58)
             .clipShape(Circle())
             .contentShape(Circle())
             .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
@@ -132,27 +157,27 @@ struct ThemePreviewRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(swatchBackground)
                 .overlay {
                     if isMultiColour {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(subtleRainbowGradient, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(subtleRainbowGradient, lineWidth: 1.5)
                     } else {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(theme.accent(for: colorScheme), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(theme.accent(for: colorScheme), lineWidth: 1.5)
                     }
                 }
-                .frame(width: 56, height: 36)
+                .frame(width: 20, height: 40)
                 .overlay {
                     if isMultiColour {
                         Circle()
                             .fill(subtleRainbowGradient)
-                            .frame(width: 12, height: 12)
+                            .frame(width: 8, height: 8)
                     } else {
                         Circle()
                             .fill(theme.accent(for: colorScheme))
-                            .frame(width: 12, height: 12)
+                            .frame(width: 8, height: 8)
                     }
                 }
         }

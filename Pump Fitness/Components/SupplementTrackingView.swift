@@ -6,22 +6,20 @@ private enum NutritionLayout {
 
 struct SupplementTrackingView: View {
     var accentColorOverride: Color?
-    var initialSupplements: [SupplementItem] = SupplementItem.defaultSupplements
     var tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight
 
-    @State private var supplements: [SupplementItem]
+    @Binding var supplements: [SupplementItem]
 
-    init(accentColorOverride: Color? = nil, initialSupplements: [SupplementItem] = SupplementItem.defaultSupplements, tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight) {
+    init(accentColorOverride: Color? = nil, supplements: Binding<[SupplementItem]>, tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight) {
         self.accentColorOverride = accentColorOverride
-        self.initialSupplements = initialSupplements
+        self._supplements = supplements
         self.tileMinHeight = tileMinHeight
-        _supplements = State(initialValue: initialSupplements)
     }
 
     var body: some View {
         let supplementTint = accentColorOverride ?? .orange
         let displayItems: [SupplementSummaryItem] =
-            Array(supplements.enumerated()).map { .supplement(index: $0.offset, item: $0.element) } + [.add]
+            Array(supplements.enumerated()).map { .supplement(index: $0.offset, item: $0.element) }
 
         let rows: [[SupplementSummaryItem]] = {
             let count = displayItems.count
@@ -57,13 +55,6 @@ struct SupplementTrackingView: View {
                                 } onRemove: {
                                     removeSupplement(supplement)
                                 }
-                            case .add:
-                                SupplementAddButton(
-                                    tint: Color(.systemGray3),
-                                    minHeight: tileMinHeight
-                                ) {
-                                    addSupplement()
-                                }
                             }
                         }
                         Spacer(minLength: 0)
@@ -93,21 +84,20 @@ struct SupplementTrackingView: View {
 
     private func addSupplement() {
         let unit = SupplementMeasurementUnit.allCases[supplements.count % SupplementMeasurementUnit.allCases.count]
-        let defaultAmount: Double
+        let label: String
         switch unit {
         case .gram:
-            defaultAmount = 1.0
+            label = "1 g"
         case .milligram:
-            defaultAmount = 50
+            label = "50 mg"
         case .microgram:
-            defaultAmount = 100
+            label = "100 μg"
         case .scoop:
-            defaultAmount = 1.0
+            label = "1 scoop"
         }
         let newSupplement = SupplementItem(
             name: "Supplement #\(supplements.count + 1)",
-            amount: defaultAmount,
-            unit: unit
+            amountLabel: label
         )
         supplements.append(newSupplement)
     }
@@ -115,14 +105,11 @@ struct SupplementTrackingView: View {
 
 private enum SupplementSummaryItem: Identifiable {
     case supplement(index: Int, item: SupplementItem)
-    case add
 
     var id: String {
         switch self {
         case let .supplement(_, item):
             return item.id.uuidString
-        case .add:
-            return "supplement-add"
         }
     }
 }
@@ -180,70 +167,40 @@ private struct SupplementRing: View {
     private var minHeightForRing: CGFloat { minHeight }
 }
 
-private struct SupplementAddButton: View {
-    var tint: Color
-    var minHeight: CGFloat
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 2) {
-                ZStack {
-                    Circle()
-                        .stroke(tint.opacity(0.18), lineWidth: 6)
-                        .frame(width: 54, height: 54)
-                    Circle()
-                        .stroke(style: StrokeStyle(lineWidth: 6, dash: [4]))
-                        .foregroundStyle(tint.opacity(0.35))
-                        .frame(width: 54, height: 54)
-                    Image(systemName: "pencil")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(tint)
-                }
-                .padding(.bottom, 10)
-                Text("Edit Supplement")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-        }
-        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .top)
-        .buttonStyle(.plain)
-    }
-}
+// Edit/Add button removed — supplements are display-only in this view
 
 struct SupplementItem: Identifiable, Equatable {
     let id: UUID
-    let name: String
-    let amount: Double
-    let unit: SupplementMeasurementUnit
+    var name: String
+    // Freeform amount/label like "50 mg" or "3 scoops"
+    var amountLabel: String
     var isTaken: Bool
+    // Optional override label (user-entered), e.g. "5 g or 3 scoops"
+    var customLabel: String?
 
-    init(id: UUID = UUID(), name: String, amount: Double, unit: SupplementMeasurementUnit, isTaken: Bool = false) {
+    init(id: UUID = UUID(), name: String, amountLabel: String, isTaken: Bool = false, customLabel: String? = nil) {
         self.id = id
         self.name = name
-        self.amount = amount
-        self.unit = unit
+        self.amountLabel = amountLabel
         self.isTaken = isTaken
+        self.customLabel = customLabel
     }
 
     var measurementDescription: String {
-        let whole = amount.rounded(.towardZero)
-        let isWhole = amount.truncatingRemainder(dividingBy: 1) == 0
-        let formattedAmount = isWhole ? String(Int(whole)) : String(format: "%.1f", amount)
-        return "\(formattedAmount) \(unit.symbol)"
+        if let label = customLabel, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return label
+        }
+        return amountLabel
     }
 
     static let defaultSupplements: [SupplementItem] = [
-        SupplementItem(name: "Vitamin C", amount: 1000, unit: .milligram),
-        SupplementItem(name: "Vitamin D", amount: 50, unit: .microgram),
-        SupplementItem(name: "Zinc", amount: 30, unit: .milligram),
-        SupplementItem(name: "Iron", amount: 18, unit: .milligram),
-        SupplementItem(name: "Magnesium", amount: 400, unit: .milligram),
-        SupplementItem(name: "Magnesium Glycinate", amount: 2.5, unit: .gram),
-        SupplementItem(name: "Melatonin", amount: 5, unit: .milligram)
+        SupplementItem(name: "Vitamin C", amountLabel: "1000 mg"),
+        SupplementItem(name: "Vitamin D", amountLabel: "50 μg"),
+        SupplementItem(name: "Zinc", amountLabel: "30 mg"),
+        SupplementItem(name: "Iron", amountLabel: "18 mg"),
+        SupplementItem(name: "Magnesium", amountLabel: "400 mg"),
+        SupplementItem(name: "Magnesium Glycinate", amountLabel: "2.5 g"),
+        SupplementItem(name: "Melatonin", amountLabel: "5 mg")
     ]
 }
 

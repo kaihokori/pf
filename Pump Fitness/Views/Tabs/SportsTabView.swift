@@ -322,6 +322,15 @@ struct SportsTabView: View {
 
                     Spacer()
                 }
+                if showCalendar {
+                    Color.black.opacity(0.2)
+                        .ignoresSafeArea()
+                        .onTapGesture { showCalendar = false }
+                    CalendarComponent(selectedDate: $selectedDate, showCalendar: $showCalendar)
+                }
+            }
+            .navigationDestination(isPresented: $showAccountsView) {
+                AccountsView()
             }
         }
         .onAppear {

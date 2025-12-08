@@ -52,9 +52,8 @@ struct ExerciseSupplementEditorSheet: View {
             SupplementItem(name: "Pre-workout", amountLabel: "1 scoop"),
             SupplementItem(name: "Creatine", amountLabel: "5 g"),
             SupplementItem(name: "BCAA", amountLabel: "10 g"),
-            SupplementItem(name: "Protein Water", amountLabel: "30 g"),
+            SupplementItem(name: "Whey Protein", amountLabel: "30 g"),
             SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
-            SupplementItem(name: "Caffeine", amountLabel: "200 mg"),
             SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
         ]
     }
@@ -66,150 +65,152 @@ struct ExerciseSupplementEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    // Summary chip
-                    MacroEditorSummaryChip(
-                        currentCount: working.count,
-                        maxCount: maxTrackedSupplements,
-                        tint: tint
-                    )
+            ZStack {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 24) {
+                        // Summary chip
+                        MacroEditorSummaryChip(
+                            currentCount: working.count,
+                            maxCount: maxTrackedSupplements,
+                            tint: tint
+                        )
 
-                    // Tracked supplements
-                    if !working.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            MacroEditorSectionHeader(title: "Tracked Supplements")
-                            VStack(spacing: 12) {
-                                ForEach(Array(working.enumerated()), id: \ .element.id) { idx, item in
-                                    let binding = $working[idx]
-                                    VStack(spacing: 8) {
-                                        HStack(spacing: 12) {
-                                            Circle()
-                                                .fill(tint.opacity(0.15))
-                                                .frame(width: 44, height: 44)
-                                                .overlay(
-                                                    Image(systemName: "pills.fill")
-                                                        .foregroundStyle(tint)
-                                                )
-
-                                            VStack(alignment: .leading, spacing: 6) {
-                                                TextField("Name", text: binding.name)
-                                                    .font(.subheadline.weight(.semibold))
-                                                TextField("Amount or note (e.g. 5 g or 3 scoops)", text: Binding(
-                                                    get: { binding.customLabel.wrappedValue ?? item.measurementDescription },
-                                                    set: { binding.customLabel.wrappedValue = $0 }
-                                                ))
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                            }
-
-                                            Spacer()
-
-                                            Button(role: .destructive) {
-                                                removeSupplement(item.id)
-                                            } label: {
-                                                Image(systemName: "trash")
-                                                    .foregroundStyle(.red)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                        .padding()
-                                        .surfaceCard(12)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Quick Add
-                        if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        // Tracked supplements
+                        if !working.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
-                                MacroEditorSectionHeader(title: "Quick Add")
+                                MacroEditorSectionHeader(title: "Tracked Supplements")
                                 VStack(spacing: 12) {
-                                    ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
-                                        HStack(spacing: 14) {
-                                            Circle()
-                                                .fill(tint.opacity(0.15))
-                                                .frame(width: 44, height: 44)
-                                                .overlay(
-                                                    Image(systemName: "chart.bar.fill")
-                                                        .foregroundStyle(tint)
-                                                )
+                                    ForEach(Array(working.enumerated()), id: \ .element.id) { idx, item in
+                                        let binding = $working[idx]
+                                        VStack(spacing: 8) {
+                                            HStack(spacing: 12) {
+                                                Circle()
+                                                    .fill(tint.opacity(0.15))
+                                                    .frame(width: 44, height: 44)
+                                                    .overlay(
+                                                        Image(systemName: "pills.fill")
+                                                            .foregroundStyle(tint)
+                                                    )
 
-                                            VStack(alignment: .leading) {
-                                                Text(preset.name)
-                                                    .font(.subheadline.weight(.semibold))
-                                                Text(preset.measurementDescription)
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    TextField("Name", text: binding.name)
+                                                        .font(.subheadline.weight(.semibold))
+                                                    TextField("Amount or note (e.g. 5 g or 3 scoops)", text: Binding(
+                                                        get: { binding.customLabel.wrappedValue ?? item.measurementDescription },
+                                                        set: { binding.customLabel.wrappedValue = $0 }
+                                                    ))
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
-                                            }
+                                                }
 
-                                            Spacer()
+                                                Spacer()
 
-                                            Button(action: { togglePreset(preset) }) {
-                                                Image(systemName: "plus.circle.fill")
-                                                    .font(.system(size: 24, weight: .semibold))
-                                                    .foregroundStyle(tint)
+                                                Button(role: .destructive) {
+                                                    removeSupplement(item.id)
+                                                } label: {
+                                                    Image(systemName: "trash")
+                                                        .foregroundStyle(.red)
+                                                }
+                                                .buttonStyle(.plain)
                                             }
-                                            .buttonStyle(.plain)
-                                            .disabled(!canAddMore)
-                                            .opacity(!canAddMore ? 0.3 : 1)
+                                            .padding()
+                                            .surfaceCard(12)
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 14)
-                                        .surfaceCard(18)
                                     }
                                 }
                             }
                         }
 
-                    // Custom composer
-                    VStack(alignment: .leading, spacing: 12) {
-                        MacroEditorSectionHeader(title: "Custom Supplement")
-                        VStack(spacing: 12) {
-                            TextField("Supplement name", text: $newName)
-                                .textInputAutocapitalization(.words)
-                                .padding()
-                                .surfaceCard(16)
+                        // Quick Add
+                            if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    MacroEditorSectionHeader(title: "Quick Add")
+                                    VStack(spacing: 12) {
+                                        ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
+                                            HStack(spacing: 14) {
+                                                Circle()
+                                                    .fill(tint.opacity(0.15))
+                                                    .frame(width: 44, height: 44)
+                                                    .overlay(
+                                                        Image(systemName: "chart.bar.fill")
+                                                            .foregroundStyle(tint)
+                                                    )
 
-                            HStack(spacing: 12) {
-                                TextField("Amount or note (e.g. 5 g or 3 scoops)", text: $newTarget)
+                                                VStack(alignment: .leading) {
+                                                    Text(preset.name)
+                                                        .font(.subheadline.weight(.semibold))
+                                                    Text(preset.measurementDescription)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+
+                                                Spacer()
+
+                                                Button(action: { togglePreset(preset) }) {
+                                                    Image(systemName: "plus.circle.fill")
+                                                        .font(.system(size: 24, weight: .semibold))
+                                                        .foregroundStyle(tint)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .disabled(!canAddMore)
+                                                .opacity(!canAddMore ? 0.3 : 1)
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 14)
+                                            .surfaceCard(18)
+                                        }
+                                    }
+                                }
+                            }
+
+                        // Custom composer
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Custom Supplement")
+                            VStack(spacing: 12) {
+                                TextField("Supplement name", text: $newName)
+                                    .textInputAutocapitalization(.words)
                                     .padding()
                                     .surfaceCard(16)
 
-                                Button(action: addCustomSupplement) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(tint)
+                                HStack(spacing: 12) {
+                                    TextField("Amount or note (e.g. 5 g or 3 scoops)", text: $newTarget)
+                                        .padding()
+                                        .surfaceCard(16)
+
+                                    Button(action: addCustomSupplement) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 28, weight: .semibold))
+                                            .foregroundStyle(tint)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canAddCustom)
+                                    .opacity(!canAddCustom ? 0.4 : 1)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(!canAddCustom)
-                                .opacity(!canAddCustom ? 0.4 : 1)
+
+                                Text("Give it a name and amount, then tap plus to add it to your dashboard. You can track up to \(maxTrackedSupplements) supplements.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
                             }
-
-                            Text("Give it a name and amount, then tap plus to add it to your dashboard. You can track up to \(maxTrackedSupplements) supplements.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
                         }
-                    }
 
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 24)
-            }
-            .navigationTitle("Edit Supplements")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onDone() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        supplements = working
-                        onDone()
                     }
-                    .fontWeight(.semibold)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 24)
                 }
+            }
+        }
+        .navigationTitle("Edit Supplements")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { onDone() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") {
+                    supplements = working
+                    onDone()
+                }
+                .fontWeight(.semibold)
             }
         }
         .onAppear(perform: loadInitialState)
@@ -490,10 +491,18 @@ struct WorkoutTabView: View {
                         .padding(.bottom, 24)
                 }
             }
+            if showCalendar {
+                Color.black.opacity(0.2)
+                    .ignoresSafeArea()
+                    .onTapGesture { showCalendar = false }
+                CalendarComponent(selectedDate: $selectedDate, showCalendar: $showCalendar)
+            }
+        }
+        .navigationDestination(isPresented: $showAccountsView) {
+            AccountsView()
         }
         .navigationTitle("Coaching")
         .navigationBarTitleDisplayMode(.inline)
-        // Weights-related sheets removed
     }
 }
 
@@ -551,9 +560,8 @@ private let coachingDefaultSupplements: [SupplementItem] = [
     SupplementItem(name: "Pre-workout", amountLabel: "1 scoop"),
     SupplementItem(name: "Creatine", amountLabel: "5 g"),
     SupplementItem(name: "BCAA", amountLabel: "10 g"),
-    SupplementItem(name: "Protein Water", amountLabel: "30 g"),
+    SupplementItem(name: "Whey Protein", amountLabel: "30 g"),
     SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
-    SupplementItem(name: "Caffeine", amountLabel: "200 mg"),
     SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
 ]
 

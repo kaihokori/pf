@@ -909,11 +909,11 @@ struct SupplementEditorSheet: View {
             SupplementItem(name: "Fish Oil", amountLabel: "1000 mg"),
             SupplementItem(name: "Ashwagandha", amountLabel: "500 mg"),
             SupplementItem(name: "Melatonin", amountLabel: "3 mg"),
-            SupplementItem(name: "Creatine", amountLabel: "5 g"),
             SupplementItem(name: "Calcium", amountLabel: "500 mg"),
             SupplementItem(name: "Iron", amountLabel: "18 mg"),
             SupplementItem(name: "Zinc", amountLabel: "15 mg"),
-            SupplementItem(name: "Vitamin C", amountLabel: "1000 mg")
+            SupplementItem(name: "Vitamin C", amountLabel: "1000 mg"),
+            SupplementItem(name: "Caffeine", amountLabel: "200 mg")
         ]
     }
 

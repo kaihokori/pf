@@ -93,29 +93,6 @@ struct AccountsView: View {
                             )
                         }
 
-                        SectionCard(title: "Routine") {
-                            VStack(alignment: .leading) {
-                                Text("Primary goal")
-                                    .padding(.bottom, 10)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 12) {
-                                    ForEach(GoalOption.allCases) { option in
-                                        SelectablePillComponent(
-                                            label: option.displayName,
-                                            isSelected: viewModel.draft.selectedGoal == option
-                                        ) {
-                                            viewModel.draft.selectedGoal = option
-                                        }
-                                    }
-                                }
-
-                                WorkoutsPerWeekSelector(selectedDays: viewModel.draft.selectedWorkoutDays) { day in
-                                    viewModel.toggleDay(day)
-                                }
-                            }
-                        }
-
                         SectionCard(title: "Appearance") {
                             AppearanceSection(viewModel: viewModel)
                         }
@@ -718,11 +695,81 @@ private struct AppearanceSection: View {
 
     private func themePreview(for theme: AppTheme) -> some View {
         HStack {
-            ThemePreviewRow(theme: theme, colorScheme: colorScheme)
+            ThickThemePreviewRow(theme: theme, colorScheme: colorScheme)
             Text("Preview:")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
+        }
+    }
+
+    // Local thick rectangle theme preview for AccountsView
+    private struct ThickThemePreviewRow: View {
+        var theme: AppTheme
+        var colorScheme: ColorScheme
+
+        private var isMultiColour: Bool { theme == .multiColour }
+
+        private var nutritionColors: [Color] {
+            [
+                Color.purple.opacity(0.18),
+                Color.blue.opacity(0.14),
+                Color.indigo.opacity(0.18)
+            ]
+        }
+
+        private var subtleRainbowGradient: LinearGradient {
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.99, green: 0.45, blue: 0.45).opacity(0.8),
+                    Color(red: 1.00, green: 0.72, blue: 0.32).opacity(0.8),
+                    Color(red: 0.42, green: 0.85, blue: 0.55).opacity(0.8),
+                    Color(red: 0.36, green: 0.70, blue: 0.99).opacity(0.8),
+                    Color(red: 0.63, green: 0.48, blue: 0.96).opacity(0.8)
+                ]),
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+
+        private var swatchBackground: LinearGradient {
+            if isMultiColour {
+                LinearGradient(
+                    gradient: Gradient(colors: nutritionColors),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            } else {
+                theme.previewBackground(for: colorScheme)
+            }
+        }
+
+        var body: some View {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(swatchBackground)
+                    .overlay {
+                        if isMultiColour {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(subtleRainbowGradient, lineWidth: 3)
+                        } else {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(theme.accent(for: colorScheme), lineWidth: 3)
+                        }
+                    }
+                    .frame(width: 64, height: 48)
+                    .overlay {
+                        if isMultiColour {
+                            Circle()
+                                .fill(subtleRainbowGradient)
+                                .frame(width: 12, height: 12)
+                        } else {
+                            Circle()
+                                .fill(theme.accent(for: colorScheme))
+                                .frame(width: 12, height: 12)
+                        }
+                    }
+            }
         }
     }
 }
@@ -734,7 +781,6 @@ final class AccountsViewModel: ObservableObject {
     @Published private(set) var profile: AccountProfile
     @Published var draft: AccountProfile
     @Published var isPerformingDestructiveAction = false
-    private var lastCalculatedTargets: MacroTargetsSnapshot?
 
     private let defaults: UserDefaults
     private var defaultsObserver: AnyCancellable?
@@ -761,19 +807,7 @@ final class AccountsViewModel: ObservableObject {
             heightValue: "172",
             heightFeet: "5",
             heightInches: "7.7",
-            weightValue: "67",
-            selectedGoal: .gainMuscle,
-            selectedWorkoutDays: Set([Weekday.allCases[0], Weekday.allCases[1], Weekday.allCases[2], Weekday.allCases[3], Weekday.allCases[4], Weekday.allCases[5], Weekday.allCases[6]]),
-            selectedMacroFocus: .highProtein,
-            selectedSupplements: [.vitaminC, .vitaminD, .zinc, .iron, .magnesium, .melatonin],
-            otherSupplementName: "Omega-3",
-            calorieValue: "2400",
-            proteinValue: "150",
-            fatValue: "70",
-            carbohydrateValue: "260",
-            fibreValue: "30",
-            waterIntakeValue: "2500",
-            sodiumValue: "2300"
+            weightValue: "67"
         )
         self.profile = initialProfile
         self.draft = initialProfile
@@ -849,38 +883,6 @@ final class AccountsViewModel: ObservableObject {
             return "Weight must be between 20 kg and 1000 kg."
         }
 
-        if draft.selectedGoal == nil {
-            return "Please select your primary goal."
-        }
-        if draft.selectedMacroFocus == nil {
-            return "Please select your macro focus."
-        }
-
-        if let error = validateMacroField(value: draft.calorieValue, label: "Calorie target", min: 0, max: 20000) {
-            return error
-        }
-        if let error = validateMacroField(value: draft.proteinValue, label: "Protein target", min: 0, max: 10000) {
-            return error
-        }
-        if let error = validateMacroField(value: draft.carbohydrateValue, label: "Carbohydrate target", min: 0, max: 20000) {
-            return error
-        }
-        if let error = validateMacroField(value: draft.fatValue, label: "Fat target", min: 0, max: 10000) {
-            return error
-        }
-        if let error = validateMacroField(value: draft.fibreValue, label: "Fibre target", min: 0, max: 5000) {
-            return error
-        }
-        guard parsedNumber(from: draft.sodiumValue) != nil else {
-            return "Please enter a valid sodium target."
-        }
-        guard parsedNumber(from: draft.waterIntakeValue) != nil else {
-            return "Please enter a valid water intake target."
-        }
-        if draft.selectedSupplements.contains(.other) && draft.otherSupplementName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Please specify your other supplement(s)."
-        }
-
         return nil
     }
 
@@ -923,63 +925,6 @@ final class AccountsViewModel: ObservableObject {
         draft.unitSystem = newSystem
     }
 
-    func toggleDay(_ day: Weekday) {
-        if draft.selectedWorkoutDays.contains(day) {
-            draft.selectedWorkoutDays.remove(day)
-        } else {
-            draft.selectedWorkoutDays.insert(day)
-        }
-    }
-
-    func toggleSupplement(_ option: SupplementOption) {
-        if draft.selectedSupplements.contains(option) {
-            draft.selectedSupplements.remove(option)
-            if option == .other {
-                draft.otherSupplementName = ""
-            }
-        } else if draft.selectedSupplements.count < 8 {
-            draft.selectedSupplements.insert(option)
-        }
-    }
-
-    func selectMacroFocus(_ option: MacroFocusOption) {
-        draft.selectedMacroFocus = option
-
-        guard option != .custom else {
-            lastCalculatedTargets = nil
-            return
-        }
-
-        guard let input = MacroCalculator.makeInput(
-                  genderOption: draft.selectedGender,
-                  birthDate: draft.birthDate,
-                  unitSystem: draft.unitSystem,
-                  heightValue: draft.heightValue,
-                  heightFeet: draft.heightFeet,
-                  heightInches: draft.heightInches,
-                  weightValue: draft.weightValue,
-                  workoutDays: draft.selectedWorkoutDays.count,
-                  goal: draft.selectedGoal,
-                  macroFocus: option
-              ),
-              let result = MacroCalculator.calculateTargets(for: input) else {
-            return
-        }
-
-        applyMacroTargets(result)
-    }
-
-    private func applyMacroTargets(_ result: MacroCalculator.Result) {
-        draft.calorieValue = String(result.calories)
-        draft.proteinValue = String(result.protein)
-        draft.carbohydrateValue = String(result.carbohydrates)
-        draft.fatValue = String(result.fats)
-        draft.fibreValue = String(result.fibre)
-        draft.sodiumValue = String(result.sodiumMg)
-        draft.waterIntakeValue = String(result.waterMl)
-        lastCalculatedTargets = MacroTargetsSnapshot(result: result)
-    }
-
     func shuffleAvatarColor() {
         guard let option = AvatarColorOption.allCases.randomElement() else { return }
         draft.avatarColor = option
@@ -995,34 +940,6 @@ final class AccountsViewModel: ObservableObject {
 
     func setWeekStart(_ option: WeekStartOption) {
         draft.weekStart = option
-    }
-
-    func markMacroFocusAsCustom() {
-        draft.selectedMacroFocus = .custom
-        lastCalculatedTargets = nil
-    }
-
-    func updateMacroField(_ field: MacroField, newValue: String) {
-        switch field {
-        case .calories: draft.calorieValue = newValue
-        case .protein: draft.proteinValue = newValue
-        case .fats: draft.fatValue = newValue
-        case .carbohydrates: draft.carbohydrateValue = newValue
-        case .fibre: draft.fibreValue = newValue
-        case .sodium: draft.sodiumValue = newValue
-        case .water: draft.waterIntakeValue = newValue
-        }
-
-        guard draft.selectedMacroFocus != .custom else { return }
-        guard let snapshot = lastCalculatedTargets else {
-            markMacroFocusAsCustom()
-            return
-        }
-
-        if snapshot.value(for: field) != newValue {
-            lastCalculatedTargets = nil
-            markMacroFocusAsCustom()
-        }
     }
 
     func setAvatarImageData(_ data: Data?) {
@@ -1129,62 +1046,6 @@ struct AccountProfile: Equatable {
     var heightFeet: String
     var heightInches: String
     var weightValue: String
-    var selectedGoal: GoalOption?
-    var selectedWorkoutDays: Set<Weekday>
-    var selectedMacroFocus: MacroFocusOption?
-    var selectedSupplements: Set<SupplementOption>
-    var otherSupplementName: String
-    var calorieValue: String
-    var proteinValue: String
-    var fatValue: String
-    var carbohydrateValue: String
-    var fibreValue: String
-    var waterIntakeValue: String
-    var sodiumValue: String
-}
-
-extension AccountsViewModel {
-    enum MacroField {
-        case calories
-        case protein
-        case fats
-        case carbohydrates
-        case fibre
-        case sodium
-        case water
-    }
-
-    private struct MacroTargetsSnapshot {
-        let calories: String
-        let protein: String
-        let carbohydrates: String
-        let fats: String
-        let fibre: String
-        let sodium: String
-        let water: String
-
-        init(result: MacroCalculator.Result) {
-            calories = String(result.calories)
-            protein = String(result.protein)
-            carbohydrates = String(result.carbohydrates)
-            fats = String(result.fats)
-            fibre = String(result.fibre)
-            sodium = String(result.sodiumMg)
-            water = String(result.waterMl)
-        }
-
-        func value(for field: MacroField) -> String {
-            switch field {
-            case .calories: return calories
-            case .protein: return protein
-            case .fats: return fats
-            case .carbohydrates: return carbohydrates
-            case .fibre: return fibre
-            case .sodium: return sodium
-            case .water: return water
-            }
-        }
-    }
 }
 
 enum WeekStartOption: String, CaseIterable, Identifiable {

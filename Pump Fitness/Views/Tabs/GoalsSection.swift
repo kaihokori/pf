@@ -44,8 +44,6 @@ struct GoalsSection: View {
                             .font(.callout.weight(.semibold))
                         Spacer()
                     }
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
                     .padding(.bottom, 8)
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -98,8 +96,6 @@ struct GoalsSection: View {
                             .font(.callout.weight(.semibold))
                         Spacer()
                     }
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
                     .padding(.bottom, 8)
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -152,8 +148,6 @@ struct GoalsSection: View {
                             .font(.callout.weight(.semibold))
                         Spacer()
                     }
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
                     .padding(.bottom, 8)
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -206,8 +200,6 @@ struct GoalsSection: View {
                             .font(.callout.weight(.semibold))
                         Spacer()
                     }
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
                     .padding(.bottom, 8)
 
                     VStack(alignment: .leading, spacing: 12) {

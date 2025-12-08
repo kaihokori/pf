@@ -1,5 +1,260 @@
 import SwiftUI
 
+private struct MacroEditorSummaryChip: View {
+    let currentCount: Int
+    let maxCount: Int
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Tracked Macros")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("\(currentCount) / \(maxCount)")
+                    .font(.title3.weight(.semibold))
+            }
+            Spacer()
+            ProgressView(value: Double(currentCount), total: Double(maxCount))
+                .tint(tint)
+                .frame(width: 120)
+        }
+        .padding()
+        .surfaceCard(18)
+    }
+}
+
+private struct MacroEditorSectionHeader: View {
+    let title: String
+    var body: some View {
+        Text(title.uppercased())
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.bottom, 2)
+    }
+}
+// MARK: - Exercise Supplement Editor Sheet
+
+struct ExerciseSupplementEditorSheet: View {
+    @Binding var supplements: [SupplementItem]
+    var tint: Color
+    var onDone: () -> Void
+
+    // local working state
+    @State private var working: [SupplementItem] = []
+    @State private var newName: String = ""
+    @State private var newTarget: String = ""
+    @State private var hasLoaded = false
+
+    // presets available in Quick Add (some may not be selected initially)
+    private var presets: [SupplementItem] {
+        [
+            SupplementItem(name: "Pre-workout", amountLabel: "1 scoop"),
+            SupplementItem(name: "Creatine", amountLabel: "5 g"),
+            SupplementItem(name: "BCAA", amountLabel: "10 g"),
+            SupplementItem(name: "Protein Water", amountLabel: "30 g"),
+            SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
+            SupplementItem(name: "Caffeine", amountLabel: "200 mg"),
+            SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
+        ]
+    }
+
+    private let maxTrackedSupplements = 12
+
+    private var canAddMore: Bool { working.count < maxTrackedSupplements }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Summary chip
+                    MacroEditorSummaryChip(
+                        currentCount: working.count,
+                        maxCount: maxTrackedSupplements,
+                        tint: tint
+                    )
+
+                    // Tracked supplements
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Tracked Supplements")
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \ .element.id) { idx, item in
+                                    let binding = $working[idx]
+                                    VStack(spacing: 8) {
+                                        HStack(spacing: 12) {
+                                            Circle()
+                                                .fill(tint.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "pills.fill")
+                                                        .foregroundStyle(tint)
+                                                )
+
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                TextField("Name", text: binding.name)
+                                                    .font(.subheadline.weight(.semibold))
+                                                TextField("Amount or note (e.g. 5 g or 3 scoops)", text: Binding(
+                                                    get: { binding.customLabel.wrappedValue ?? item.measurementDescription },
+                                                    set: { binding.customLabel.wrappedValue = $0 }
+                                                ))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            }
+
+                                            Spacer()
+
+                                            Button(role: .destructive) {
+                                                removeSupplement(item.id)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .foregroundStyle(.red)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                        .padding()
+                                        .surfaceCard(12)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Add
+                        if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                MacroEditorSectionHeader(title: "Quick Add")
+                                VStack(spacing: 12) {
+                                    ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
+                                        HStack(spacing: 14) {
+                                            Circle()
+                                                .fill(tint.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "chart.bar.fill")
+                                                        .foregroundStyle(tint)
+                                                )
+
+                                            VStack(alignment: .leading) {
+                                                Text(preset.name)
+                                                    .font(.subheadline.weight(.semibold))
+                                                Text(preset.measurementDescription)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+
+                                            Spacer()
+
+                                            Button(action: { togglePreset(preset) }) {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.system(size: 24, weight: .semibold))
+                                                    .foregroundStyle(tint)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(!canAddMore)
+                                            .opacity(!canAddMore ? 0.3 : 1)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 14)
+                                        .surfaceCard(18)
+                                    }
+                                }
+                            }
+                        }
+
+                    // Custom composer
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Custom Supplement")
+                        VStack(spacing: 12) {
+                            TextField("Supplement name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack(spacing: 12) {
+                                TextField("Amount or note (e.g. 5 g or 3 scoops)", text: $newTarget)
+                                    .padding()
+                                    .surfaceCard(16)
+
+                                Button(action: addCustomSupplement) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(tint)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("Give it a name and amount, then tap plus to add it to your dashboard. You can track up to \(maxTrackedSupplements) supplements.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Supplements")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onDone() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        supplements = working
+                        onDone()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitialState)
+    }
+
+    private func loadInitialState() {
+        guard !hasLoaded else { return }
+        working = supplements
+        hasLoaded = true
+    }
+
+    private func togglePreset(_ preset: SupplementItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.name == preset.name }
+        } else if canAddMore {
+            working.append(preset)
+        }
+    }
+
+    private func isPresetSelected(_ preset: SupplementItem) -> Bool {
+        working.contains { $0.name == preset.name }
+    }
+
+    private func removeSupplement(_ id: UUID) {
+        // Find the supplement being removed
+        guard let item = working.first(where: { $0.id == id }) else { return }
+        // If it's a preset (by name), remove all with that name so preset returns to Quick Add
+        if presets.contains(where: { $0.name == item.name }) {
+            working.removeAll { $0.name == item.name }
+        } else {
+            working.removeAll { $0.id == id }
+        }
+    }
+
+    private func addCustomSupplement() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let new = SupplementItem(name: trimmed, amountLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines), customLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines))
+        working.append(new)
+        newName = ""
+        newTarget = ""
+    }
+}
+
 struct WorkoutTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
@@ -9,6 +264,58 @@ struct WorkoutTabView: View {
     @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.checkIn, .checkIn, .notLogged, .checkIn, .rest, .notLogged, .notLogged]
     private let coachingCurrentDayIndex = 5
     @State private var supplements: [SupplementItem] = coachingDefaultSupplements
+    @State private var showSupplementEditor = false
+    
+    // Daily summary sample values (moved from Nutrition tab)
+    private let caloriesBurnedToday: Int = 620
+    private let caloriesBurnGoal: Int = 800
+    private let stepsTakenToday: Int = 8_500
+    private let stepsGoalToday: Int = 10_000
+
+    // New: walking and running distance (in meters)
+    private let walkingDistanceToday: Double = 2_100 // meters
+    private let walkingDistanceGoal: Double = 3_000 // meters
+    private let runningDistanceToday: Double = 1_200 // meters
+    private let runningDistanceGoal: Double = 2_000 // meters
+
+    private var stepsProgress: Double {
+        guard stepsGoalToday > 0 else { return 0 }
+        return min(max(Double(stepsTakenToday) / Double(stepsGoalToday), 0), 1)
+    }
+
+    private var walkingProgress: Double {
+        guard walkingDistanceGoal > 0 else { return 0 }
+        return min(max(walkingDistanceToday / walkingDistanceGoal, 0), 1)
+    }
+
+    private var runningProgress: Double {
+        guard runningDistanceGoal > 0 else { return 0 }
+        return min(max(runningDistanceToday / runningDistanceGoal, 0), 1)
+    }
+
+    private var formattedStepsTaken: String {
+        NumberFormatter.withComma.string(from: NSNumber(value: stepsTakenToday)) ?? "\(stepsTakenToday)"
+    }
+
+    private var formattedStepsGoal: String {
+        NumberFormatter.withComma.string(from: NSNumber(value: stepsGoalToday)) ?? "\(stepsGoalToday)"
+    }
+
+    private var formattedWalkingDistance: String {
+        String(format: "%.2f km", walkingDistanceToday / 1000)
+    }
+
+    private var formattedWalkingGoal: String {
+        String(format: "Goal %.1f km", walkingDistanceGoal / 1000)
+    }
+
+    private var formattedRunningDistance: String {
+        String(format: "%.2f km", runningDistanceToday / 1000)
+    }
+
+    private var formattedRunningGoal: String {
+        String(format: "Goal %.1f km", runningDistanceGoal / 1000)
+    }
     
 
     var body: some View {
@@ -37,39 +344,146 @@ struct WorkoutTabView: View {
                         accentColor: accentOverride ?? .accentColor
                     )
                     
-                    Text("Workout Supplement Tracking")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
+                    HStack {
+                        Text("Daily Summary")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        Button {
+                            // 
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 48)
+
+                    // Two rows of two cards each for summary
+                    VStack(spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ActivityProgressCard(
+                                title: "Calories Burned",
+                                iconName: "flame.fill",
+                                tint: accentOverride ?? .orange,
+                                currentValueText: "\(caloriesBurnedToday)",
+                                goalValueText: "Goal \(caloriesBurnGoal)",
+                                progress: Double(caloriesBurnedToday) / Double(caloriesBurnGoal)
+                            )
+                            .frame(maxWidth: .infinity)
+
+                            ActivityProgressCard(
+                                title: "Steps Taken",
+                                iconName: "figure.walk",
+                                tint: accentOverride ?? .green,
+                                currentValueText: "\(formattedStepsTaken)",
+                                goalValueText: "Goal \(formattedStepsGoal)",
+                                progress: stepsProgress
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        HStack(alignment: .top, spacing: 12) {
+                            ActivityProgressCard(
+                                title: "Walking Distance",
+                                iconName: "figure.walk",
+                                tint: accentOverride ?? .blue,
+                                currentValueText: formattedWalkingDistance,
+                                goalValueText: formattedWalkingGoal,
+                                progress: walkingProgress
+                            )
+                            .frame(maxWidth: .infinity)
+
+                            ActivityProgressCard(
+                                title: "Running Distance",
+                                iconName: "figure.run",
+                                tint: accentOverride ?? .pink,
+                                currentValueText: formattedRunningDistance,
+                                goalValueText: formattedRunningGoal,
+                                progress: runningProgress
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 18)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Synced with Apple Health.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 8)
                     
+                    HStack {
+                        Text("Workout Supplement Tracking")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Button(action: { showSupplementEditor = true }) {
+                            Label("Edit", systemImage: "pencil")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 48)
+
                     SupplementTrackingView(
                         accentColorOverride: .purple,
                         supplements: $supplements
                     )
+                    .sheet(isPresented: $showSupplementEditor) {
+                        ExerciseSupplementEditorSheet(
+                            supplements: $supplements,
+                            tint: .purple,
+                            onDone: { showSupplementEditor = false }
+                        )
+                    }
                     
-                    Text("Weights Tracking")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
+                    HStack {
+                        Text("Weights Tracking")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Button(action: { /* TODO: hook up edit handling */ }) {
+                            Label("Edit", systemImage: "pencil")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 48)
                     
                     // Weights tracking section
                     WeightsTrackingSection()
 
-                    Text("Sports Tracking")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
+                    // Coaching inquiry card
+                    CoachingInquiryCTA()
                         .padding(.top, 48)
-
-                    SportsTrackingSection()
 
                     ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                         .padding(.horizontal, 18)
@@ -483,8 +897,9 @@ private struct WeightsTrackingSection: View {
                                 .textInputAutocapitalization(.words)
                                 .padding(.vertical, 6)
                                 .padding(.horizontal, 8)
-                                .surfaceCard(8)
+                                .glassEffect(in: .rect(cornerRadius: 8.0))
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: 40)
                                 .onSubmit {
                                     part.isEditing = false
                                 }
@@ -493,6 +908,7 @@ private struct WeightsTrackingSection: View {
                                 .font(.headline)
                                 .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: 40)
                         }
 
                         Spacer()
@@ -519,26 +935,12 @@ private struct WeightsTrackingSection: View {
                                 }
                             }
                             .buttonStyle(.plain)
-
-                            if part.isEditing {
-                                Button {
-                                    deleteBodyPart(id: part.id)
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.callout)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                        .accessibilityLabel("Delete Body Part")
-                                }
-                                .buttonStyle(.plain)
-                            }
                         }
                     }
                     .padding(.horizontal, 18)
 
                     // Column labels
-                    HStack(spacing: 12) {
+                    HStack(spacing: 4) {
                         Text("Exercise")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -547,14 +949,14 @@ private struct WeightsTrackingSection: View {
                         Text("Weight")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .frame(width: 50, alignment: .center)
+                            .frame(width: 60, alignment: .center)
 
                         Text("Sets")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(width: 40, alignment: .center)
 
-                        Text("X")
+                        Text("x")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(width: 15, alignment: .center)
@@ -563,6 +965,10 @@ private struct WeightsTrackingSection: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(width: 40, alignment: .center)
+
+                        if part.isEditing {
+                            Color.clear.frame(width: 44)
+                        }
                     }
                     .padding(.horizontal, 18)
 
@@ -574,31 +980,31 @@ private struct WeightsTrackingSection: View {
                                     .textInputAutocapitalization(.words)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .surfaceCard(8)
+                                    .glassEffect(in: .rect(cornerRadius: 8.0))
                                     .frame(minWidth: 0, maxWidth: .infinity)
 
                                 TextField("0", text: $exercise.weight)
                                     .keyboardType(.decimalPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .surfaceCard(8)
+                                    .glassEffect(in: .rect(cornerRadius: 8.0))
                                     .frame(width: 60)
 
                                 TextField("0", text: $exercise.sets)
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .surfaceCard(8)
+                                    .glassEffect(in: .rect(cornerRadius: 8.0))
                                     .frame(width: 40)
 
-                                Text("X")
+                                Text("x")
                                     .frame(width: 15)
 
                                 TextField("0", text: $exercise.reps)
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .surfaceCard(8)
+                                    .glassEffect(in: .rect(cornerRadius: 8.0))
                                     .frame(width: 40)
 
                                 if part.isEditing {
@@ -640,22 +1046,6 @@ private struct WeightsTrackingSection: View {
                 }
                 .padding(.vertical, 8)
             }
-
-            // Add new body part
-            Button {
-                addBodyPart()
-            } label: {
-                Label("Add Body Part", systemImage: "plus")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .foregroundStyle(.white)
-                    .glassEffect(.regular.tint(.black), in: .rect(cornerRadius: 16.0))
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-            .padding(.horizontal, 18)
         }
         .padding(.top, 12)
         .glassEffect(in: .rect(cornerRadius: 16.0))
@@ -676,17 +1066,6 @@ private struct WeightsTrackingSection: View {
         guard let partIndex = bodyParts.firstIndex(where: { $0.id == bodyPartId }) else { return }
         guard let exerciseIndex = bodyParts[partIndex].exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
         bodyParts[partIndex].exercises.remove(at: exerciseIndex)
-    }
-
-    private func deleteBodyPart(id: UUID) {
-        guard let index = bodyParts.firstIndex(where: { $0.id == id }) else { return }
-        bodyParts.remove(at: index)
-    }
-
-    private func addBodyPart() {
-        bodyParts.append(
-            BodyPartWeights(name: "New Body Part", exercises: [])
-        )
     }
 }
 

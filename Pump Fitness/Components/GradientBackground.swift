@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum TabTheme {
-    case nutrition, workout, routine, lookup, other
+    case nutrition, workout, routine, lookup, sports, other
 }
 
 struct GradientBackground: View {
@@ -11,11 +11,13 @@ struct GradientBackground: View {
         case .nutrition:
             return [Color.purple.opacity(0.18), Color.blue.opacity(0.14), Color.indigo.opacity(0.18)]
         case .workout:
-            return [Color.green.opacity(0.18), Color.cyan.opacity(0.14), Color.blue.opacity(0.18)]
+            return [Color.indigo.opacity(0.18), Color.blue.opacity(0.14), Color.red.opacity(0.18)]
         case .routine:
-            return [Color.pink.opacity(0.18), Color.purple.opacity(0.14), Color.accentColor.opacity(0.18)]
+            return [Color.blue.opacity(0.18), Color.white.opacity(0.14), Color.red.opacity(0.18)]
         case .lookup:
-            return [Color.orange.opacity(0.18), Color.yellow.opacity(0.14), Color.red.opacity(0.18)]
+            return [Color.indigo.opacity(0.18), Color.red.opacity(0.14), Color.yellow.opacity(0.18)]
+        case .sports:
+            return [Color.purple.opacity(0.18), Color.white.opacity(0.14), Color.pink.opacity(0.18)]
         case .other:
             return [Color.gray.opacity(0.18), Color.gray.opacity(0.14), Color.gray.opacity(0.18)]
         }
@@ -36,6 +38,7 @@ struct GradientBackground: View {
         GradientBackground(theme: .workout)
         GradientBackground(theme: .routine)
         GradientBackground(theme: .lookup)
+        GradientBackground(theme: .sports)
         GradientBackground(theme: .other)
     }
 }

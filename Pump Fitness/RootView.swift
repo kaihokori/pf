@@ -64,6 +64,13 @@ private extension RootView {
                         NutritionTabView()
                     }
                     Tab(
+                        "Routine",
+                        systemImage: AppTab.routine.systemImage,
+                        value: AppTab.routine
+                    ) {
+                        RoutineTabView()
+                    }
+                    Tab(
                         "Workout",
                         systemImage: AppTab.workout.systemImage,
                         value: AppTab.workout
@@ -71,18 +78,19 @@ private extension RootView {
                         WorkoutTabView()
                     }
                     Tab(
-                        "Lookup",
-                        systemImage: AppTab.lookup.systemImage,
-                        value: AppTab.lookup
+                        "Sports",
+                        systemImage: AppTab.sports.systemImage,
+                        value: AppTab.sports
                     ) {
-                        LookupTabView()
+                        SportsTabView()
                     }
                     Tab(
-                        "Routine",
-                        systemImage: AppTab.routine.systemImage,
-                        value: AppTab.routine
+                        "Lookup",
+                        systemImage: AppTab.lookup.systemImage,
+                        value: AppTab.lookup,
+                        role: .search
                     ) {
-                        RoutineTabView()
+                        LookupTabView()
                     }
                 }
             }
@@ -113,27 +121,30 @@ extension RootView {
 
 private enum AppTab: String, CaseIterable, Identifiable {
     case nutrition
-    case workout
-    case lookup
     case routine
+    case workout
+    case sports
+    case lookup
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .nutrition: return "Nutrition"
-        case .workout: return "Workout"
-        case .lookup: return "Search"
         case .routine: return "Routine"
+        case .workout: return "Workout"
+        case .sports: return "Sports"
+        case .lookup: return "Search"
         }
     }
 
     var systemImage: String {
         switch self {
         case .nutrition: return "fork.knife.circle.fill"
-        case .workout: return "figure.strengthtraining.traditional"
-        case .lookup: return "menucard.fill"
         case .routine: return "calendar.and.person"
+        case .workout: return "figure.strengthtraining.traditional"
+        case .sports: return "sportscourt.fill"
+        case .lookup: return "magnifyingglass"
         }
     }
 }

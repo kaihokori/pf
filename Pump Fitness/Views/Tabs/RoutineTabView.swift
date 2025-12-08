@@ -564,7 +564,6 @@ private struct HabitTrackingSection: View {
                 .background(Color.clear)
             }
 
-            // Promotional CTA for upgrading to Pro (entire card tappable)
             Button(action: { /* TODO: present upgrade flow */ }) {
                 HStack(alignment: .center) {
                     Image(systemName: "sparkles")

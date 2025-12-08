@@ -66,6 +66,6 @@ public struct ShareProgressCTA: View {
             )
         }
         .buttonStyle(.plain)
-        .padding(.top, 32)
+        .padding(.top, 12)
     }
 }

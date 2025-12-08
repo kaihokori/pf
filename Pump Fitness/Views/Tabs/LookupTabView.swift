@@ -11,6 +11,8 @@ private struct FoodItem: Identifiable, Hashable {
 }
 
 struct LookupTabView: View {
+        // Focus state for search field
+        @FocusState private var searchFieldIsFocused: Bool
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -43,6 +45,7 @@ struct LookupTabView: View {
                             .disableAutocorrection(true)
                             .padding()
                             .glassEffect(in: .rect(cornerRadius: 8.0))
+                            .focused($searchFieldIsFocused)
                             .onSubmit {
                                 performSearch()
                             }
@@ -73,6 +76,7 @@ struct LookupTabView: View {
                     }
                     .padding(.horizontal)
                     .padding(.top, 48)
+                        // .onAppear removed: no automatic focus on search field
 
                     // Full-width search button on its own line (thinner, with icon)
                     Button(action: { performSearch() }) {
@@ -208,7 +212,7 @@ private extension LookupTabView {
     @ViewBuilder
     var backgroundView: some View {
         if themeManager.selectedTheme == .multiColour {
-            GradientBackground(theme: .routine)
+            GradientBackground(theme: .lookup)
         } else {
             themeManager.selectedTheme.background(for: colorScheme)
                 .ignoresSafeArea()

@@ -159,52 +159,6 @@ struct NutritionTabView: View {
                                 selectedMacroForLog = metric
                             }
                         )
-
-                        Text("Daily Summary")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 48)
-
-                        HStack(alignment: .top, spacing: 12) {
-                            ActivityProgressCard(
-                                title: "Calories Burned",
-                                iconName: "flame.fill",
-                                tint: accentOverride ?? .orange,
-                                currentValueText: "\(caloriesBurnedToday)",
-                                goalValueText: "Goal \(caloriesBurnGoal)",
-                                progress: Double(caloriesBurnedToday) / Double(caloriesBurnGoal)
-                            )
-                            .frame(maxWidth: .infinity)
-
-                            ActivityProgressCard(
-                                title: "Steps Taken",
-                                iconName: "figure.walk",
-                                tint: accentOverride ?? .green,
-                                currentValueText: "\(formattedStepsTaken)",
-                                goalValueText: "Goal \(formattedStepsGoal)",
-                                progress: stepsProgress
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 18)
-
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Synced with Apple Health.")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 8)
-
-                        
                         
                         HStack {
                             Text("Meal Tracking")
@@ -948,13 +902,18 @@ struct SupplementEditorSheet: View {
     // presets available in Quick Add (some may not be selected initially)
     private var presets: [SupplementItem] {
         [
-            // Vitamin D commonly represented in IU; approximate here as 50 μg
             SupplementItem(name: "Vitamin D", amountLabel: "50 μg"),
+            SupplementItem(name: "Vitamin B Complex", amountLabel: "50 mg"),
             SupplementItem(name: "Magnesium", amountLabel: "200 mg"),
+            SupplementItem(name: "Probiotics", amountLabel: "10 Billion CFU"),
             SupplementItem(name: "Fish Oil", amountLabel: "1000 mg"),
+            SupplementItem(name: "Ashwagandha", amountLabel: "500 mg"),
+            SupplementItem(name: "Melatonin", amountLabel: "3 mg"),
             SupplementItem(name: "Creatine", amountLabel: "5 g"),
-            // Multivitamin as a single scoop/serving
-            SupplementItem(name: "Multivitamin", amountLabel: "1 scoop")
+            SupplementItem(name: "Calcium", amountLabel: "500 mg"),
+            SupplementItem(name: "Iron", amountLabel: "18 mg"),
+            SupplementItem(name: "Zinc", amountLabel: "15 mg"),
+            SupplementItem(name: "Vitamin C", amountLabel: "1000 mg")
         ]
     }
 
@@ -1021,44 +980,46 @@ struct SupplementEditorSheet: View {
                     }
 
                     // Quick Add
-                    VStack(alignment: .leading, spacing: 12) {
-                        MacroEditorSectionHeader(title: "Quick Add")
-                        VStack(spacing: 12) {
-                            ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
-                                HStack(spacing: 14) {
-                                    Circle()
-                                        .fill(tint.opacity(0.15))
-                                        .frame(width: 44, height: 44)
-                                        .overlay(
-                                            Image(systemName: "chart.bar.fill")
-                                                .foregroundStyle(tint)
-                                        )
+                        if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                MacroEditorSectionHeader(title: "Quick Add")
+                                VStack(spacing: 12) {
+                                    ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
+                                        HStack(spacing: 14) {
+                                            Circle()
+                                                .fill(tint.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "chart.bar.fill")
+                                                        .foregroundStyle(tint)
+                                                )
 
-                                    VStack(alignment: .leading) {
-                                        Text(preset.name)
-                                            .font(.subheadline.weight(.semibold))
-                                        Text(preset.measurementDescription)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            VStack(alignment: .leading) {
+                                                Text(preset.name)
+                                                    .font(.subheadline.weight(.semibold))
+                                                Text(preset.measurementDescription)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+
+                                            Spacer()
+
+                                            Button(action: { togglePreset(preset) }) {
+                                                Image(systemName: "plus.circle.fill")
+                                                    .font(.system(size: 24, weight: .semibold))
+                                                    .foregroundStyle(tint)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(!canAddMore)
+                                            .opacity(!canAddMore ? 0.3 : 1)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 14)
+                                        .surfaceCard(18)
                                     }
-
-                                    Spacer()
-
-                                    Button(action: { togglePreset(preset) }) {
-                                        Image(systemName: "plus.circle.fill")
-                                            .font(.system(size: 24, weight: .semibold))
-                                            .foregroundStyle(tint)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(!canAddMore)
-                                    .opacity(!canAddMore ? 0.3 : 1)
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .surfaceCard(18)
                             }
                         }
-                    }
 
                     // Custom composer
                     VStack(alignment: .leading, spacing: 12) {
@@ -1127,11 +1088,19 @@ struct SupplementEditorSheet: View {
     }
 
     private func isPresetSelected(_ preset: SupplementItem) -> Bool {
-        working.contains { $0.name == preset.name }
+        // Only consider a preset selected if any working item matches its name
+        return working.contains { $0.name == preset.name }
     }
 
     private func removeSupplement(_ id: UUID) {
-        working.removeAll { $0.id == id }
+        // Find the supplement being removed
+        guard let item = working.first(where: { $0.id == id }) else { return }
+        // Always remove all with that name if it's a preset, so preset returns to Quick Add
+        if presets.contains(where: { $0.name == item.name }) {
+            working.removeAll { $0.name == item.name }
+        } else {
+            working.removeAll { $0.id == id }
+        }
     }
 
     private func addCustomSupplement() {
@@ -2083,9 +2052,6 @@ struct DailyMealLogSection: View {
     var weeklyEntries: [WeeklyProgressEntry] = []
     var weekStartsOnMonday: Bool = false
     private let meals: [MealLogEntry] = MealLogEntry.sampleEntries
-    private var totalCalories: Int {
-        meals.reduce(0) { $0 + $1.calorieValue }
-    }
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
 
@@ -2123,9 +2089,6 @@ struct DailyMealLogSection: View {
                                     Text(meal.title)
                                         .font(.subheadline.weight(.semibold))
                                     Spacer()
-                                    Text(meal.caloriesText)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
                                 }
                                 Text(meal.itemsSummary)
                                     .font(.footnote)
@@ -2256,9 +2219,15 @@ private struct MealScheduleSection: View {
                             Circle()
                                 .fill((checkedMeals.contains(cell.key) ? tint.opacity(0.18) : Color(.systemGray6)))
                                 .frame(width: 44, height: 44)
-                            Image(systemName: cell.icon)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(checkedMeals.contains(cell.key) ? tint : .primary)
+                            if checkedMeals.contains(cell.key) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(tint)
+                            } else {
+                                Image(systemName: cell.icon)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            }
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -2404,22 +2373,18 @@ extension View {
 private struct MealLogEntry: Identifiable {
     let id = UUID()
     let title: String
-    let calorieValue: Int
     let items: [String]
     let iconName: String
 
-    var caloriesText: String {
-        NumberFormatter.withComma.string(from: NSNumber(value: calorieValue)) ?? "\(calorieValue)"
-    }
     var itemsSummary: String {
         items.joined(separator: ", ")
     }
 
     static let sampleEntries: [MealLogEntry] = [
-        MealLogEntry(title: "Breakfast", calorieValue: 420, items: ["Overnight oats", "Blueberries", "Cold brew"], iconName: "sunrise.fill"),
-        MealLogEntry(title: "Lunch", calorieValue: 610, items: ["Chicken power bowl", "Roasted veggies"], iconName: "fork.knife"),
-        MealLogEntry(title: "Dinner", calorieValue: 780, items: ["Salmon + quinoa", "Side salad", "Sparkling water"], iconName: "moon.stars.fill"),
-        MealLogEntry(title: "Snack", calorieValue: 210, items: ["Greek yogurt", "Almonds"], iconName: "cup.and.saucer.fill")
+        MealLogEntry(title: "Breakfast", items: ["Overnight oats", "Blueberries", "Cold brew"], iconName: "sunrise.fill"),
+        MealLogEntry(title: "Lunch", items: ["Chicken power bowl", "Roasted veggies"], iconName: "fork.knife"),
+        MealLogEntry(title: "Dinner", items: ["Salmon + quinoa", "Side salad", "Sparkling water"], iconName: "moon.stars.fill"),
+        MealLogEntry(title: "Snack", items: ["Greek yogurt", "Almonds"], iconName: "cup.and.saucer.fill")
     ]
 }
 

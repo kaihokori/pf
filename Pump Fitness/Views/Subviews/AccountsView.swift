@@ -696,7 +696,7 @@ private struct AppearanceSection: View {
     private func themePreview(for theme: AppTheme) -> some View {
         HStack {
             ThickThemePreviewRow(theme: theme, colorScheme: colorScheme)
-            Text("Preview:")
+            Text("Preview")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -746,27 +746,27 @@ private struct AppearanceSection: View {
 
         var body: some View {
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(swatchBackground)
                     .overlay {
                         if isMultiColour {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(subtleRainbowGradient, lineWidth: 3)
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(subtleRainbowGradient, lineWidth: 1.5)
                         } else {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(theme.accent(for: colorScheme), lineWidth: 3)
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(theme.accent(for: colorScheme), lineWidth: 1.5)
                         }
                     }
-                    .frame(width: 64, height: 48)
+                    .frame(width: 64, height: 40)
                     .overlay {
                         if isMultiColour {
                             Circle()
                                 .fill(subtleRainbowGradient)
-                                .frame(width: 12, height: 12)
+                                .frame(width: 8, height: 8)
                         } else {
                             Circle()
                                 .fill(theme.accent(for: colorScheme))
-                                .frame(width: 12, height: 12)
+                                .frame(width: 8, height: 8)
                         }
                     }
             }

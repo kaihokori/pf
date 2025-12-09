@@ -138,6 +138,7 @@ private struct SleepDayColumn: View {
 }
 
 struct RoutineTabView: View {
+    @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -160,7 +161,8 @@ struct RoutineTabView: View {
                 backgroundView
                 ScrollView {
                     VStack(spacing: 0) {
-                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, profileImage: Image("profile"), onProfileTap: { showAccountsView = true })
+                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                            .environmentObject(account)
 
                         HStack {
                             Text("Daily Tasks")
@@ -420,7 +422,7 @@ struct RoutineTabView: View {
                 }
             }
             .navigationDestination(isPresented: $showAccountsView) {
-                AccountsView()
+                AccountsView(account: $account)
             }
         }
         .tint(accentOverride ?? .accentColor)

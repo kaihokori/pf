@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import SwiftData
 import Combine
 import PhotosUI
 import UIKit
 
 struct AccountsView: View {
-    @StateObject private var viewModel = AccountsViewModel()
+    @Binding var account: Account
+    @StateObject private var viewModel: AccountsViewModel
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -25,7 +28,36 @@ struct AccountsView: View {
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
 
+    init(account: Binding<Account>) {
+        _account = account
+        _viewModel = StateObject(wrappedValue: AccountsViewModel())
+    }
+
     var body: some View {
+        // Sync viewModel with account when view appears
+        let syncFromAccount = {
+            let acc = account
+            viewModel.draft.name = acc.name ?? ""
+            viewModel.draft.avatarImageData = acc.profileImage
+            viewModel.draft.avatarColor = AvatarColorOption(rawValue: Int(acc.profileAvatar ?? "0") ?? 0) ?? .emberPulse
+            viewModel.draft.appTheme = AppTheme(rawValue: acc.theme ?? "multiColour") ?? .multiColour
+            viewModel.draft.birthDate = acc.dateOfBirth ?? Date()
+            viewModel.draft.selectedGender = GenderOption(rawValue: acc.gender ?? "")
+            viewModel.draft.unitSystem = UnitSystem(rawValue: acc.unitSystem ?? "metric") ?? .metric
+            viewModel.draft.heightValue = acc.height != nil ? String(format: "%.0f", acc.height ?? 0) : ""
+            viewModel.draft.weightValue = acc.weight != nil ? String(format: "%.0f", acc.weight ?? 0) : ""
+            // Calculate imperial height if needed
+            if viewModel.draft.unitSystem == .imperial, let cm = Double(viewModel.draft.heightValue), cm > 0 {
+                let totalInches = cm / 2.54
+                let feet = Int(totalInches / 12)
+                let inches = totalInches - Double(feet * 12)
+                viewModel.draft.heightFeet = String(feet)
+                viewModel.draft.heightInches = String(format: "%.1f", inches)
+            } else {
+                viewModel.draft.heightFeet = ""
+                viewModel.draft.heightInches = ""
+            }
+        }
         NavigationStack {
             ZStack {
                 backgroundView
@@ -101,16 +133,9 @@ struct AccountsView: View {
                             OtherSection(
                                 notificationsAction: openNotificationSettings,
                                 healthSyncAction: openHealthSyncSettings,
-                                privacyAction: openPrivacyAndTerms
-                            )
-                        }
-
-                        SectionCard(title: "Account") {
-                            AccountSection(
+                                privacyAction: openPrivacyAndTerms,
                                 manageSubscriptionAction: openSubscriptionPortal,
-                                signOutAction: { showSignOutConfirmation = true },
-                                deleteAction: { showDeleteConfirmation = true },
-                                isDisabled: viewModel.isPerformingDestructiveAction
+                                retakeAssessmentAction: { /* TODO: Implement assessment flow */ }
                             )
                         }
 
@@ -136,7 +161,20 @@ struct AccountsView: View {
                             showValidationAlert = true
                         } else {
                             viewModel.saveChanges()
+                            // Sync viewModel.profile to account binding
+                            account.profileImage = viewModel.profile.avatarImageData
+                            account.profileAvatar = String(describing: viewModel.profile.avatarColor)
+                            account.name = viewModel.profile.name
+                            account.gender = viewModel.profile.selectedGender?.rawValue
+                            account.dateOfBirth = viewModel.profile.birthDate
+                            account.height = Double(viewModel.profile.heightValue) ?? account.height
+                            account.weight = Double(viewModel.profile.weightValue) ?? account.weight
+                            account.theme = viewModel.profile.appTheme.rawValue
+                            account.unitSystem = viewModel.profile.unitSystem.rawValue
+                            account.startWeekOn = viewModel.profile.weekStart.rawValue
                             themeManager.setTheme(viewModel.profile.appTheme)
+                            // Persist to SwiftData
+                            try? modelContext.save()
                             dismiss()
                         }
                     }
@@ -179,6 +217,7 @@ struct AccountsView: View {
             Button("Cancel", role: .cancel) {}
         }
         .onAppear {
+            syncFromAccount()
             viewModel.applyExternalTheme(themeManager.selectedTheme)
         }
         .onChange(of: themeManager.selectedTheme) { _, newTheme in
@@ -280,14 +319,22 @@ private extension AccountsView {
     }
 }
 
-private struct AccountSection: View {
+private struct OtherSection: View {
+    var notificationsAction: () -> Void
+    var healthSyncAction: () -> Void
+    var privacyAction: () -> Void
     var manageSubscriptionAction: () -> Void
-    var signOutAction: () -> Void
-    var deleteAction: () -> Void
-    var isDisabled: Bool
+    var retakeAssessmentAction: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
+            accountActionRow(
+                title: "Retake Assessment",
+                icon: "arrow.clockwise.circle",
+                role: nil,
+                action: retakeAssessmentAction
+            )
+            
             accountActionRow(
                 title: "Manage Subscription",
                 icon: "creditcard",
@@ -295,61 +342,6 @@ private struct AccountSection: View {
                 action: manageSubscriptionAction
             )
 
-            accountActionRow(
-                title: "Sign Out",
-                icon: "rectangle.portrait.and.arrow.right",
-                role: .destructive,
-                foregroundColor: .white,
-                action: signOutAction
-            )
-
-            accountActionRow(
-                title: "Delete Account",
-                icon: "trash",
-                role: .destructive,
-                action: deleteAction
-            )
-            .disabled(isDisabled)
-            .opacity(isDisabled ? 0.6 : 1)
-        }
-    }
-
-    @ViewBuilder
-    private func accountActionRow(
-        title: String,
-        icon: String,
-        role: ButtonRole?,
-        foregroundColor: Color = .primary,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(role: role, action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.headline)
-                    .frame(width: 24, alignment: .center)
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .opacity(0.5)
-            }
-            .foregroundStyle(role == .destructive ? Color.red : foregroundColor)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .surfaceCard(16)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct OtherSection: View {
-    var notificationsAction: () -> Void
-    var healthSyncAction: () -> Void
-    var privacyAction: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
             accountActionRow(
                 title: "Notifications",
                 icon: "bell.badge",
@@ -588,7 +580,7 @@ private struct HeightFields: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding()
-                .glassEffect(in: .rect(cornerRadius: 12.0))
+                .surfaceCard(12)
             }
         }
     }
@@ -675,21 +667,7 @@ private struct AppearanceSection: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Week starts on")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], alignment: .leading, spacing: 12) {
-                    ForEach(WeekStartOption.allCases) { option in
-                        SelectablePillComponent(
-                            label: option.displayName,
-                            isSelected: viewModel.draft.weekStart == option
-                        ) {
-                            viewModel.setWeekStart(option)
-                        }
-                    }
-                }
-            }
+            // Week starts on setting removed
         }
     }
 
@@ -1115,9 +1093,3 @@ enum AvatarColorOption: Int, CaseIterable, Identifiable {
         )
     }
 }
-
-#Preview {
-    AccountsView()
-        .environmentObject(ThemeManager())
-}
-

@@ -28,27 +28,8 @@ struct IgnoreView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                backgroundView
-                ScrollView {
-                    VStack(spacing: 0) {
-                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, profileImage: Image("profile"), onProfileTap: { showAccountsView = true })
-
-                    }
-                }
-                if showCalendar {
-                    Color.black.opacity(0.2)
-                        .ignoresSafeArea()
-                        .onTapGesture { showCalendar = false }
-                    CalendarComponent(selectedDate: $selectedDate, showCalendar: $showCalendar)
-                }
-            }
-            .navigationDestination(isPresented: $showAccountsView) {
-                AccountsView()
-            }
+            
         }
-        .tint(accentOverride ?? .accentColor)
-        .accentColor(accentOverride ?? .accentColor)
     }
 }
 

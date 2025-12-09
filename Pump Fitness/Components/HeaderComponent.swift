@@ -5,8 +5,8 @@ struct HeaderComponent: View {
     @Environment(\.colorScheme) private var colorScheme
     @Binding var showCalendar: Bool
     @Binding var selectedDate: Date
-    var profileImage: Image? = nil
     var onProfileTap: (() -> Void)? = nil
+    @EnvironmentObject private var account: Account
 
     var body: some View {
         HStack(alignment: .center) {
@@ -65,11 +65,23 @@ struct HeaderComponent: View {
     }
 
     private var profileAvatar: some View {
-        (profileImage ?? Image(systemName: "person.crop.circle"))
-            .resizable()
-            .aspectRatio(1, contentMode: .fill)
+        Circle()
+            .fill(account.avatarGradient)
             .frame(width: 58, height: 58)
-            .clipShape(Circle())
+            .overlay {
+                if let avatarImage = account.avatarImage {
+                    avatarImage
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 58, height: 58)
+                        .clipShape(Circle())
+                } else {
+                    Text(account.avatarInitials)
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                }
+            }
             .contentShape(Circle())
             .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
             .onTapGesture { onProfileTap?() }

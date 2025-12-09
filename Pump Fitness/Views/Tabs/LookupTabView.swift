@@ -11,8 +11,8 @@ private struct FoodItem: Identifiable, Hashable {
 }
 
 struct LookupTabView: View {
-        // Focus state for search field
-        @FocusState private var searchFieldIsFocused: Bool
+    @Binding var account: Account
+    @FocusState private var searchFieldIsFocused: Bool
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -35,7 +35,8 @@ struct LookupTabView: View {
             backgroundView
             ScrollView {
                 VStack(spacing: 12) {
-                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, profileImage: Image("profile"), onProfileTap: { showAccountsView = true })
+                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                        .environmentObject(account)
 
                     // Search bar + portion size + button (inline)
                     HStack(spacing: 8) {
@@ -200,7 +201,7 @@ struct LookupTabView: View {
             }
         }
         .navigationDestination(isPresented: $showAccountsView) {
-            AccountsView()
+            AccountsView(account: $account)
         }
         .sheet(isPresented: $showDetail) {
             if let selectedItem = selectedItem {
@@ -417,9 +418,4 @@ private struct NutritionDetailView: View {
             }
         }
     }
-}
-
-#Preview {
-    LookupTabView()
-        .environmentObject(ThemeManager())
 }

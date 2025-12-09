@@ -3,6 +3,7 @@ import PhotosUI
 import UIKit
 
 struct NutritionTabView: View {
+    @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -76,9 +77,9 @@ struct NutritionTabView: View {
                         HeaderComponent(
                             showCalendar: $showCalendar,
                             selectedDate: $selectedDate,
-                            profileImage: Image("profile"),
                             onProfileTap: { showAccountsView = true }
                         )
+                        .environmentObject(account)
                         
                         HStack {
                             Text("Calorie Tracking")
@@ -395,7 +396,7 @@ struct NutritionTabView: View {
                 }
             }
             .navigationDestination(isPresented: $showAccountsView) {
-                AccountsView()
+                AccountsView(account: $account)
             }
         }
         .tint(accentOverride ?? .accentColor)
@@ -2828,9 +2829,4 @@ public extension NumberFormatter {
         formatter.numberStyle = .decimal
         return formatter
     }()
-}
-
-#Preview {
-    NutritionTabView()
-        .environmentObject(ThemeManager())
 }

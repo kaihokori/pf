@@ -6,9 +6,11 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RootView: View {
     @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedTab: AppTab = .nutrition
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
@@ -22,6 +24,47 @@ struct RootView: View {
                     hasCompletedOnboarding = true
                 }
             }
+        }
+        .task {
+            ensureAccountExists()
+        }
+    }
+}
+
+private extension RootView {
+    func ensureAccountExists() {
+        do {
+            let request = FetchDescriptor<Account>()
+            let existing = try modelContext.fetch(request)
+            if existing.isEmpty {
+                let defaultAccount = Account(
+                    profileImage: nil,
+                    profileAvatar: "systemBlue",
+                    name: "You",
+                    gender: "",
+                    dateOfBirth: nil,
+                    height: 170,
+                    weight: 70,
+                    theme: "default",
+                    unitSystem: "metric",
+                    startWeekOn: "monday"
+                )
+                modelContext.insert(defaultAccount)
+                try modelContext.save()
+            }
+        } catch {
+            print("Failed to ensure Account exists: \(error)")
+        }
+    }
+
+    func fetchAccount() -> Account? {
+        do {
+            let request = FetchDescriptor<Account>()
+            let accounts = try modelContext.fetch(request)
+            return accounts.first
+        } catch {
+            print("Failed to fetch Account: \(error)")
+            return nil
         }
     }
 }
@@ -55,43 +98,47 @@ private extension RootView {
             backgroundView
 
             NavigationStack {
-                TabView(selection: $selectedTab) {
-                    Tab(
-                        "Nutrition",
-                        systemImage: AppTab.nutrition.systemImage,
-                        value: AppTab.nutrition
-                    ) {
-                        NutritionTabView()
+                if let account = fetchAccount() {
+                    TabView(selection: $selectedTab) {
+                        Tab(
+                            "Nutrition",
+                            systemImage: AppTab.nutrition.systemImage,
+                            value: AppTab.nutrition
+                        ) {
+                            NutritionTabView(account: .constant(account))
+                        }
+                        Tab(
+                            "Routine",
+                            systemImage: AppTab.routine.systemImage,
+                            value: AppTab.routine
+                        ) {
+                            RoutineTabView(account: .constant(account))
+                        }
+                        Tab(
+                            "Workout",
+                            systemImage: AppTab.workout.systemImage,
+                            value: AppTab.workout
+                        ) {
+                            WorkoutTabView(account: .constant(account))
+                        }
+                        Tab(
+                            "Sports",
+                            systemImage: AppTab.sports.systemImage,
+                            value: AppTab.sports
+                        ) {
+                            SportsTabView(account: .constant(account))
+                        }
+                        Tab(
+                            "Lookup",
+                            systemImage: AppTab.lookup.systemImage,
+                            value: AppTab.lookup,
+                            role: .search
+                        ) {
+                            LookupTabView(account: .constant(account))
+                        }
                     }
-                    Tab(
-                        "Routine",
-                        systemImage: AppTab.routine.systemImage,
-                        value: AppTab.routine
-                    ) {
-                        RoutineTabView()
-                    }
-                    Tab(
-                        "Workout",
-                        systemImage: AppTab.workout.systemImage,
-                        value: AppTab.workout
-                    ) {
-                        WorkoutTabView()
-                    }
-                    Tab(
-                        "Sports",
-                        systemImage: AppTab.sports.systemImage,
-                        value: AppTab.sports
-                    ) {
-                        SportsTabView()
-                    }
-                    Tab(
-                        "Lookup",
-                        systemImage: AppTab.lookup.systemImage,
-                        value: AppTab.lookup,
-                        role: .search
-                    ) {
-                        LookupTabView()
-                    }
+                } else {
+                    ProgressView("Loading account...")
                 }
             }
         }

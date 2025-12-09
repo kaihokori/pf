@@ -19,7 +19,7 @@ struct GradientBackground: View {
         case .sports:
             return [Color.purple.opacity(0.18), Color.white.opacity(0.14), Color.pink.opacity(0.18)]
         case .other:
-            return [Color.gray.opacity(0.18), Color.gray.opacity(0.14), Color.gray.opacity(0.18)]
+            return [Color.purple.opacity(0.18), Color.blue.opacity(0.14), Color.indigo.opacity(0.18)]
         }
     }
     var body: some View {

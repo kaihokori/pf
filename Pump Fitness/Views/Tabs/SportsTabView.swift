@@ -10,6 +10,7 @@ import SwiftUI
 import Charts
 
 struct SportsTabView: View {
+    @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -204,9 +205,9 @@ struct SportsTabView: View {
                             HeaderComponent(
                                 showCalendar: $showCalendar,
                                 selectedDate: $selectedDate,
-                                profileImage: Image("profile"),
                                 onProfileTap: { showAccountsView = true }
                             )
+                            .environmentObject(account)
 
                             HStack {
                                 Text("Sports Tracking")
@@ -330,7 +331,7 @@ struct SportsTabView: View {
                 }
             }
             .navigationDestination(isPresented: $showAccountsView) {
-                AccountsView()
+                AccountsView(account: $account)
             }
         }
         .onAppear {
@@ -470,8 +471,4 @@ private extension DateFormatter {
         df.dateFormat = "EEE" // weekday short (Mon, Tue)
         return df
     }()
-}
-
-#Preview {
-    SportsTabView()
 }

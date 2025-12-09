@@ -257,6 +257,7 @@ struct ExerciseSupplementEditorSheet: View {
 }
 
 struct WorkoutTabView: View {
+    @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -324,7 +325,8 @@ struct WorkoutTabView: View {
             backgroundView
             ScrollView {
                 VStack(spacing: 0) {
-                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, profileImage: Image("profile"), onProfileTap: { showAccountsView = true })
+                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                        .environmentObject(account)
 
                     Text("Schedule Tracking")
                         .font(.title3)
@@ -499,7 +501,7 @@ struct WorkoutTabView: View {
             }
         }
         .navigationDestination(isPresented: $showAccountsView) {
-            AccountsView()
+            AccountsView(account: $account)
         }
         .navigationTitle("Coaching")
         .navigationBarTitleDisplayMode(.inline)
@@ -1075,9 +1077,4 @@ private struct WeightsTrackingSection: View {
         guard let exerciseIndex = bodyParts[partIndex].exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
         bodyParts[partIndex].exercises.remove(at: exerciseIndex)
     }
-}
-
-#Preview {
-    WorkoutTabView()
-        .environmentObject(ThemeManager())
 }

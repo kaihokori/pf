@@ -18,10 +18,13 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedTab: AppTab = .nutrition
+    @State private var selectedDate: Date = Date()
+    @State private var consumedCalories: Int = 0
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
     @State private var isCheckingOnboarding: Bool = false
+    private let dayFirestoreService = DayFirestoreService()
     private let accountFirestoreService = AccountFirestoreService()
 
     var body: some View {
@@ -59,6 +62,12 @@ struct RootView: View {
                 if let _ = user {
                     isCheckingOnboarding = true
                     checkOnboardingStatus()
+                    // Upload any days that were created locally while the user was unauthenticated.
+                    dayFirestoreService.uploadPendingDays(in: modelContext) { success in
+                        if !success {
+                            print("DayFirestoreService: some pending days failed to upload; they remain queued.")
+                        }
+                    }
                 } else {
                     hasCompletedOnboarding = false
                 }
@@ -69,6 +78,53 @@ struct RootView: View {
             printSignedInUserDetails()
             // Ensure onboarding status is evaluated on startup
             checkOnboardingStatus()
+            // Ensure today's Day exists locally and attempt to sync to Firestore
+            print("RootView: fetching today's Day for selectedDate=\(selectedDate)")
+            dayFirestoreService.fetchDay(for: selectedDate, in: modelContext) { day in
+                if let d = day {
+                    print("RootView: fetched/created local Day for date=\(d.date)")
+                    DispatchQueue.main.async {
+                        consumedCalories = d.caloriesConsumed
+                    }
+                } else {
+                    print("RootView: failed to fetch/create local Day for selectedDate=\(selectedDate)")
+                }
+            }
+        }
+        .onChange(of: selectedDate) { _, newDate in
+            print("RootView: selectedDate changed to \(newDate), fetching Day from Firestore...")
+            dayFirestoreService.fetchDay(for: newDate, in: modelContext) { day in
+                if let d = day {
+                    print("RootView: fetched/created local Day for date=\(d.date)")
+                    DispatchQueue.main.async {
+                        consumedCalories = d.caloriesConsumed
+                    }
+                } else {
+                    print("RootView: failed to fetch/create local Day for selectedDate=\(newDate)")
+                }
+            }
+        }
+        .onChange(of: consumedCalories) { _, newValue in
+            // Persist the updated calories to the local SwiftData Day and attempt to sync to Firestore
+            Task {
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                day.caloriesConsumed = newValue
+                do {
+                    try modelContext.save()
+                    print("RootView: saved caloriesConsumed=\(newValue) for date=\(selectedDate) to local store")
+                } catch {
+                    print("RootView: failed to save local Day: \(error)")
+                }
+
+                // Attempt to upload to Firestore (no-op if user not signed in; service handles legacy paths)
+                dayFirestoreService.saveDay(day) { success in
+                    if success {
+                        print("RootView: successfully synced caloriesConsumed to Firestore for date=\(selectedDate)")
+                    } else {
+                        print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
+                    }
+                }
+            }
         }
     }
         private var isSignedIn: Bool {
@@ -228,28 +284,28 @@ private extension RootView {
                             systemImage: AppTab.nutrition.systemImage,
                             value: AppTab.nutrition
                         ) {
-                            NutritionTabView(account: .constant(account))
+                            NutritionTabView(account: .constant(account), consumedCalories: $consumedCalories, selectedDate: $selectedDate)
                         }
                         Tab(
                             "Routine",
                             systemImage: AppTab.routine.systemImage,
                             value: AppTab.routine
                         ) {
-                            RoutineTabView(account: .constant(account))
+                            RoutineTabView(account: .constant(account), selectedDate: $selectedDate)
                         }
                         Tab(
                             "Workout",
                             systemImage: AppTab.workout.systemImage,
                             value: AppTab.workout
                         ) {
-                            WorkoutTabView(account: .constant(account))
+                            WorkoutTabView(account: .constant(account), selectedDate: $selectedDate)
                         }
                         Tab(
                             "Sports",
                             systemImage: AppTab.sports.systemImage,
                             value: AppTab.sports
                         ) {
-                            SportsTabView(account: .constant(account))
+                            SportsTabView(account: .constant(account), selectedDate: $selectedDate)
                         }
                         Tab(
                             "Lookup",
@@ -257,7 +313,7 @@ private extension RootView {
                             value: AppTab.lookup,
                             role: .search
                         ) {
-                            LookupTabView(account: .constant(account))
+                            LookupTabView(account: .constant(account), selectedDate: $selectedDate)
                         }
                     }
                 }

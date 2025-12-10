@@ -261,7 +261,7 @@ struct WorkoutTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
-    @State private var selectedDate = Date()
+    @Binding var selectedDate: Date
     @State private var showAccountsView = false
     @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.checkIn, .checkIn, .notLogged, .checkIn, .rest, .notLogged, .notLogged]
     private let coachingCurrentDayIndex = 5

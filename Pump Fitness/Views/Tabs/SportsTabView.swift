@@ -14,7 +14,7 @@ struct SportsTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
-    @State private var selectedDate = Date()
+    @Binding var selectedDate: Date
     @State private var showAccountsView = false
     // Track expanded state for each sport
     @State private var expandedSports: [Bool] = []

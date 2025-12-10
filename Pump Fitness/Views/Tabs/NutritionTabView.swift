@@ -4,10 +4,11 @@ import UIKit
 
 struct NutritionTabView: View {
     @Binding var account: Account
+    @Binding var consumedCalories: Int
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
-    @State private var selectedDate = Date()
+    @Binding var selectedDate: Date
     @State private var showAccountsView = false
     @State private var showAddSheet = false
     @State private var showCalorieGoalSheet = false
@@ -16,7 +17,6 @@ struct NutritionTabView: View {
     @State private var showMacroEditorSheet = false
     @State private var macroMetrics: [MacroMetric] = MacroPreset.defaultActiveMetrics
     @State private var selectedMacroForLog: MacroMetric?
-    @State private var consumedCalories: Int = 3100
     @State private var showConsumedSheet = false
     @State private var showProtocolSheet = false
     @State private var showSupplementEditor = false

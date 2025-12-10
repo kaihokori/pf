@@ -1,11 +1,19 @@
 import SwiftUI
 import Combine
+import FirebaseAuth
 
 struct OnboardingView: View {
+    var initialName: String? = nil
     var onComplete: (() -> Void)? = nil
-    @StateObject private var viewModel = OnboardingViewModel()
+    @StateObject private var viewModel: OnboardingViewModel
     @Environment(\.dismiss) private var dismiss
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+
+    init(initialName: String? = nil, onComplete: (() -> Void)? = nil) {
+        self.initialName = initialName
+        self.onComplete = onComplete
+        _viewModel = StateObject(wrappedValue: OnboardingViewModel(initialName: initialName))
+    }
 
     var body: some View {
         NavigationStack {
@@ -90,9 +98,33 @@ struct OnboardingView: View {
     private func handleContinue() {
         if viewModel.canContinue {
             if viewModel.isLastStep {
-                hasCompletedOnboarding = true
-                onComplete?()
-                dismiss()
+                // Build Account from collected onboarding fields and save to Firestore
+                let uid = Auth.auth().currentUser?.uid
+                let account = Account(
+                    id: uid,
+                    profileAvatar: nil,
+                    name: viewModel.preferredName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    gender: viewModel.selectedGender?.rawValue,
+                    dateOfBirth: viewModel.birthDate,
+                    height: heightInCentimeters(),
+                    weight: weightInKilograms(),
+                    theme: nil,
+                    unitSystem: viewModel.unitSystem.rawValue,
+                    startWeekOn: nil
+                )
+
+                AccountFirestoreService().saveAccount(account) { success in
+                    DispatchQueue.main.async {
+                        if success {
+                            hasCompletedOnboarding = true
+                            onComplete?()
+                            dismiss()
+                        } else {
+                            alertMessage = "Failed to save account. Please try again."
+                            showAlert = true
+                        }
+                    }
+                }
             } else {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     _ = viewModel.advance()
@@ -666,8 +698,12 @@ public struct SectionTitle: View {
 
 final class OnboardingViewModel: ObservableObject {
     @Published private(set) var currentStep: OnboardingStep = .aboutYou
-    @Published var preferredName: String = ""
+    @Published var preferredName: String
     @Published var birthDate: Date = PumpDateRange.birthdate.upperBound
+
+    init(initialName: String? = nil) {
+        self.preferredName = initialName ?? ""
+    }
 
     @Published var selectedGender: GenderOption?
     @Published var unitSystem: UnitSystem = .metric

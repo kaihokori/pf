@@ -1,6 +1,10 @@
 import SwiftUI
+import FirebaseAuth
+import AuthenticationServices
+import GoogleSignIn
 
 struct WelcomeView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
     var startOnboarding: () -> Void
     @Environment(\.colorScheme) private var colorScheme
 
@@ -32,7 +36,38 @@ struct WelcomeView: View {
                 }
                 Spacer()
                 VStack(spacing: 12) {
-                    Button(action: {}) {
+                    SignInWithAppleButton(.signIn) { request in
+                        request.requestedScopes = [.fullName, .email]
+                    } onCompletion: { result in
+                        switch result {
+                        case .success(let authResults):
+                            if let credential = authResults.credential as? ASAuthorizationAppleIDCredential {
+                                authViewModel.signInWithApple(credential: credential) { success in
+                                    if success {
+                                        startOnboarding()
+                                    }
+                                }
+                            }
+                        case .failure(let error):
+                            print(error.localizedDescription)
+                        }
+                    }
+                    .frame(height: 50)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+
+                    Button(action: {
+                        if let windowScene = UIApplication.shared.connectedScenes
+                            .compactMap({ $0 as? UIWindowScene })
+                            .first,
+                           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+                            authViewModel.signInWithGoogle(presenting: rootVC) { success in
+                                if success {
+                                    startOnboarding()
+                                }
+                            }
+                        }
+                    }) {
                         HStack(spacing: 12) {
                             Text("Continue with Google")
                                 .font(.headline)
@@ -51,36 +86,20 @@ struct WelcomeView: View {
 
                     Button(action: {}) {
                         HStack(spacing: 12) {
-                            Text("Continue with Facebook")
+                            Text("Continue with Email")
                                 .font(.headline)
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(Color(red: 59/255, green: 89/255, blue: 152/255))
+                        .background(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
                         .cornerRadius(12)
                         .padding(.horizontal)
                     }
-
-                    Button(action: startOnboarding) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "applelogo")
-                                .font(.headline)
-                            Text("Continue with Apple")
-                                .font(.headline)
-                        }
-                        .foregroundStyle(useDarkButtonBackground ? Color.white : Color.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(useDarkButtonBackground ? Color.black : Color.white)
-                        .cornerRadius(12)
-                        .padding(.horizontal)
-                    }
-
-                    Text("or sign in with email")
-                        .font(.footnote)
-                        .foregroundColor(.primary.opacity(0.8))
-                        .underline()
                 }
                 Spacer()
                 Link("Privacy Policy", destination: URL(string: "https://pumpfitness.app/privacy")!)

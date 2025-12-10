@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import FirebaseCore
 
 @main
 struct Pump_FitnessApp: App {
@@ -14,6 +15,8 @@ struct Pump_FitnessApp: App {
     private let modelContainer: ModelContainer
 
     init() {
+        FirebaseApp.configure()
+        
         UserDefaults.standard.register(defaults: [
             ThemeManager.defaultsKey: AppTheme.multiColour.rawValue
         ])

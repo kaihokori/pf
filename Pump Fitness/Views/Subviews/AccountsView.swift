@@ -6,10 +6,22 @@
 //
 
 import SwiftUI
+import FirebaseFirestore
 import SwiftData
 import Combine
 import PhotosUI
 import UIKit
+import FirebaseAuth
+import HealthKit
+
+enum AlertType: String, CaseIterable, Identifiable {
+    case mealTracking = "Meal Tracking"
+    case fastingTimer = "Fasting Timer"
+    case dailyTasks = "Daily Tasks"
+    case activityTimers = "Activity Timers"
+    case dailyCheckIn = "Daily Check-In"
+    var id: String { rawValue }
+}
 
 struct AccountsView: View {
     @Binding var account: Account
@@ -27,6 +39,10 @@ struct AccountsView: View {
     @State private var showCameraUnavailableAlert = false
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
+    @State private var showHealthKitStatusAlert = false
+    @State private var healthKitStatusMessage = ""
+    @State private var showAlertsSheet = false
+    @State private var selectedAlerts: Set<AlertType> = []
 
     init(account: Binding<Account>) {
         _account = account
@@ -70,7 +86,7 @@ struct AccountsView: View {
                                 selectCameraAction: presentCameraPicker,
                                 clearImageAction: { viewModel.setAvatarImageData(nil) }
                             )
-
+                            
                             TextFieldWithLabel(
                                 "Preferred name",
                                 text: Binding(
@@ -79,12 +95,12 @@ struct AccountsView: View {
                                 ),
                                 prompt: Text("e.g. Alex")
                             )
-
+                            
                             GenderSelector(selectedGender: Binding(
                                 get: { viewModel.draft.selectedGender },
                                 set: { viewModel.draft.selectedGender = $0 }
                             ))
-
+                            
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Date of birth")
                                     .font(.footnote)
@@ -99,7 +115,7 @@ struct AccountsView: View {
                                 .surfaceCard(12)
                             }
                         }
-
+                        
                         SectionCard(title: "Measurements") {
                             HeightFields(unitSystem: viewModel.draft.unitSystem,
                                          heightValue: Binding(
@@ -114,7 +130,7 @@ struct AccountsView: View {
                                             get: { viewModel.draft.heightInches },
                                             set: { viewModel.draft.heightInches = $0 }
                                          ))
-
+                            
                             LabeledNumericField(
                                 label: "Weight",
                                 value: Binding(
@@ -124,21 +140,35 @@ struct AccountsView: View {
                                 unitLabel: viewModel.draft.unitSystem.weightUnit
                             )
                         }
-
+                        
                         SectionCard(title: "Appearance") {
                             AppearanceSection(viewModel: viewModel)
                         }
-
-                        SectionCard(title: "Other") {
-                            OtherSection(
-                                notificationsAction: openNotificationSettings,
-                                healthSyncAction: openHealthSyncSettings,
+                        
+                        SectionCard(title: "Extras") {
+                            ExtrasSection(
+                                retakeAssessmentAction: { /* TODO: Implement assessment flow */ },
+                                alertsAction: { showAlertsSheet = true },
                                 privacyAction: openPrivacyAndTerms,
-                                manageSubscriptionAction: openSubscriptionPortal,
-                                retakeAssessmentAction: { /* TODO: Implement assessment flow */ }
                             )
                         }
-
+                        
+                        // Permissions
+                        SectionCard(title: "Permissions") {
+                            PermissionsSection(
+                                notificationsAction: openNotificationSettings,
+                                healthSyncAction: openHealthSyncSettings,
+                            )
+                        }
+                        
+                        SectionCard(title: "Account") {
+                            AccountSection(
+                                manageSubscriptionAction: openSubscriptionPortal,
+                                signOutAction: { showSignOutConfirmation = true },
+                                deleteAccountAction: { showDeleteConfirmation = true }
+                            )
+                        }
+                        
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 32)
@@ -196,25 +226,25 @@ struct AccountsView: View {
                 Text(validationMessage)
             }
         }
-        .confirmationDialog(
-            "Sign out of Pump Fitness?",
-            isPresented: $showSignOutConfirmation,
-            titleVisibility: .visible
-        ) {
+        .alert("Sign out of Pump Fitness?", isPresented: $showSignOutConfirmation) {
             Button("Sign Out", role: .destructive) {
                 Task { await viewModel.signOut() }
             }
             Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to sign out?")
         }
-        .confirmationDialog(
-            "Delete your Pump Fitness account?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
+        .alert("Delete your Pump Fitness account?", isPresented: $showDeleteConfirmation) {
             Button("Delete Account", role: .destructive) {
-                Task { await viewModel.deleteAccount() }
+                Task {
+                    await viewModel.deleteAccount()
+                    await viewModel.signOut()
+                    dismiss()
+                }
             }
             Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone. Are you sure?")
         }
         .onAppear {
             syncFromAccount()
@@ -237,6 +267,11 @@ struct AccountsView: View {
         } message: {
             Text("This device does not have a camera available.")
         }
+        .alert("Apple Health", isPresented: $showHealthKitStatusAlert) {
+            Button("OK", role: .cancel) { showHealthKitStatusAlert = false }
+        } message: {
+            Text(healthKitStatusMessage)
+        }
         .onChange(of: selectedPhotoPickerItem) { _, newItem in
             guard let newItem else { return }
             Task {
@@ -248,6 +283,61 @@ struct AccountsView: View {
                 await MainActor.run {
                     selectedPhotoPickerItem = nil
                 }
+            }
+        }
+        .sheet(isPresented: $showAlertsSheet) {
+            AlertSheetView(selectedAlerts: $selectedAlerts)
+        }
+    }
+    
+    struct AlertSheetView: View {
+        @Binding var selectedAlerts: Set<AlertType>
+        let pillColumns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
+        @Environment(\.dismiss) private var dismiss
+        var body: some View {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Select which types of alerts you would like to receive.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(AlertType.allCases) { alert in
+                                HStack {
+                                    Text(alert.rawValue)
+                                        .font(.headline.weight(.semibold))
+                                        .multilineTextAlignment(.leading)
+                                    Spacer()
+                                    Toggle(isOn: Binding(
+                                        get: { selectedAlerts.contains(alert) },
+                                        set: { isOn in
+                                            if isOn {
+                                                selectedAlerts.insert(alert)
+                                            } else {
+                                                selectedAlerts.remove(alert)
+                                            }
+                                        }
+                                    )) {
+                                        EmptyView()
+                                    }
+                                    .labelsHidden()
+                                }
+                            }
+                        }
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+                .navigationTitle("Alert Preferences")
+                .navigationBarTitleDisplayMode(.inline)
+                .presentationDetents([.height(300), .medium])
             }
         }
     }
@@ -265,11 +355,54 @@ struct AccountsView: View {
     }
 
     private func openNotificationSettings() {
-        // TODO: Present notification preferences once notification center is wired
+        // Request notification permissions if not already granted, else open app settings
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    // Optionally handle result
+                }
+            case .denied, .authorized, .provisional, .ephemeral:
+                DispatchQueue.main.async {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            @unknown default:
+                break
+            }
+        }
     }
 
     private func openHealthSyncSettings() {
-        // TODO: Present HealthKit sync configuration when HealthKit flow is ready
+        let healthStore = HKHealthStore()
+        guard let stepType = HKObjectType.quantityType(forIdentifier: .stepCount),
+              let distanceType = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) else { return }
+        let typesToRead: Set<HKSampleType> = [stepType, distanceType]
+
+        func showStatus(_ message: String) {
+            healthKitStatusMessage = message
+            showHealthKitStatusAlert = true
+        }
+
+        let stepStatus = healthStore.authorizationStatus(for: stepType)
+        let distanceStatus = healthStore.authorizationStatus(for: distanceType)
+
+        if stepStatus != .notDetermined && distanceStatus != .notDetermined {
+            showStatus("To modify permissions, please update them in the Health app settings.")
+            return
+        }
+
+        healthStore.requestAuthorization(toShare: [], read: typesToRead) { success, error in
+            DispatchQueue.main.async {
+                if success {
+                    showStatus("HealthKit access granted!")
+                } else {
+                    showStatus("HealthKit access failed or was denied.")
+                }
+            }
+        }
     }
 
     private func openPrivacyAndTerms() {
@@ -319,12 +452,145 @@ private extension AccountsView {
     }
 }
 
-private struct OtherSection: View {
+// Shared action row for account actions
+@ViewBuilder
+private func accountActionRow(
+    title: String,
+    icon: String,
+    role: ButtonRole?,
+    foregroundColor: Color = .primary,
+    action: @escaping () -> Void
+) -> some View {
+    Button(role: role, action: action) {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.headline)
+                .frame(width: 24, alignment: .center)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .foregroundColor(foregroundColor)
+    }
+}
+
+private struct AccountSection: View {
+    var manageSubscriptionAction: () -> Void
+    var signOutAction: () -> Void
+    var deleteAccountAction: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            accountActionRow(
+                title: "Manage Subscription",
+                icon: "creditcard",
+                role: nil,
+                action: manageSubscriptionAction
+            )
+
+            accountActionRow(
+                title: "Sign Out",
+                icon: "arrow.right.square",
+                role: nil,
+                action: signOutAction
+            )
+
+            accountActionRow(
+                title: "Delete Account",
+                icon: "trash",
+                role: .destructive,
+                foregroundColor: .red,
+                action: deleteAccountAction
+            )
+        }
+    }
+
+    // Shared action row for account actions (copied from ExtrasSection for consistency)
+    @ViewBuilder
+    private func accountActionRow(
+        title: String,
+        icon: String,
+        role: ButtonRole?,
+        foregroundColor: Color = .primary,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: role, action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.headline)
+                    .frame(width: 24, alignment: .center)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .opacity(0.5)
+            }
+            .foregroundStyle(role == .destructive ? Color.red : foregroundColor)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .surfaceCard(16)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct PermissionsSection: View {
     var notificationsAction: () -> Void
     var healthSyncAction: () -> Void
-    var privacyAction: () -> Void
-    var manageSubscriptionAction: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            accountActionRow(
+                title: "Notifications",
+                icon: "bell.badge",
+                role: nil,
+                action: notificationsAction
+            )
+
+            accountActionRow(
+                title: "Apple Health",
+                icon: "heart",
+                role: nil,
+                action: healthSyncAction
+            )
+        }
+    }
+
+    // Shared action row for account actions (copied from ExtrasSection for consistency)
+    @ViewBuilder
+    private func accountActionRow(
+        title: String,
+        icon: String,
+        role: ButtonRole?,
+        foregroundColor: Color = .primary,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: role, action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.headline)
+                    .frame(width: 24, alignment: .center)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .opacity(0.5)
+            }
+            .foregroundStyle(role == .destructive ? Color.red : foregroundColor)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .surfaceCard(16)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ExtrasSection: View {
     var retakeAssessmentAction: () -> Void
+    var alertsAction: () -> Void = {}
+    var privacyAction: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -334,26 +600,12 @@ private struct OtherSection: View {
                 role: nil,
                 action: retakeAssessmentAction
             )
-            
-            accountActionRow(
-                title: "Manage Subscription",
-                icon: "creditcard",
-                role: nil,
-                action: manageSubscriptionAction
-            )
 
             accountActionRow(
-                title: "Notifications",
-                icon: "bell.badge",
+                title: "Alerts",
+                icon: "bell.circle",
                 role: nil,
-                action: notificationsAction
-            )
-
-            accountActionRow(
-                title: "Apps and Devices",
-                icon: "dot.radiowaves.left.and.right",
-                role: nil,
-                action: healthSyncAction
+                action: alertsAction
             )
 
             accountActionRow(
@@ -365,6 +617,7 @@ private struct OtherSection: View {
         }
     }
 
+    // Shared action row for account actions
     @ViewBuilder
     private func accountActionRow(
         title: String,
@@ -762,6 +1015,7 @@ final class AccountsViewModel: ObservableObject {
 
     private let defaults: UserDefaults
     private var defaultsObserver: AnyCancellable?
+    private let firestoreService = AccountFirestoreService()
 
     init(userDefaults: UserDefaults = .standard) {
         self.defaults = userDefaults
@@ -830,7 +1084,36 @@ final class AccountsViewModel: ObservableObject {
     func saveChanges() {
         profile = draft
         persistWeekStartPreference(draft.weekStart)
-        // TODO: Persist to Firebase/Core Data when available
+        // Use Firebase Auth UID as the Firestore document ID
+        guard let user = Auth.auth().currentUser else {
+            print("No authenticated user; cannot save account to Firestore.")
+            return
+        }
+        let uid = user.uid
+        let account = Account(
+            id: uid,
+            profileImage: draft.avatarImageData,
+            profileAvatar: String(describing: draft.avatarColor.rawValue),
+            name: draft.name,
+            gender: draft.selectedGender?.rawValue,
+            dateOfBirth: draft.birthDate,
+            height: Double(draft.heightValue),
+            weight: Double(draft.weightValue),
+            theme: draft.appTheme.rawValue,
+            unitSystem: draft.unitSystem.rawValue,
+            startWeekOn: draft.weekStart.rawValue
+        )
+        firestoreService.saveAccount(account) { success in
+            if !success {
+                print("Failed to save account to Firestore")
+            }
+        }
+    }
+
+    func fetchAccountFromFirestore(id: String, completion: @escaping (Account?) -> Void) {
+        firestoreService.fetchAccount(withId: id) { account in
+            completion(account)
+        }
     }
 
     func validationErrorMessage() -> String? {
@@ -991,14 +1274,43 @@ final class AccountsViewModel: ObservableObject {
     @MainActor
     func signOut() async {
         await performDestructiveAction {
-            // TODO: Invoke Firebase Auth sign-out when available
+            // Sign out from Firebase Auth
+            do {
+                try Auth.auth().signOut()
+            } catch {
+                print("Error signing out: \(error)")
+            }
+            // Clear account from UserDefaults
+            let keysToRemove = [
+                ThemeManager.defaultsKey,
+                Self.weekStartDefaultsKey
+            ]
+            for key in keysToRemove {
+                self.defaults.removeObject(forKey: key)
+            }
+            // Clear all Core Data objects
+            // TODO: Implement Core Data clearing using your persistence controller/model context
+            // Example: PersistenceController.shared.clearAll()
         }
     }
 
     @MainActor
     func deleteAccount() async {
         await performDestructiveAction {
-            // TODO: Invoke account deletion flow when backend is ready
+            // Delete account document from Firestore using async/await
+            guard let user = Auth.auth().currentUser else {
+                print("No authenticated user; cannot delete account from Firestore.")
+                return
+            }
+            let uid = user.uid
+            let db = Firestore.firestore()
+            do {
+                try await db.collection("accounts").document(uid).delete()
+                print("Account deleted successfully.")
+            } catch {
+                print("Failed to delete account: \(error)")
+            }
+            // Optionally clear local state, UserDefaults, and Core Data as in signOut()
         }
     }
 

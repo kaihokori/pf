@@ -58,15 +58,29 @@ class DayFirestoreService {
                 // Remote doc exists — use its date if provided, otherwise use the requested date
                 let ts = data["date"] as? Timestamp
                 let remoteDate = ts?.dateValue() ?? date
-                let calories = data["caloriesConsumed"] as? Int ?? 0
+                let caloriesOpt = data["caloriesConsumed"] as? Int
+                let calorieGoalOpt = data["calorieGoal"] as? Int
+                let macroFocusOpt = data["macroFocus"] as? String
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx)
-                    day.caloriesConsumed = calories
-                    print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(calories)")
+                    // Only overwrite fields if the remote document actually contains them.
+                    if let calories = caloriesOpt {
+                        day.caloriesConsumed = calories
+                    }
+                    if let calorieGoal = calorieGoalOpt {
+                        day.calorieGoal = calorieGoal
+                    }
+                    if let macroFocus = macroFocusOpt {
+                        day.macroFocusRaw = macroFocus
+                    }
+                    print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(day.caloriesConsumed)")
                     completion(day)
                     return
                 } else {
-                    let day = Day(date: remoteDate, caloriesConsumed: calories)
+                    // If no context is provided return an ephemeral Day using whatever remote values exist
+                    let calories = caloriesOpt ?? 0
+                    let calorieGoal = calorieGoalOpt ?? 0
+                    let day = Day(date: remoteDate, caloriesConsumed: calories, calorieGoal: calorieGoal, macroFocusRaw: macroFocusOpt)
                     print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
                     return
@@ -108,10 +122,18 @@ class DayFirestoreService {
     func saveDay(_ day: Day, completion: @escaping (Bool) -> Void) {
         let dayStart = Calendar.current.startOfDay(for: day.date)
         let key = dateKey(for: dayStart)
-        let data: [String: Any] = [
-            "date": Timestamp(date: dayStart),
-            "caloriesConsumed": day.caloriesConsumed
+        // Build a payload only containing the fields we intend to write.
+        // Do not write `macroFocus` when it's nil (avoid setting it to null),
+        // and use Firestore's merge option so we don't accidentally overwrite
+        // unrelated fields with default values.
+        var data: [String: Any] = [
+            "date": Timestamp(date: dayStart)
         ]
+        data["caloriesConsumed"] = day.caloriesConsumed
+        data["calorieGoal"] = day.calorieGoal
+        if let macro = day.macroFocusRaw {
+            data["macroFocus"] = macro
+        }
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
             let path = "accounts/\(uid)/days/\(key)"
@@ -120,7 +142,7 @@ class DayFirestoreService {
                 .document(uid)
                 .collection(daysSubcollection)
                 .document(key)
-                .setData(data) { err in
+                .setData(data, merge: true) { err in
                     if let err = err {
                         print("DayFirestoreService: failed to save day to \(path): \(err)")
                     } else {
@@ -134,11 +156,48 @@ class DayFirestoreService {
         // Fallback legacy path
         let path = "\(daysSubcollection)/\(key)"
         print("DayFirestoreService: saving day to legacy path \(path) with data=\(data)")
-        db.collection(daysSubcollection).document(key).setData(data) { err in
+        db.collection(daysSubcollection).document(key).setData(data, merge: true) { err in
             if let err = err {
                 print("DayFirestoreService: failed to save day to legacy path \(path): \(err)")
             } else {
                 print("DayFirestoreService: successfully saved day to legacy path \(path)")
+            }
+            completion(err == nil)
+        }
+    }
+
+    /// Update only specific fields of a Day document in Firestore. This avoids
+    /// accidentally overwriting other fields when only a single property changed.
+    func updateDayFields(_ fields: [String: Any], for day: Day, completion: @escaping (Bool) -> Void) {
+        let dayStart = Calendar.current.startOfDay(for: day.date)
+        let key = dateKey(for: dayStart)
+
+        if let uid = Auth.auth().currentUser?.uid {
+            let path = "accounts/\(uid)/days/\(key)"
+            print("DayFirestoreService: updating fields for \(path): \(fields)")
+            db.collection(userCollection)
+                .document(uid)
+                .collection(daysSubcollection)
+                .document(key)
+                .setData(fields, merge: true) { err in
+                    if let err = err {
+                        print("DayFirestoreService: failed to update fields for \(path): \(err)")
+                    } else {
+                        print("DayFirestoreService: successfully updated fields for \(path)")
+                    }
+                    completion(err == nil)
+                }
+            return
+        }
+
+        // Legacy path
+        let path = "\(daysSubcollection)/\(key)"
+        print("DayFirestoreService: updating fields for legacy path \(path): \(fields)")
+        db.collection(daysSubcollection).document(key).setData(fields, merge: true) { err in
+            if let err = err {
+                print("DayFirestoreService: failed to update fields for legacy path \(path): \(err)")
+            } else {
+                print("DayFirestoreService: successfully updated fields for legacy path \(path)")
             }
             completion(err == nil)
         }

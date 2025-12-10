@@ -14,6 +14,12 @@ class Day {
     // calories consumed for this day
     var caloriesConsumed: Int
 
+    // the user's calorie goal for this day (mirrors UI goal)
+    var calorieGoal: Int
+
+    // macro focus stored as rawValue (e.g. "highProtein", "balanced", "lowCarb", "custom")
+    var macroFocusRaw: String?
+
     // human friendly representation useful in previews / logs
     var dayString: String {
         let fmt = DateFormatter()
@@ -22,10 +28,12 @@ class Day {
         return fmt.string(from: date)
     }
 
-    init(id: String? = UUID().uuidString, date: Date = Date(), caloriesConsumed: Int = 0) {
+    init(id: String? = UUID().uuidString, date: Date = Date(), caloriesConsumed: Int = 0, calorieGoal: Int = 0, macroFocusRaw: String? = nil) {
         self.id = id
         self.date = Calendar.current.startOfDay(for: date)
         self.caloriesConsumed = caloriesConsumed
+        self.calorieGoal = calorieGoal
+        self.macroFocusRaw = macroFocusRaw
     }
 
     /// Fetch an existing `Day` for the provided date or create/insert one if missing.
@@ -48,7 +56,21 @@ class Day {
             print("Failed to fetch Day from context: \(error)")
         }
 
-        let newDay = Day(id: UUID().uuidString, date: dayStart, caloriesConsumed: 0)
+        // If creating a new Day, attempt to inherit the last-known calorie goal and macro focus
+        var inheritedCalorieGoal: Int = 0
+        var inheritedMacroFocusRaw: String? = nil
+        do {
+            let allRequest = FetchDescriptor<Day>()
+            let allDays = try context.fetch(allRequest)
+            if let last = allDays.sorted(by: { $0.date < $1.date }).last {
+                inheritedCalorieGoal = last.calorieGoal
+                inheritedMacroFocusRaw = last.macroFocusRaw
+            }
+        } catch {
+            // ignore — defaults will be used
+        }
+
+        let newDay = Day(id: UUID().uuidString, date: dayStart, caloriesConsumed: 0, calorieGoal: inheritedCalorieGoal, macroFocusRaw: inheritedMacroFocusRaw)
         context.insert(newDay)
         return newDay
     }

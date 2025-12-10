@@ -12,8 +12,8 @@ struct NutritionTabView: View {
     @State private var showAccountsView = false
     @State private var showAddSheet = false
     @State private var showCalorieGoalSheet = false
-    @State private var calorieGoal: Int = 2500
-    @State private var selectedMacroGoal: MacroFocusOption?
+    @Binding var calorieGoal: Int
+    @Binding var selectedMacroFocus: MacroFocusOption?
     @State private var showMacroEditorSheet = false
     @State private var macroMetrics: [MacroMetric] = MacroPreset.defaultActiveMetrics
     @State private var selectedMacroForLog: MacroMetric?
@@ -115,18 +115,18 @@ struct NutritionTabView: View {
                         )
                         .padding(.top, 14)
 
-                        Button {
-                            // 
-                        } label: {
-                            Label("Log Intake", systemImage: "plus")
-                                .font(.callout.weight(.semibold))
-                                .padding(.vertical, 18)
-                                .frame(maxWidth: .infinity, minHeight: 52)
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 18)
-                        .buttonStyle(.plain)
+                        // Button {
+                        //     // 
+                        // } label: {
+                        //     Label("Log Intake", systemImage: "plus")
+                        //         .font(.callout.weight(.semibold))
+                        //         .padding(.vertical, 18)
+                        //         .frame(maxWidth: .infinity, minHeight: 52)
+                        //         .glassEffect(in: .rect(cornerRadius: 16.0))
+                        // }
+                        // .padding(.horizontal, 18)
+                        // .padding(.top, 18)
+                        // .buttonStyle(.plain)
 
                         HStack {
                             Text("Macro Tracking")
@@ -406,19 +406,19 @@ struct NutritionTabView: View {
                 macros: $macroMetrics,
                 tint: accentOverride ?? .accentColor,
                 isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                macroFocus: selectedMacroGoal,
+                macroFocus: selectedMacroFocus,
                 onDone: { showMacroEditorSheet = false }
             )
             .presentationDetents([.large])
         }
         .sheet(isPresented: $showCalorieGoalSheet) {
-            CalorieGoalEditorSheet(
-                selectedMacroFocus: $selectedMacroGoal,
-                calorieGoal: $calorieGoal,
-                maintenanceCalories: maintenanceCalories,
-                tint: accentOverride ?? .accentColor,
-                onDone: { showCalorieGoalSheet = false }
-            )
+                            CalorieGoalEditorSheet(
+                                selectedMacroFocus: $selectedMacroFocus,
+                                calorieGoal: $calorieGoal,
+                                maintenanceCalories: maintenanceCalories,
+                                tint: accentOverride ?? .accentColor,
+                                onDone: { showCalorieGoalSheet = false }
+                            )
             .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showAddSheet) {
@@ -1211,6 +1211,7 @@ private struct CalorieGoalEditorSheet: View {
     @State private var originalGoal: Int = 0
     @State private var originalFocus: MacroFocusOption?
     @FocusState private var isGoalFieldFocused: Bool
+    @State private var didInitializeGoalField: Bool = false
 
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
@@ -1288,11 +1289,6 @@ private struct CalorieGoalEditorSheet: View {
             .navigationTitle("Edit Calorie Goal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        cancelEditing()
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         commitGoal()
@@ -1303,11 +1299,23 @@ private struct CalorieGoalEditorSheet: View {
             }
         }
         .onAppear {
+            // Initialize the editor fields programmatically. We set a small flag
+            // so the `onChange(of: goalText)` handler can ignore this initial
+            // programmatic assignment — otherwise it would treat it as a user
+            // edit and mark the macro focus as `.custom`.
+            didInitializeGoalField = false
             goalText = String(calorieGoal)
             originalGoal = calorieGoal
             originalFocus = selectedMacroFocus
         }
         .onChange(of: goalText) { _, newValue in
+            // Ignore the first change caused by the initial assignment in
+            // `.onAppear` so we don't treat it as a user edit.
+            if !didInitializeGoalField {
+                didInitializeGoalField = true
+                return
+            }
+
             handleGoalTextChange(newValue)
         }
     }

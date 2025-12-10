@@ -20,6 +20,8 @@ struct RootView: View {
     @State private var selectedTab: AppTab = .nutrition
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
+    @State private var calorieGoal: Int = 0
+    @State private var selectedMacroFocus: MacroFocusOption? = nil
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
@@ -85,6 +87,44 @@ struct RootView: View {
                     print("RootView: fetched/created local Day for date=\(d.date)")
                     DispatchQueue.main.async {
                         consumedCalories = d.caloriesConsumed
+                        // Only update calorieGoal if the fetched day has a non-zero value;
+                        // otherwise preserve the last-known goal so switching dates
+                        // doesn't reset it to 0.
+                        if d.calorieGoal > 0 {
+                            calorieGoal = d.calorieGoal
+                        }
+                        // Only update macro focus if the fetched day actually has one;
+                        // otherwise keep the previously-selected macro focus.
+                        if let raw = d.macroFocusRaw, let mf = MacroFocusOption(rawValue: raw) {
+                            selectedMacroFocus = mf
+                        }
+
+                        // If the fetched Day lacks values but the UI has last-known
+                        // values, persist those to the Day and upload only the
+                        // missing fields so Firestore stays in sync with UI.
+                        var fieldsToUpdate: [String: Any] = [:]
+                        if d.calorieGoal == 0 && calorieGoal > 0 {
+                            d.calorieGoal = calorieGoal
+                            fieldsToUpdate["calorieGoal"] = calorieGoal
+                        }
+                        if d.macroFocusRaw == nil, let localMF = selectedMacroFocus {
+                            d.macroFocusRaw = localMF.rawValue
+                            fieldsToUpdate["macroFocus"] = localMF.rawValue
+                        }
+                        if !fieldsToUpdate.isEmpty {
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                print("RootView: failed to save inherited Day values: \(error)")
+                            }
+                            dayFirestoreService.updateDayFields(fieldsToUpdate, for: d) { success in
+                                if success {
+                                    print("RootView: synced inherited Day fields for date=\(selectedDate): \(fieldsToUpdate)")
+                                } else {
+                                    print("RootView: failed to sync inherited Day fields for date=\(selectedDate)")
+                                }
+                            }
+                        }
                     }
                 } else {
                     print("RootView: failed to fetch/create local Day for selectedDate=\(selectedDate)")
@@ -98,6 +138,36 @@ struct RootView: View {
                     print("RootView: fetched/created local Day for date=\(d.date)")
                     DispatchQueue.main.async {
                         consumedCalories = d.caloriesConsumed
+                        if d.calorieGoal > 0 {
+                            calorieGoal = d.calorieGoal
+                        }
+                        if let raw = d.macroFocusRaw, let mf = MacroFocusOption(rawValue: raw) {
+                            selectedMacroFocus = mf
+                        }
+
+                        var fieldsToUpdate: [String: Any] = [:]
+                        if d.calorieGoal == 0 && calorieGoal > 0 {
+                            d.calorieGoal = calorieGoal
+                            fieldsToUpdate["calorieGoal"] = calorieGoal
+                        }
+                        if d.macroFocusRaw == nil, let localMF = selectedMacroFocus {
+                            d.macroFocusRaw = localMF.rawValue
+                            fieldsToUpdate["macroFocus"] = localMF.rawValue
+                        }
+                        if !fieldsToUpdate.isEmpty {
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                print("RootView: failed to save inherited Day values: \(error)")
+                            }
+                            dayFirestoreService.updateDayFields(fieldsToUpdate, for: d) { success in
+                                if success {
+                                    print("RootView: synced inherited Day fields for date=\(newDate): \(fieldsToUpdate)")
+                                } else {
+                                    print("RootView: failed to sync inherited Day fields for date=\(newDate)")
+                                }
+                            }
+                        }
                     }
                 } else {
                     print("RootView: failed to fetch/create local Day for selectedDate=\(newDate)")
@@ -116,12 +186,61 @@ struct RootView: View {
                     print("RootView: failed to save local Day: \(error)")
                 }
 
-                // Attempt to upload to Firestore (no-op if user not signed in; service handles legacy paths)
-                dayFirestoreService.saveDay(day) { success in
+                // Attempt to upload only the changed field to Firestore so we don't
+                // overwrite other values that may be stale in-memory.
+                dayFirestoreService.updateDayFields(["caloriesConsumed": newValue], for: day) { success in
                     if success {
                         print("RootView: successfully synced caloriesConsumed to Firestore for date=\(selectedDate)")
                     } else {
                         print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
+                    }
+                }
+            }
+        }
+
+        .onChange(of: calorieGoal) { _, newValue in
+            Task {
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                day.calorieGoal = newValue
+                do {
+                    try modelContext.save()
+                    print("RootView: saved calorieGoal=\(newValue) for date=\(selectedDate) to local store")
+                } catch {
+                    print("RootView: failed to save local Day (calorieGoal): \(error)")
+                }
+                dayFirestoreService.updateDayFields(["calorieGoal": newValue], for: day) { success in
+                    if success {
+                        print("RootView: successfully synced calorieGoal to Firestore for date=\(selectedDate)")
+                    } else {
+                        print("RootView: failed to sync calorieGoal to Firestore for date=\(selectedDate)")
+                    }
+                }
+            }
+        }
+
+        .onChange(of: selectedMacroFocus) { _, newValue in
+            Task {
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                day.macroFocusRaw = newValue?.rawValue
+                // Ensure the calorie goal is persisted alongside macro focus so
+                // changing the macro (which may update the UI's calorieGoal)
+                // doesn't leave the Day out of sync.
+                day.calorieGoal = calorieGoal
+                do {
+                    try modelContext.save()
+                    print("RootView: saved macroFocus=\(String(describing: newValue)) for date=\(selectedDate) to local store")
+                } catch {
+                    print("RootView: failed to save local Day (macroFocus): \(error)")
+                }
+                var fields: [String: Any] = ["calorieGoal": day.calorieGoal]
+                if let raw = newValue?.rawValue {
+                    fields["macroFocus"] = raw
+                }
+                dayFirestoreService.updateDayFields(fields, for: day) { success in
+                    if success {
+                        print("RootView: successfully synced macroFocus to Firestore for date=\(selectedDate)")
+                    } else {
+                        print("RootView: failed to sync macroFocus to Firestore for date=\(selectedDate)")
                     }
                 }
             }
@@ -284,7 +403,7 @@ private extension RootView {
                             systemImage: AppTab.nutrition.systemImage,
                             value: AppTab.nutrition
                         ) {
-                            NutritionTabView(account: .constant(account), consumedCalories: $consumedCalories, selectedDate: $selectedDate)
+                            NutritionTabView(account: .constant(account), consumedCalories: $consumedCalories, selectedDate: $selectedDate, calorieGoal: $calorieGoal, selectedMacroFocus: $selectedMacroFocus)
                         }
                         Tab(
                             "Routine",

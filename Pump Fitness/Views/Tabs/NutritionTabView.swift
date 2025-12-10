@@ -49,7 +49,7 @@ struct NutritionTabView: View {
     // Track which meal schedule cells are checked (by name)
     @State private var checkedMeals: Set<String> = []
 
-    private let maintenanceCalories: Int = 2200
+    @Binding var maintenanceCalories: Int
 
     private let caloriesBurnedToday: Int = 620
     private let caloriesBurnGoal: Int = 800
@@ -115,18 +115,18 @@ struct NutritionTabView: View {
                         )
                         .padding(.top, 14)
 
-                        // Button {
-                        //     // 
-                        // } label: {
-                        //     Label("Log Intake", systemImage: "plus")
-                        //         .font(.callout.weight(.semibold))
-                        //         .padding(.vertical, 18)
-                        //         .frame(maxWidth: .infinity, minHeight: 52)
-                        //         .glassEffect(in: .rect(cornerRadius: 16.0))
-                        // }
-                        // .padding(.horizontal, 18)
-                        // .padding(.top, 18)
-                        // .buttonStyle(.plain)
+                        Button {
+                            // 
+                        } label: {
+                            Label("Log Intake", systemImage: "plus")
+                                .font(.callout.weight(.semibold))
+                                .padding(.vertical, 18)
+                                .frame(maxWidth: .infinity, minHeight: 52)
+                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 18)
+                        .buttonStyle(.plain)
 
                         HStack {
                             Text("Macro Tracking")

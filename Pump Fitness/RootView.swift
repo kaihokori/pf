@@ -21,9 +21,11 @@ struct RootView: View {
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0
+    @State private var maintenanceCalories: Int = 0
     @State private var selectedMacroFocus: MacroFocusOption? = nil
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
+    @Query private var accounts: [Account]
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
     @State private var isCheckingOnboarding: Bool = false
     private let dayFirestoreService = DayFirestoreService()
@@ -87,6 +89,7 @@ struct RootView: View {
                     print("RootView: fetched/created local Day for date=\(d.date)")
                     DispatchQueue.main.async {
                         consumedCalories = d.caloriesConsumed
+                        maintenanceCalories = d.maintenanceCalories
                         // Only update calorieGoal if the fetched day has a non-zero value;
                         // otherwise preserve the last-known goal so switching dates
                         // doesn't reset it to 0.
@@ -138,6 +141,7 @@ struct RootView: View {
                     print("RootView: fetched/created local Day for date=\(d.date)")
                     DispatchQueue.main.async {
                         consumedCalories = d.caloriesConsumed
+                        maintenanceCalories = d.maintenanceCalories
                         if d.calorieGoal > 0 {
                             calorieGoal = d.calorieGoal
                         }
@@ -245,6 +249,14 @@ struct RootView: View {
                 }
             }
         }
+        .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in
+            // Keep the UI's maintenanceCalories in sync with the local Account entity
+            if let updated = newValue {
+                DispatchQueue.main.async {
+                    maintenanceCalories = updated
+                }
+            }
+        }
     }
         private var isSignedIn: Bool {
             Auth.auth().currentUser != nil
@@ -263,6 +275,8 @@ struct RootView: View {
                     selectedTab = .nutrition
                     if let fetched = account {
                         upsertLocalAccount(with: fetched)
+                        // Use the fetched maintenance calories from the account on app load
+                        maintenanceCalories = fetched.maintenanceCalories
                     }
                 } else {
                     hasCompletedOnboarding = false
@@ -334,6 +348,7 @@ private extension RootView {
                 local.name = fetched.name
                 local.gender = fetched.gender
                 local.dateOfBirth = fetched.dateOfBirth
+                local.maintenanceCalories = fetched.maintenanceCalories
                 local.height = fetched.height
                 local.weight = fetched.weight
                 local.theme = fetched.theme
@@ -350,6 +365,7 @@ private extension RootView {
                     dateOfBirth: fetched.dateOfBirth,
                     height: fetched.height,
                     weight: fetched.weight,
+                    maintenanceCalories: fetched.maintenanceCalories,
                     theme: fetched.theme,
                     unitSystem: fetched.unitSystem,
                     startWeekOn: fetched.startWeekOn
@@ -397,45 +413,73 @@ private extension RootView {
 
             NavigationStack {
                 if let account = fetchAccount() {
-                    TabView(selection: $selectedTab) {
-                        Tab(
-                            "Nutrition",
-                            systemImage: AppTab.nutrition.systemImage,
-                            value: AppTab.nutrition
-                        ) {
-                            NutritionTabView(account: .constant(account), consumedCalories: $consumedCalories, selectedDate: $selectedDate, calorieGoal: $calorieGoal, selectedMacroFocus: $selectedMacroFocus)
-                        }
-                        Tab(
-                            "Routine",
-                            systemImage: AppTab.routine.systemImage,
-                            value: AppTab.routine
-                        ) {
-                            RoutineTabView(account: .constant(account), selectedDate: $selectedDate)
-                        }
-                        Tab(
-                            "Workout",
-                            systemImage: AppTab.workout.systemImage,
-                            value: AppTab.workout
-                        ) {
-                            WorkoutTabView(account: .constant(account), selectedDate: $selectedDate)
-                        }
-                        Tab(
-                            "Sports",
-                            systemImage: AppTab.sports.systemImage,
-                            value: AppTab.sports
-                        ) {
-                            SportsTabView(account: .constant(account), selectedDate: $selectedDate)
-                        }
-                        Tab(
-                            "Lookup",
-                            systemImage: AppTab.lookup.systemImage,
-                            value: AppTab.lookup,
-                            role: .search
-                        ) {
-                            LookupTabView(account: .constant(account), selectedDate: $selectedDate)
+                        // Create a writable Binding<Account> so child views can update
+                        // the local SwiftData `Account` and have changes persisted.
+                        let accountBinding = Binding<Account>(
+                            get: { fetchAccount() ?? account },
+                            set: { newAccount in
+                                do {
+                                    let request = FetchDescriptor<Account>()
+                                    let existing = try modelContext.fetch(request)
+                                    if let local = existing.first {
+                                        local.profileImage = newAccount.profileImage
+                                        local.profileAvatar = newAccount.profileAvatar
+                                        local.name = newAccount.name
+                                        local.gender = newAccount.gender
+                                        local.dateOfBirth = newAccount.dateOfBirth
+                                        local.maintenanceCalories = newAccount.maintenanceCalories
+                                        local.height = newAccount.height
+                                        local.weight = newAccount.weight
+                                        local.theme = newAccount.theme
+                                        local.unitSystem = newAccount.unitSystem
+                                        local.startWeekOn = newAccount.startWeekOn
+                                        try modelContext.save()
+                                    }
+                                } catch {
+                                    print("RootView: failed to apply account binding set: \(error)")
+                                }
+                            }
+                        )
+
+                        TabView(selection: $selectedTab) {
+                            Tab(
+                                "Nutrition",
+                                systemImage: AppTab.nutrition.systemImage,
+                                value: AppTab.nutrition
+                            ) {
+                                NutritionTabView(account: accountBinding, consumedCalories: $consumedCalories, selectedDate: $selectedDate, calorieGoal: $calorieGoal, selectedMacroFocus: $selectedMacroFocus, maintenanceCalories: $maintenanceCalories)
+                            }
+                            Tab(
+                                "Routine",
+                                systemImage: AppTab.routine.systemImage,
+                                value: AppTab.routine
+                            ) {
+                                RoutineTabView(account: accountBinding, selectedDate: $selectedDate)
+                            }
+                            Tab(
+                                "Workout",
+                                systemImage: AppTab.workout.systemImage,
+                                value: AppTab.workout
+                            ) {
+                                WorkoutTabView(account: accountBinding, selectedDate: $selectedDate)
+                            }
+                            Tab(
+                                "Sports",
+                                systemImage: AppTab.sports.systemImage,
+                                value: AppTab.sports
+                            ) {
+                                SportsTabView(account: accountBinding, selectedDate: $selectedDate)
+                            }
+                            Tab(
+                                "Lookup",
+                                systemImage: AppTab.lookup.systemImage,
+                                value: AppTab.lookup,
+                                role: .search
+                            ) {
+                                LookupTabView(account: accountBinding, selectedDate: $selectedDate)
+                            }
                         }
                     }
-                }
             }
         }
         .tint(currentAccent)

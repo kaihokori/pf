@@ -60,12 +60,16 @@ class DayFirestoreService {
                 let remoteDate = ts?.dateValue() ?? date
                 let caloriesOpt = data["caloriesConsumed"] as? Int
                 let calorieGoalOpt = data["calorieGoal"] as? Int
+                let maintenanceOpt = data["maintenanceCalories"] as? Int
                 let macroFocusOpt = data["macroFocus"] as? String
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx)
                     // Only overwrite fields if the remote document actually contains them.
                     if let calories = caloriesOpt {
                         day.caloriesConsumed = calories
+                    }
+                    if let maintenance = maintenanceOpt {
+                        day.maintenanceCalories = maintenance
                     }
                     if let calorieGoal = calorieGoalOpt {
                         day.calorieGoal = calorieGoal
@@ -80,7 +84,8 @@ class DayFirestoreService {
                     // If no context is provided return an ephemeral Day using whatever remote values exist
                     let calories = caloriesOpt ?? 0
                     let calorieGoal = calorieGoalOpt ?? 0
-                    let day = Day(date: remoteDate, caloriesConsumed: calories, calorieGoal: calorieGoal, macroFocusRaw: macroFocusOpt)
+                    let maintenance = maintenanceOpt ?? 0
+                    let day = Day(date: remoteDate, caloriesConsumed: calories, calorieGoal: calorieGoal, maintenanceCalories: maintenance, macroFocusRaw: macroFocusOpt)
                     print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
                     return
@@ -131,6 +136,7 @@ class DayFirestoreService {
         ]
         data["caloriesConsumed"] = day.caloriesConsumed
         data["calorieGoal"] = day.calorieGoal
+            data["maintenanceCalories"] = day.maintenanceCalories
         if let macro = day.macroFocusRaw {
             data["macroFocus"] = macro
         }

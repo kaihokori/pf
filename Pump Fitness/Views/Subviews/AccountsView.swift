@@ -62,6 +62,7 @@ struct AccountsView: View {
             viewModel.draft.unitSystem = UnitSystem(rawValue: acc.unitSystem ?? "metric") ?? .metric
             viewModel.draft.heightValue = acc.height != nil ? String(format: "%.0f", acc.height ?? 0) : ""
             viewModel.draft.weightValue = acc.weight != nil ? String(format: "%.0f", acc.weight ?? 0) : ""
+            	viewModel.draft.maintenanceCalories = acc.maintenanceCalories > 0 ? String(acc.maintenanceCalories) : ""
             // Calculate imperial height if needed
             if viewModel.draft.unitSystem == .imperial, let cm = Double(viewModel.draft.heightValue), cm > 0 {
                 let totalInches = cm / 2.54
@@ -139,6 +140,39 @@ struct AccountsView: View {
                                 ),
                                 unitLabel: viewModel.draft.unitSystem.weightUnit
                             )
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Maintenance Calories")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+
+                                HStack(spacing: 8) {
+                                    TextField("0", text: Binding(
+                                        get: { viewModel.draft.maintenanceCalories },
+                                        set: { viewModel.draft.maintenanceCalories = $0 }
+                                    ))
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.plain)
+
+                                    Text("cal")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+
+                                    Spacer()
+
+                                    if let gender = viewModel.draft.selectedGender, gender == .male || gender == .female {
+                                        Button(action: {
+                                            Task { await MainActor.run { viewModel.calculateMaintenanceCalories() } }
+                                        }) {
+                                            Text("Auto")
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding()
+                                .surfaceCard(12)
+                            }
                         }
                         
                         SectionCard(title: "Appearance") {
@@ -186,28 +220,57 @@ struct AccountsView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
-                        if let error = viewModel.validationErrorMessage() {
-                            validationMessage = error
-                            showValidationAlert = true
-                        } else {
-                            viewModel.saveChanges()
-                            // Sync viewModel.profile to account binding
-                            account.profileImage = viewModel.profile.avatarImageData
-                            account.profileAvatar = String(describing: viewModel.profile.avatarColor)
-                            account.name = viewModel.profile.name
-                            account.gender = viewModel.profile.selectedGender?.rawValue
-                            account.dateOfBirth = viewModel.profile.birthDate
-                            account.height = Double(viewModel.profile.heightValue) ?? account.height
-                            account.weight = Double(viewModel.profile.weightValue) ?? account.weight
-                            account.theme = viewModel.profile.appTheme.rawValue
-                            account.unitSystem = viewModel.profile.unitSystem.rawValue
-                            account.startWeekOn = viewModel.profile.weekStart.rawValue
-                            themeManager.setTheme(viewModel.profile.appTheme)
-                            // Persist to SwiftData
-                            try? modelContext.save()
-                            dismiss()
+                            Task {
+                                if let error = viewModel.validationErrorMessage() {
+                                    await MainActor.run {
+                                        validationMessage = error
+                                        showValidationAlert = true
+                                    }
+                                    return
+                                }
+
+                                // Update the view model's profile from draft
+                                viewModel.saveChanges()
+
+                                // Build a new Account and assign it to the binding so the
+                                // parent's binding `set` handler applies the changes and
+                                // persists them. This ensures RootView's observers
+                                // (including maintenanceCalories) are updated.
+                                await MainActor.run {
+                                    let updated = Account(
+                                        id: account.id,
+                                        profileImage: viewModel.profile.avatarImageData,
+                                        profileAvatar: String(describing: viewModel.profile.avatarColor.rawValue),
+                                        name: viewModel.profile.name,
+                                        gender: viewModel.profile.selectedGender?.rawValue,
+                                        dateOfBirth: viewModel.profile.birthDate,
+                                        height: Double(viewModel.profile.heightValue),
+                                        weight: Double(viewModel.profile.weightValue),
+                                        maintenanceCalories: Int(viewModel.profile.maintenanceCalories) ?? account.maintenanceCalories,
+                                        theme: viewModel.profile.appTheme.rawValue,
+                                        unitSystem: viewModel.profile.unitSystem.rawValue,
+                                        startWeekOn: viewModel.profile.weekStart.rawValue
+                                    )
+
+                                    account = updated
+                                    themeManager.setTheme(viewModel.profile.appTheme)
+                                }
+
+                                // Save to Firestore using the authenticated user's UID
+                                if let firestoreAccount = viewModel.buildFirestoreAccount() {
+                                    let success = await viewModel.saveAccountToFirestore(firestoreAccount)
+                                    if !success {
+                                        print("Failed to save account to Firestore")
+                                    }
+                                } else {
+                                    print("No authenticated user; cannot save account to Firestore.")
+                                }
+
+                                await MainActor.run {
+                                    dismiss()
+                                }
+                            }
                         }
-                    }
                     .disabled(!viewModel.hasChanges)
                 }
             }
@@ -1010,7 +1073,21 @@ final class AccountsViewModel: ObservableObject {
     private static let defaultWeekStart: WeekStartOption = .monday
 
     @Published private(set) var profile: AccountProfile
-    @Published var draft: AccountProfile
+    @Published var draft: AccountProfile {
+        didSet {
+            // Detect manual edits to maintenance field
+            if oldValue.maintenanceCalories != draft.maintenanceCalories {
+                if draft.maintenanceCalories == lastAutoComputedMaintenance {
+                    maintenanceManuallyEdited = false
+                } else {
+                    maintenanceManuallyEdited = true
+                }
+            }
+        }
+    }
+
+    private var lastAutoComputedMaintenance: String? = nil
+    private var maintenanceManuallyEdited: Bool = false
     @Published var isPerformingDestructiveAction = false
 
     private let defaults: UserDefaults
@@ -1039,7 +1116,8 @@ final class AccountsViewModel: ObservableObject {
             heightValue: "172",
             heightFeet: "5",
             heightInches: "7.7",
-            weightValue: "67"
+            weightValue: "67",
+            maintenanceCalories: ""
         )
         self.profile = initialProfile
         self.draft = initialProfile
@@ -1090,6 +1168,36 @@ final class AccountsViewModel: ObservableObject {
             return
         }
         let uid = user.uid
+        // Build an Account object for callers that may want to persist to Firestore.
+        _ = Account(
+            id: uid,
+            profileImage: draft.avatarImageData,
+            profileAvatar: String(describing: draft.avatarColor.rawValue),
+            name: draft.name,
+            gender: draft.selectedGender?.rawValue,
+            dateOfBirth: draft.birthDate,
+            height: Double(draft.heightValue),
+            weight: Double(draft.weightValue),
+            maintenanceCalories: Int(draft.maintenanceCalories) ?? 0,
+            theme: draft.appTheme.rawValue,
+            unitSystem: draft.unitSystem.rawValue,
+            startWeekOn: draft.weekStart.rawValue
+        )
+    }
+
+    // Async wrapper so callers can await Firestore save
+    func saveAccountToFirestore(_ account: Account) async -> Bool {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            firestoreService.saveAccount(account) { success in
+                continuation.resume(returning: success)
+            }
+        }
+    }
+
+    /// Build an `Account` object for Firestore using the authenticated user's UID
+    func buildFirestoreAccount() -> Account? {
+        guard let user = Auth.auth().currentUser else { return nil }
+        let uid = user.uid
         let account = Account(
             id: uid,
             profileImage: draft.avatarImageData,
@@ -1099,15 +1207,12 @@ final class AccountsViewModel: ObservableObject {
             dateOfBirth: draft.birthDate,
             height: Double(draft.heightValue),
             weight: Double(draft.weightValue),
+            maintenanceCalories: Int(draft.maintenanceCalories) ?? 0,
             theme: draft.appTheme.rawValue,
             unitSystem: draft.unitSystem.rawValue,
             startWeekOn: draft.weekStart.rawValue
         )
-        firestoreService.saveAccount(account) { success in
-            if !success {
-                print("Failed to save account to Firestore")
-            }
-        }
+        return account
     }
 
     func fetchAccountFromFirestore(id: String, completion: @escaping (Account?) -> Void) {
@@ -1230,6 +1335,53 @@ final class AccountsViewModel: ObservableObject {
         return Double(trimmed)
     }
 
+    private func autoUpdateMaintenanceCalories(force: Bool = false) {
+        // Only auto-update if gender is known and not 'preferNotSay'
+        guard let gender = draft.selectedGender, gender != .preferNotSay else { return }
+
+        guard let weightKg = weightInKilograms(), let heightCm = heightInCentimeters() else { return }
+
+        let calendar = Calendar.current
+        let today = Date()
+        let years = calendar.dateComponents([.year], from: draft.birthDate, to: today).year ?? 0
+        let age = max(0, years)
+
+        let rmr: Double
+        if gender == .male {
+            rmr = 10.0 * weightKg + 6.25 * heightCm - 5.0 * Double(age) + 5.0
+        } else {
+            rmr = 10.0 * weightKg + 6.25 * heightCm - 5.0 * Double(age) - 161.0
+        }
+
+        let tdee = rmr * 1.55
+        let newValue = String(Int(tdee.rounded()))
+
+        if force {
+            // Force overwrite when relevant fields changed (user expects recalculation)
+            lastAutoComputedMaintenance = newValue
+            maintenanceManuallyEdited = false
+            if draft.maintenanceCalories != newValue {
+                draft.maintenanceCalories = newValue
+            }
+            return
+        }
+
+        // Non-forced update — preserve manual edits
+        if draft.maintenanceCalories.isEmpty || draft.maintenanceCalories == lastAutoComputedMaintenance {
+            lastAutoComputedMaintenance = newValue
+            if draft.maintenanceCalories != newValue {
+                draft.maintenanceCalories = newValue
+            }
+        }
+    }
+
+    /// Public API to request a maintenance calories calculation.
+    /// This replaces automatic recalculation and is triggered by the UI's "Auto" button.
+    @MainActor
+    func calculateMaintenanceCalories() {
+        autoUpdateMaintenanceCalories(force: true)
+    }
+
     private func heightInCentimeters() -> Double? {
         switch draft.unitSystem {
         case .metric:
@@ -1336,6 +1488,7 @@ struct AccountProfile: Equatable {
     var heightFeet: String
     var heightInches: String
     var weightValue: String
+    var maintenanceCalories: String
 }
 
 enum WeekStartOption: String, CaseIterable, Identifiable {

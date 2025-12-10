@@ -20,6 +20,7 @@ class AccountFirestoreService {
                 dateOfBirth: (data["dateOfBirth"] as? Timestamp)?.dateValue(),
                 height: data["height"] as? Double,
                 weight: data["weight"] as? Double,
+                maintenanceCalories: data["maintenanceCalories"] as? Int ?? 0,
                 theme: data["theme"] as? String,
                 unitSystem: data["unitSystem"] as? String,
                 startWeekOn: data["startWeekOn"] as? String
@@ -40,6 +41,7 @@ class AccountFirestoreService {
             "dateOfBirth": account.dateOfBirth ?? Date(),
             "height": account.height ?? 0,
             "weight": account.weight ?? 0,
+            "maintenanceCalories": account.maintenanceCalories,
             "theme": account.theme ?? "",
             "unitSystem": account.unitSystem ?? "",
             "startWeekOn": account.startWeekOn ?? ""

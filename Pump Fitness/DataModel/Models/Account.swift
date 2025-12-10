@@ -36,6 +36,7 @@ class Account: ObservableObject {
     var dateOfBirth: Date? = nil
     var height: Double? = nil
     var weight: Double? = nil
+    var maintenanceCalories: Int = 0
     var theme: String? = nil
     var unitSystem: String? = nil
     var startWeekOn: String? = nil
@@ -49,6 +50,7 @@ class Account: ObservableObject {
         dateOfBirth: Date? = nil,
         height: Double? = nil,
         weight: Double? = nil,
+        maintenanceCalories: Int = 0,
         theme: String? = nil,
         unitSystem: String? = nil,
         startWeekOn: String? = nil
@@ -61,6 +63,7 @@ class Account: ObservableObject {
         self.dateOfBirth = dateOfBirth
         self.height = height
         self.weight = weight
+        self.maintenanceCalories = maintenanceCalories
         self.theme = theme
         self.unitSystem = unitSystem
         self.startWeekOn = startWeekOn

@@ -53,7 +53,7 @@ struct ExerciseSupplementEditorSheet: View {
             SupplementItem(name: "Creatine", amountLabel: "5 g"),
             SupplementItem(name: "BCAA", amountLabel: "10 g"),
             SupplementItem(name: "Whey Protein", amountLabel: "30 g"),
-            SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
+            SupplementItem(name: "L-Carnitine", amountLabel: "500 mg"),
             SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
         ]
     }
@@ -563,7 +563,7 @@ private let coachingDefaultSupplements: [SupplementItem] = [
     SupplementItem(name: "Creatine", amountLabel: "5 g"),
     SupplementItem(name: "BCAA", amountLabel: "10 g"),
     SupplementItem(name: "Whey Protein", amountLabel: "30 g"),
-    SupplementItem(name: "Beta-Alanine", amountLabel: "3.2 g"),
+    SupplementItem(name: "L-Carnitine", amountLabel: "500 mg"),
     SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
 ]
 

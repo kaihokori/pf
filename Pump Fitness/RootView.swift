@@ -315,6 +315,7 @@ private extension RootView {
                     weight: 70,
                     theme: "default",
                     unitSystem: "metric",
+                    activityLevel: ActivityLevelOption.moderatelyActive.rawValue,
                     startWeekOn: "monday"
                 )
                 modelContext.insert(defaultAccount)
@@ -353,6 +354,7 @@ private extension RootView {
                 local.weight = fetched.weight
                 local.theme = fetched.theme
                 local.unitSystem = fetched.unitSystem
+                local.activityLevel = fetched.activityLevel
                 local.startWeekOn = fetched.startWeekOn
                 try modelContext.save()
             } else {
@@ -368,6 +370,7 @@ private extension RootView {
                     maintenanceCalories: fetched.maintenanceCalories,
                     theme: fetched.theme,
                     unitSystem: fetched.unitSystem,
+                    activityLevel: fetched.activityLevel,
                     startWeekOn: fetched.startWeekOn
                 )
                 modelContext.insert(newAccount)

@@ -39,6 +39,7 @@ class Account: ObservableObject {
     var maintenanceCalories: Int = 0
     var theme: String? = nil
     var unitSystem: String? = nil
+    var activityLevel: String? = nil
     var startWeekOn: String? = nil
 
     init(
@@ -53,6 +54,7 @@ class Account: ObservableObject {
         maintenanceCalories: Int = 0,
         theme: String? = nil,
         unitSystem: String? = nil,
+        activityLevel: String? = nil,
         startWeekOn: String? = nil
     ) {
         self.id = id
@@ -66,6 +68,8 @@ class Account: ObservableObject {
         self.maintenanceCalories = maintenanceCalories
         self.theme = theme
         self.unitSystem = unitSystem
+        self.activityLevel = activityLevel
         self.startWeekOn = startWeekOn
+        
     }
 }

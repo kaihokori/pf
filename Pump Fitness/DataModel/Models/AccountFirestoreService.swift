@@ -23,6 +23,7 @@ class AccountFirestoreService {
                 maintenanceCalories: data["maintenanceCalories"] as? Int ?? 0,
                 theme: data["theme"] as? String,
                 unitSystem: data["unitSystem"] as? String,
+                activityLevel: data["activityLevel"] as? String,
                 startWeekOn: data["startWeekOn"] as? String
             )
             completion(account)
@@ -44,6 +45,7 @@ class AccountFirestoreService {
             "maintenanceCalories": account.maintenanceCalories,
             "theme": account.theme ?? "",
             "unitSystem": account.unitSystem ?? "",
+            "activityLevel": account.activityLevel ?? "",
             "startWeekOn": account.startWeekOn ?? ""
         ]
         db.collection(collection).document(id).setData(data) { error in

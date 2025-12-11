@@ -110,6 +110,7 @@ struct OnboardingView: View {
                     weight: weightInKilograms(),
                     theme: nil,
                     unitSystem: viewModel.unitSystem.rawValue,
+                    activityLevel: ActivityLevelOption.moderatelyActive.rawValue,
                     startWeekOn: nil
                 )
 

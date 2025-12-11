@@ -1,5 +1,9 @@
 # Pump Fitness – Copilot Instructions
 
+## Important
+
+- Never replace code with things like "..existing code..." or "/* existing code */". Always provide the full updated code.
+
 ## Core Context
 - Frontend iOS client for Pump Fitness; server APIs live elsewhere. Keep SwiftUI-first, target iOS 16+ (current scaffolding in `Pump Fitness/Pump_FitnessApp.swift`).
 - Product requirements live in `features.md`; treat it as the feature contract when planning screens, flows, and data models.

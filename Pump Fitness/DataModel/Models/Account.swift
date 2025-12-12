@@ -97,6 +97,7 @@ class Account: ObservableObject {
     var activityLevel: String? = nil
     var startWeekOn: String? = nil
     var trackedMacros: [TrackedMacro] = []
+    var cravings: [CravingItem] = []
 
     init(
         id: String? = UUID().uuidString,
@@ -112,7 +113,8 @@ class Account: ObservableObject {
         unitSystem: String? = nil,
         activityLevel: String? = nil,
         startWeekOn: String? = nil,
-        trackedMacros: [TrackedMacro] = []
+        trackedMacros: [TrackedMacro] = [],
+        cravings: [CravingItem] = []
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -128,6 +130,7 @@ class Account: ObservableObject {
         self.activityLevel = activityLevel
         self.startWeekOn = startWeekOn
         self.trackedMacros = trackedMacros
+        self.cravings = cravings
         
     }
 }

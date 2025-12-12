@@ -16,20 +16,15 @@ struct NutritionTabView: View {
     @Binding var selectedMacroFocus: MacroFocusOption?
     @Binding var trackedMacros: [TrackedMacro]
     @Binding var macroConsumptions: [MacroConsumption]
+    @Binding var cravings: [CravingItem]
     @State private var showMacroEditorSheet = false
     @State private var selectedMacroForLog: MacroMetric?
     @State private var showConsumedSheet = false
     @State private var showProtocolSheet = false
     @State private var showSupplementEditor = false
+    @State private var showCravingEditor = false
     @State private var supplements: [SupplementItem] = SupplementItem.defaultSupplements
     @State private var nutritionSearchText: String = ""
-
-    // Sample cravings list
-    @State private var cravingsList: [CravingItem] = [
-        CravingItem(name: "Chocolate Chip Cookie", calories: 220),
-        CravingItem(name: "Salted Pretzel", calories: 180),
-        CravingItem(name: "Berry Smoothie", calories: 250)
-    ]
 
     // Weekly progress state (lifted so header Add button can open editor)
     @State private var weeklyEntries: [WeeklyProgressEntry] = {
@@ -235,7 +230,7 @@ struct NutritionTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                showCravingEditor = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -259,24 +254,24 @@ struct NutritionTabView: View {
                         
                         // Cravings list card
                         VStack(spacing: 0) {
-                            ForEach(cravingsList.indices, id: \.self) { idx in
-                                // Use a button so the entire row is tappable
-                                let isChecked = cravingsList[idx].isChecked
+                            ForEach(Array(cravings.enumerated()), id: \.element.id) { idx, _ in
+                                let binding = $cravings[idx]
+                                let isChecked = binding.wrappedValue.isChecked
 
                                 Button {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        cravingsList[idx].isChecked.toggle()
+                                        binding.isChecked.wrappedValue.toggle()
                                     }
                                 } label: {
                                     HStack(spacing: 12) {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text(cravingsList[idx].name)
+                                            Text(binding.name.wrappedValue)
                                                 .font(.subheadline)
                                                 .fontWeight(.semibold)
                                                 .strikethrough(isChecked, color: .secondary)
                                                 .foregroundStyle(isChecked ? .secondary : .primary)
 
-                                            Text("\(cravingsList[idx].calories) cal")
+                                            Text("\(binding.calories.wrappedValue) cal")
                                                 .font(.caption2)
                                                 .foregroundStyle(.secondary)
                                         }
@@ -311,7 +306,7 @@ struct NutritionTabView: View {
                                 }
                                 .buttonStyle(.plain)
 
-                                if idx != cravingsList.indices.last {
+                                if idx != cravings.indices.last {
                                     Divider()
                                         .padding(.leading, 12)
                                 }
@@ -447,6 +442,14 @@ struct NutritionTabView: View {
             )
             .presentationDetents([.large, .medium])
         }
+        .sheet(isPresented: $showCravingEditor) {
+            CravingEditorSheet(
+                cravings: $cravings,
+                tint: accentOverride ?? .accentColor,
+                onDone: { showCravingEditor = false }
+            )
+            .presentationDetents([.large, .medium])
+        }
         .sheet(isPresented: $showConsumedSheet) {
             CalorieConsumedAdjustmentSheet(
                 currentCalories: $consumedCalories,
@@ -529,13 +532,6 @@ struct NutritionTabView: View {
             }
         }
     }
-}
-
-private struct CravingItem: Identifiable {
-    let id = UUID()
-    var name: String
-    var calories: Int
-    var isChecked: Bool = false
 }
 private struct WeeklyProgressAddSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -946,6 +942,233 @@ struct CalorieSummary: View {
     }
 }
 
+struct CravingEditorSheet: View {
+    @Binding var cravings: [CravingItem]
+    var tint: Color
+    var onDone: () -> Void
+
+    @State private var working: [CravingItem] = []
+    @State private var newName: String = ""
+    @State private var newCalories: String = ""
+    @State private var hasLoaded = false
+
+    private let maxTrackedCravings = 20
+    private let caloriesFormatter: NumberFormatter = {
+        let nf = NumberFormatter()
+        nf.numberStyle = .none
+        nf.maximumFractionDigits = 0
+        return nf
+    }()
+
+    private var presets: [CravingItem] {
+        [
+            CravingItem(name: "Chocolate Chip Cookie", calories: 220),
+            CravingItem(name: "Salted Pretzel", calories: 180),
+            CravingItem(name: "Berry Smoothie", calories: 250),
+            CravingItem(name: "Iced Latte", calories: 140),
+            CravingItem(name: "Protein Bar", calories: 210),
+            CravingItem(name: "Granola Yogurt", calories: 190),
+            CravingItem(name: "Trail Mix", calories: 280)
+        ]
+    }
+
+    private var canAddMore: Bool { working.count < maxTrackedCravings }
+    private var canAddCustom: Bool {
+        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && Int(newCalories.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    MacroEditorSummaryChip(
+                        currentCount: working.count,
+                        maxCount: maxTrackedCravings,
+                        tint: tint
+                    )
+
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Tracked Cravings")
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    VStack(spacing: 10) {
+                                        HStack(spacing: 12) {
+                                            Circle()
+                                                .fill(tint.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: binding.wrappedValue.isChecked ? "checkmark.circle.fill" : "checkmark.circle")
+                                                        .foregroundStyle(tint)
+                                                )
+
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                TextField("Name", text: binding.name)
+                                                    .font(.subheadline.weight(.semibold))
+                                                HStack(spacing: 6) {
+                                                    TextField(
+                                                        "Calories",
+                                                        value: binding.calories,
+                                                        formatter: caloriesFormatter
+                                                    )
+                                                    .keyboardType(.numberPad)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                    Text("cal")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                            }
+
+                                            Spacer()
+
+                                            Button(role: .destructive) {
+                                                removeCraving(binding.wrappedValue)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .foregroundStyle(.red)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                    .padding()
+                                    .surfaceCard(12)
+                                }
+                            }
+                        }
+                    }
+
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Quick Add")
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(tint.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(
+                                                Image(systemName: "sparkles")
+                                                    .foregroundStyle(tint)
+                                            )
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.name)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text("\(preset.calories) cal")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(tint)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(18)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Custom Craving")
+                        VStack(spacing: 12) {
+                            TextField("Craving name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack(spacing: 12) {
+                                TextField("Calories (e.g. 180)", text: $newCalories)
+                                    .keyboardType(.numberPad)
+                                    .padding()
+                                    .surfaceCard(16)
+
+                                Button(action: addCustomCraving) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(tint)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("Track up to \(maxTrackedCravings) cravings. Tap plus to add it to your dashboard.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Cravings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onDone() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        cravings = working
+                        onDone()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitialState)
+    }
+
+    private func loadInitialState() {
+        guard !hasLoaded else { return }
+        working = cravings
+        hasLoaded = true
+    }
+
+    private func togglePreset(_ preset: CravingItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.name == preset.name }
+        } else if canAddMore {
+            working.append(preset)
+        }
+    }
+
+    private func isPresetSelected(_ preset: CravingItem) -> Bool {
+        working.contains { $0.name == preset.name }
+    }
+
+    private func removeCraving(_ item: CravingItem) {
+        if presets.contains(where: { $0.name == item.name }) {
+            working.removeAll { $0.name == item.name }
+        } else {
+            working.removeAll { $0.id == item.id }
+        }
+    }
+
+    private func addCustomCraving() {
+        guard canAddCustom else { return }
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCalories = newCalories.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let caloriesInt = Int(trimmedCalories) else { return }
+        let newItem = CravingItem(name: trimmedName, calories: caloriesInt)
+        working.append(newItem)
+        newName = ""
+        newCalories = ""
+    }
+}
+
 struct SupplementEditorSheet: View {
     @Binding var supplements: [SupplementItem]
     var tint: Color
@@ -996,7 +1219,7 @@ struct SupplementEditorSheet: View {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Supplements")
                             VStack(spacing: 12) {
-                                ForEach(Array(working.enumerated()), id: \ .element.id) { idx, item in
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, item in
                                     let binding = $working[idx]
                                     VStack(spacing: 8) {
                                         HStack(spacing: 12) {
@@ -1042,7 +1265,7 @@ struct SupplementEditorSheet: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 MacroEditorSectionHeader(title: "Quick Add")
                                 VStack(spacing: 12) {
-                                    ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
+                                    ForEach(presets.filter { !isPresetSelected($0) }, id: \.name) { preset in
                                         HStack(spacing: 14) {
                                             Circle()
                                                 .fill(tint.opacity(0.15))

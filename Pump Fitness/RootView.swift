@@ -25,6 +25,7 @@ struct RootView: View {
     @State private var selectedMacroFocus: MacroFocusOption? = nil
     @State private var trackedMacros: [TrackedMacro] = []
     @State private var macroConsumptions: [MacroConsumption] = []
+    @State private var cravings: [CravingItem] = []
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @Query private var accounts: [Account]
@@ -169,6 +170,9 @@ struct RootView: View {
         .onChange(of: macroConsumptions) { _, newValue in
             persistMacroConsumptions(newValue)
         }
+        .onChange(of: cravings) { _, newValue in
+            persistCravings(newValue)
+        }
         .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in
             // Keep the UI's maintenanceCalories in sync with the local Account entity
             if let updated = newValue {
@@ -206,6 +210,7 @@ struct RootView: View {
                         // Use the fetched maintenance calories from the account on app load
                         maintenanceCalories = fetched.maintenanceCalories
                         trackedMacros = fetched.trackedMacros
+                        cravings = fetched.cravings
                     }
                 } else {
                     hasCompletedOnboarding = false
@@ -246,11 +251,13 @@ private extension RootView {
                     unitSystem: "metric",
                     activityLevel: ActivityLevelOption.moderatelyActive.rawValue,
                     startWeekOn: "monday",
-                    trackedMacros: TrackedMacro.defaults
+                    trackedMacros: TrackedMacro.defaults,
+                    cravings: []
                 )
                 modelContext.insert(defaultAccount)
                 try modelContext.save()
                 trackedMacros = defaultAccount.trackedMacros
+                cravings = defaultAccount.cravings
             }
         } catch {
             print("Failed to ensure Account exists: \(error)")
@@ -271,6 +278,7 @@ private extension RootView {
     func initializeTrackedMacrosFromLocal() {
         guard let account = fetchAccount() else {
             trackedMacros = TrackedMacro.defaults
+            cravings = []
             return
         }
 
@@ -285,6 +293,8 @@ private extension RootView {
         } else {
             trackedMacros = account.trackedMacros
         }
+
+        cravings = account.cravings
     }
 
     func loadDay(for date: Date) {
@@ -409,6 +419,26 @@ private extension RootView {
         }
     }
 
+    func persistCravings(_ updatedCravings: [CravingItem]) {
+        guard let account = fetchAccount() else { return }
+
+        account.cravings = updatedCravings
+        do {
+            try modelContext.save()
+            print("RootView: saved cravings to local account")
+        } catch {
+            print("RootView: failed to save cravings locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+                print("RootView: synced cravings to Firestore")
+            } else {
+                print("RootView: failed to sync cravings to Firestore")
+            }
+        }
+    }
+
     /// Upsert a Firestore-backed `Account` into the local SwiftData store so
     /// the app UI reads the most recent server values.
     func upsertLocalAccount(with fetched: Account) {
@@ -429,6 +459,7 @@ private extension RootView {
                 local.activityLevel = fetched.activityLevel
                 local.startWeekOn = fetched.startWeekOn
                 local.trackedMacros = fetched.trackedMacros
+                local.cravings = fetched.cravings
                 try modelContext.save()
             } else {
                 let newAccount = Account(
@@ -445,7 +476,8 @@ private extension RootView {
                     unitSystem: fetched.unitSystem,
                     activityLevel: fetched.activityLevel,
                     startWeekOn: fetched.startWeekOn,
-                    trackedMacros: fetched.trackedMacros
+                    trackedMacros: fetched.trackedMacros,
+                    cravings: fetched.cravings
                 )
                 modelContext.insert(newAccount)
                 try modelContext.save()
@@ -511,6 +543,7 @@ private extension RootView {
                                         local.unitSystem = newAccount.unitSystem
                                         local.startWeekOn = newAccount.startWeekOn
                                         local.trackedMacros = newAccount.trackedMacros
+                                        local.cravings = newAccount.cravings
                                         try modelContext.save()
                                     }
                                 } catch {
@@ -533,6 +566,7 @@ private extension RootView {
                                     selectedMacroFocus: $selectedMacroFocus,
                                     trackedMacros: $trackedMacros,
                                     macroConsumptions: $macroConsumptions,
+                                    cravings: $cravings,
                                     maintenanceCalories: $maintenanceCalories
                                 )
                             }

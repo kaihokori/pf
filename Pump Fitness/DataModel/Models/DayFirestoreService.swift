@@ -35,6 +35,7 @@ class DayFirestoreService {
         }
     }
 
+
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
         let id = raw["id"] as? String ?? UUID().uuidString
@@ -43,6 +44,7 @@ class DayFirestoreService {
         let consumed = (raw["consumed"] as? NSNumber)?.doubleValue ?? 0
         return MacroConsumption(id: id, trackedMacroId: trackedMacroId, name: name, unit: unit, consumed: consumed)
     }
+
 
     /// Fetch a Day from Firestore for a given date. If not present remotely, a local `Day` is created (via `Day.fetchOrCreate`) and uploaded.
     /// - Parameters:
@@ -142,7 +144,10 @@ class DayFirestoreService {
                     }
                     return
                 } else {
-                    let day = Day(date: date, macroConsumptions: trackedMacros?.map { MacroConsumption(trackedMacroId: $0.id, name: $0.name, unit: $0.unit, consumed: 0) } ?? [])
+                    let day = Day(
+                        date: date,
+                        macroConsumptions: trackedMacros?.map { MacroConsumption(trackedMacroId: $0.id, name: $0.name, unit: $0.unit, consumed: 0) } ?? []
+                    )
                     if Auth.auth().currentUser != nil {
                         print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key) (no context)")
                         self.saveDay(day) { _ in completion(day) }

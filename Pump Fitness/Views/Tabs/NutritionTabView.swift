@@ -33,21 +33,11 @@ struct NutritionTabView: View {
     @State private var supplements: [SupplementItem] = SupplementItem.defaultSupplements
     @State private var nutritionSearchText: String = ""
 
-    // Weekly progress state (lifted so header Add button can open editor)
-    @State private var weeklyEntries: [WeeklyProgressEntry] = {
-        let cal = Calendar.current
-        let today = Date()
-        let generated = (0..<7).map { offset in
-            let date = cal.date(byAdding: .day, value: -offset, to: today) ?? today
-            return WeeklyProgressEntry(date: date, weight: Double(165 + offset % 5), imagesCount: offset % 3, waterPercent: offset % 2 == 0 ? Double(60 + offset) : nil, bodyFatPercent: offset % 4 == 0 ? Double(18 + offset % 3) : nil)
-        }
-        return generated.sorted { $0.date < $1.date }
-    }()
+    // Weekly progress state (persisted via Account + Firestore)
+    @State private var weeklyEntries: [WeeklyProgressEntry] = []
     @State private var weeklySelectedEntry: WeeklyProgressEntry? = nil
     @State private var weeklyShowEditor: Bool = false
     @State private var previewImageEntry: WeeklyProgressEntry? = nil
-    // store in-memory picked images for entries (id -> image data)
-    @State private var weeklyEntryImages: [UUID: Data] = [:]
 
     @Binding var maintenanceCalories: Int
 
@@ -451,6 +441,16 @@ struct NutritionTabView: View {
                 AccountsView(account: $account)
             }
         }
+        .onAppear {
+            reloadWeeklyProgressFromAccount()
+            ensurePlaceholderIfNeeded(persist: true)
+            refreshProgressFromRemote()
+        }
+        .onChange(of: account.weeklyProgress) { _, _ in
+            reloadWeeklyProgressFromAccount()
+            ensurePlaceholderIfNeeded(persist: false)
+            scheduleProgressReminder()
+        }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
         .sheet(isPresented: $showMacroEditorSheet) {
@@ -476,11 +476,11 @@ struct NutritionTabView: View {
         .sheet(isPresented: $showAddSheet) {
             WeeklyProgressAddSheet(
                 tint: accentOverride ?? .accentColor,
-                onSave: { entry, data in
+                onSave: { entry in
                     weeklyEntries.append(entry)
-                    if let d = data {
-                        weeklyEntryImages[entry.id] = d
-                    }
+                    weeklyEntries.sort { $0.date < $1.date }
+                    persistWeeklyProgressEntries()
+                    scheduleProgressReminder()
                     showAddSheet = false
                 },
                 onCancel: {
@@ -539,16 +539,13 @@ struct NutritionTabView: View {
             WeeklyProgressAddSheet(
                 tint: accentOverride ?? .accentColor,
                 initialEntry: entry,
-                initialImageData: weeklyEntryImages[entry.id],
-                onSave: { updatedEntry, data in
+                onSave: { updatedEntry in
                     if let idx = weeklyEntries.firstIndex(where: { $0.id == updatedEntry.id }) {
                         weeklyEntries[idx] = updatedEntry
                     }
-                    if let d = data {
-                        weeklyEntryImages[updatedEntry.id] = d
-                    } else {
-                        weeklyEntryImages.removeValue(forKey: updatedEntry.id)
-                    }
+                    weeklyEntries.sort { $0.date < $1.date }
+                    persistWeeklyProgressEntries()
+                    scheduleProgressReminder()
                     weeklySelectedEntry = nil
                 },
                 onCancel: {
@@ -562,7 +559,7 @@ struct NutritionTabView: View {
         .fullScreenCover(item: $previewImageEntry) { entry in
             ZStack {
                 Color.black.ignoresSafeArea()
-                if let data = weeklyEntryImages[entry.id], let ui = UIImage(data: data) {
+                if let data = entry.photoData, let ui = UIImage(data: data) {
                     Image(uiImage: ui)
                         .resizable()
                         .scaledToFit()
@@ -609,20 +606,17 @@ private struct WeeklyProgressAddSheet: View {
 
     var tint: Color = .accentColor
     var initialEntry: WeeklyProgressEntry? = nil
-    var initialImageData: Data? = nil
-    var onSave: (WeeklyProgressEntry, Data?) -> Void
+    var onSave: (WeeklyProgressEntry) -> Void
     var onCancel: () -> Void = {}
 
     init(
         tint: Color = .accentColor,
         initialEntry: WeeklyProgressEntry? = nil,
-        initialImageData: Data? = nil,
-        onSave: @escaping (WeeklyProgressEntry, Data?) -> Void,
+        onSave: @escaping (WeeklyProgressEntry) -> Void,
         onCancel: @escaping () -> Void = {}
     ) {
         self.tint = tint
         self.initialEntry = initialEntry
-        self.initialImageData = initialImageData
         self.onSave = onSave
         self.onCancel = onCancel
 
@@ -630,7 +624,7 @@ private struct WeeklyProgressAddSheet: View {
         _weightText = State(initialValue: initialEntry != nil ? String(format: "%.1f", initialEntry!.weight) : "")
         _waterText = State(initialValue: initialEntry?.waterPercent != nil ? String(format: "%.0f", initialEntry!.waterPercent!) : "")
         _bodyFatText = State(initialValue: initialEntry?.bodyFatPercent != nil ? String(format: "%.1f", initialEntry!.bodyFatPercent!) : "")
-        _photoData = State(initialValue: initialImageData)
+        _photoData = State(initialValue: initialEntry?.photoData)
         _photoItem = State(initialValue: nil)
     }
 
@@ -676,7 +670,7 @@ private struct WeeklyProgressAddSheet: View {
                     HStack {
                         // Water % input
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Water")
+                            Text("Body Water")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
 
@@ -799,11 +793,17 @@ private struct WeeklyProgressAddSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         let weight = Double(weightText) ?? 0
-                        let images = photoData != nil ? 1 : 0
                         let water = Double(waterText)
                         let bf = Double(bodyFatText)
-                        let entry = WeeklyProgressEntry(date: date, weight: weight, imagesCount: images, waterPercent: water, bodyFatPercent: bf)
-                        onSave(entry, photoData)
+                        let entry = WeeklyProgressEntry(
+                            id: initialEntry?.id ?? UUID(),
+                            date: date,
+                            weight: weight,
+                            waterPercent: water,
+                            bodyFatPercent: bf,
+                            photoData: photoData
+                        )
+                        onSave(entry)
                         dismiss()
                     }
                     .fontWeight(.semibold)
@@ -938,6 +938,130 @@ private extension NutritionTabView {
                     consumed: updatedValue
                 )
             )
+        }
+    }
+
+    func reloadWeeklyProgressFromAccount() {
+        weeklyEntries = account.weeklyProgress
+            .map {
+                WeeklyProgressEntry(
+                    id: UUID(uuidString: $0.id) ?? UUID(),
+                    date: $0.date,
+                    weight: $0.weight,
+                    waterPercent: $0.waterPercent,
+                    bodyFatPercent: $0.bodyFatPercent,
+                    photoData: $0.photoData
+                )
+            }
+            .sorted { $0.date < $1.date }
+    }
+
+    func persistWeeklyProgressEntries() {
+        account.weeklyProgress = weeklyEntries.map {
+            WeeklyProgressRecord(
+                id: $0.id.uuidString,
+                date: $0.date,
+                weight: $0.weight,
+                waterPercent: $0.waterPercent,
+                bodyFatPercent: $0.bodyFatPercent,
+                photoData: $0.photoData
+            )
+        }
+
+        do {
+            try modelContext.save()
+            print("NutritionTabView: saved weekly progress locally")
+        } catch {
+            print("NutritionTabView: failed to save weekly progress locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+                print("NutritionTabView: synced weekly progress to Firestore")
+            } else {
+                print("NutritionTabView: failed to sync weekly progress to Firestore")
+            }
+        }
+    }
+
+    func refreshProgressFromRemote() {
+        guard let id = account.id else { return }
+        accountFirestoreService.fetchAccount(withId: id) { fetched in
+            guard let fetched else { return }
+            DispatchQueue.main.async {
+                account.weeklyProgress = fetched.weeklyProgress
+                reloadWeeklyProgressFromAccount()
+                ensurePlaceholderIfNeeded(persist: true)
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("NutritionTabView: failed to cache remote weekly progress: \(error)")
+                }
+            }
+        }
+    }
+
+    func ensurePlaceholderIfNeeded(persist: Bool) {
+        let beforeCount = weeklyEntries.count
+        weeklyEntries.sort { $0.date < $1.date }
+
+        let today = Calendar.current.startOfDay(for: Date())
+
+        if weeklyEntries.isEmpty {
+            weeklyEntries.append(
+                WeeklyProgressEntry(date: today, weight: 0, waterPercent: nil, bodyFatPercent: nil, photoData: nil)
+            )
+        } else if let last = weeklyEntries.last {
+            let lastDay = Calendar.current.startOfDay(for: last.date)
+            let delta = Calendar.current.dateComponents([.day], from: lastDay, to: today).day ?? 0
+            if delta >= 7 {
+                weeklyEntries.append(
+                    WeeklyProgressEntry(date: today, weight: 0, waterPercent: nil, bodyFatPercent: nil, photoData: nil)
+                )
+            }
+        }
+
+        weeklyEntries.sort { $0.date < $1.date }
+
+        let added = weeklyEntries.count != beforeCount
+        if added {
+            if persist {
+                persistWeeklyProgressEntries()
+            }
+            scheduleProgressReminder()
+        }
+    }
+
+    func scheduleProgressReminder() {
+        let baseDate = weeklyEntries.last?.date ?? Date()
+        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
+        var components = Calendar.current.dateComponents([.weekday], from: nextDate)
+        if components.weekday == nil {
+            components.weekday = Calendar.current.component(.weekday, from: Date())
+        }
+        components.hour = 9
+        components.minute = 0
+
+        let requestId = "weekly-progress-photo-reminder"
+        let center = UNUserNotificationCenter.current()
+
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            guard error == nil, granted else { return }
+
+            center.removePendingNotificationRequests(withIdentifiers: [requestId])
+
+            let content = UNMutableNotificationContent()
+            content.title = "Weekly Progress Photo"
+            content.body = "Time to capture this week's progress photo at 9 AM."
+            content.sound = .default
+
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            let request = UNNotificationRequest(identifier: requestId, content: content, trigger: trigger)
+            center.add(request) { addError in
+                if let addError = addError {
+                    print("NutritionTabView: failed to schedule reminder: \(addError)")
+                }
+            }
         }
     }
 }
@@ -2939,6 +3063,11 @@ struct FastingTimerCard: View {
         accentColorOverride ?? .green
     }
 
+    private var effectiveTint: Color {
+        // When overtime, force a red tint to highlight the breach
+        isOverTime ? .red : tint
+    }
+
     private var fastingDuration: TimeInterval {
         TimeInterval(fastingMinutes * 60)
     }
@@ -3124,7 +3253,7 @@ struct FastingTimerCard: View {
                     .stroke(tint.opacity(0.12), lineWidth: 14)
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(tint, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                    .stroke(effectiveTint, style: StrokeStyle(lineWidth: 14, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 6) {
                     Text(isOverTime ? "Over Time" : "Time Left")
@@ -3133,7 +3262,7 @@ struct FastingTimerCard: View {
                     Text(displayTime)
                         .font(.title2)
                         .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(isOverTime ? .red : .primary)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -3164,7 +3293,11 @@ struct FastingTimerCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .foregroundStyle(.white)
-                    .glassEffect(accentColorOverride == nil ? .regular.tint(tint) : .regular, in: .rect(cornerRadius: 16.0))
+                    .glassEffect(
+                        // Use a red tint when overtime to make the end button prominent
+                        accentColorOverride == nil ? .regular.tint(isOverTime ? .red : tint) : .regular,
+                        in: .rect(cornerRadius: 16.0)
+                    )
             }
         }
         .padding(20)
@@ -3343,17 +3476,20 @@ struct WeeklyProgressEntry: Identifiable, Equatable {
     let id: UUID
     var date: Date
     var weight: Double
-    var imagesCount: Int
     var waterPercent: Double?
     var bodyFatPercent: Double?
+    var photoData: Data?
 
-    init(id: UUID = UUID(), date: Date, weight: Double, imagesCount: Int = 0, waterPercent: Double? = nil, bodyFatPercent: Double? = nil) {
+    var imagesCount: Int { photoData == nil ? 0 : 1 }
+    var isEmpty: Bool { weight <= 0 && waterPercent == nil && bodyFatPercent == nil && photoData == nil }
+
+    init(id: UUID = UUID(), date: Date, weight: Double, waterPercent: Double? = nil, bodyFatPercent: Double? = nil, photoData: Data? = nil) {
         self.id = id
         self.date = date
         self.weight = weight
-        self.imagesCount = imagesCount
         self.waterPercent = waterPercent
         self.bodyFatPercent = bodyFatPercent
+        self.photoData = photoData
     }
 }
 
@@ -3388,10 +3524,16 @@ private struct WeeklyProgressCarousel: View {
 
                             Spacer()
 
-                            // Weight always shown
-                            Text(String(format: "%.1f kg", entry.weight))
-                                .font(.title2)
-                                .fontWeight(.semibold)
+                            // Weight shown only when present
+                            if entry.weight > 0 {
+                                Text(String(format: "%.1f kg", entry.weight))
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
+                            } else {
+                                Text("No data yet")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
 
                             // Optional additional info — reserve a fixed height so absence
                             // of both values doesn't shift the weight vertically.
@@ -3424,8 +3566,8 @@ private struct WeeklyProgressCarousel: View {
                             .frame(minHeight: 18)
 
                             // Photo (placed under the additional info)
-                            if entry.imagesCount > 0 {
-                                Image("placeholder")
+                            if let data = entry.photoData, let uiImage = UIImage(data: data) {
+                                Image(uiImage: uiImage)
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 180, height: 240)

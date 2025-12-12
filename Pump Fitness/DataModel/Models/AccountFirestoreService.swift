@@ -28,7 +28,8 @@ class AccountFirestoreService {
                 startWeekOn: data["startWeekOn"] as? String,
                 trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) },
                 cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) },
-                mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) }
+                mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) },
+                weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) }
             )
             completion(account)
         }
@@ -54,7 +55,8 @@ class AccountFirestoreService {
             "startWeekOn": account.startWeekOn ?? "",
             "trackedMacros": account.trackedMacros.map { $0.asDictionary },
             "cravings": account.cravings.map { $0.asDictionary },
-            "mealReminders": account.mealReminders.map { $0.asDictionary }
+            "mealReminders": account.mealReminders.map { $0.asDictionary },
+            "weeklyProgress": account.weeklyProgress.map { $0.asDictionary }
         ]
         db.collection(collection).document(id).setData(data) { error in
             completion(error == nil)

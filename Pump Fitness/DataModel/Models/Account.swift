@@ -3,6 +3,7 @@ import SwiftData
 import Combine
 import SwiftUI
 import UIKit
+import FirebaseFirestore
 
 struct TrackedMacro: Codable, Hashable, Identifiable {
     var id: String
@@ -139,6 +140,65 @@ struct MealReminder: Codable, Hashable, Identifiable {
     }
 }
 
+struct WeeklyProgressRecord: Codable, Hashable, Identifiable {
+    var id: String
+    var date: Date
+    var weight: Double
+    var waterPercent: Double?
+    var bodyFatPercent: Double?
+    var photoData: Data?
+
+    init(
+        id: String = UUID().uuidString,
+        date: Date,
+        weight: Double,
+        waterPercent: Double? = nil,
+        bodyFatPercent: Double? = nil,
+        photoData: Data? = nil
+    ) {
+        self.id = id
+        self.date = date
+        self.weight = weight
+        self.waterPercent = waterPercent
+        self.bodyFatPercent = bodyFatPercent
+        self.photoData = photoData
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let timestamp = dictionary["date"] as? Date ?? (dictionary["date"] as? Timestamp)?.dateValue(),
+              let weight = (dictionary["weight"] as? NSNumber)?.doubleValue ?? dictionary["weight"] as? Double else { return nil }
+
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let waterPercent = (dictionary["waterPercent"] as? NSNumber)?.doubleValue ?? dictionary["waterPercent"] as? Double
+        let bodyFatPercent = (dictionary["bodyFatPercent"] as? NSNumber)?.doubleValue ?? dictionary["bodyFatPercent"] as? Double
+
+        var decodedPhoto: Data? = nil
+        if let rawData = dictionary["photoData"] as? Data {
+            decodedPhoto = rawData
+        } else if let base64 = dictionary["photoData"] as? String {
+            decodedPhoto = Data(base64Encoded: base64)
+        }
+
+        self.init(id: id, date: timestamp, weight: weight, waterPercent: waterPercent, bodyFatPercent: bodyFatPercent, photoData: decodedPhoto)
+    }
+
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "date": date,
+            "weight": weight
+        ]
+
+        if let waterPercent { dict["waterPercent"] = waterPercent }
+        if let bodyFatPercent { dict["bodyFatPercent"] = bodyFatPercent }
+        if let photoData {
+            // Firestore can store Data directly; this keeps the image as inline bytes.
+            dict["photoData"] = photoData
+        }
+        return dict
+    }
+}
+
 @Model
 class Account: ObservableObject {
         // MARK: - Avatar Helpers
@@ -181,6 +241,7 @@ class Account: ObservableObject {
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
     var mealReminders: [MealReminder] = MealReminder.defaults
+    var weeklyProgress: [WeeklyProgressRecord] = []
 
     init(
         id: String? = UUID().uuidString,
@@ -199,7 +260,8 @@ class Account: ObservableObject {
         startWeekOn: String? = nil,
         trackedMacros: [TrackedMacro] = [],
         cravings: [CravingItem] = [],
-        mealReminders: [MealReminder] = MealReminder.defaults
+        mealReminders: [MealReminder] = MealReminder.defaults,
+        weeklyProgress: [WeeklyProgressRecord] = []
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -218,6 +280,7 @@ class Account: ObservableObject {
         self.trackedMacros = trackedMacros
         self.cravings = cravings
         self.mealReminders = mealReminders
+        self.weeklyProgress = weeklyProgress
         
     }
 }

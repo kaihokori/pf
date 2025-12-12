@@ -2,8 +2,29 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-@Model
+struct MacroConsumption: Codable, Hashable, Identifiable {
+    var id: String
+    var trackedMacroId: String
+    var name: String
+    var unit: String
+    var consumed: Double
 
+    init(
+        id: String = UUID().uuidString,
+        trackedMacroId: String,
+        name: String,
+        unit: String,
+        consumed: Double = 0
+    ) {
+        self.id = id
+        self.trackedMacroId = trackedMacroId
+        self.name = name
+        self.unit = unit
+        self.consumed = consumed
+    }
+}
+
+@Model
 class Day {
     // normalized day id (optional string id like other models)
     var id: String? = UUID().uuidString
@@ -23,6 +44,9 @@ class Day {
     // macro focus stored as rawValue (e.g. "highProtein", "balanced", "lowCarb", "custom")
     var macroFocusRaw: String?
 
+    // per-macro consumption for this day (mirrors tracked macros from Account)
+    var macroConsumptions: [MacroConsumption]
+
     // human friendly representation useful in previews / logs
     var dayString: String {
         let fmt = DateFormatter()
@@ -31,13 +55,22 @@ class Day {
         return fmt.string(from: date)
     }
 
-    init(id: String? = UUID().uuidString, date: Date = Date(), caloriesConsumed: Int = 0, calorieGoal: Int = 0, maintenanceCalories: Int = 0, macroFocusRaw: String? = nil) {
+    init(
+        id: String? = UUID().uuidString,
+        date: Date = Date(),
+        caloriesConsumed: Int = 0,
+        calorieGoal: Int = 0,
+        maintenanceCalories: Int = 0,
+        macroFocusRaw: String? = nil,
+        macroConsumptions: [MacroConsumption] = []
+    ) {
         self.id = id
         self.date = Calendar.current.startOfDay(for: date)
         self.caloriesConsumed = caloriesConsumed
         self.calorieGoal = calorieGoal
         self.maintenanceCalories = maintenanceCalories
         self.macroFocusRaw = macroFocusRaw
+        self.macroConsumptions = macroConsumptions
     }
 
     /// Fetch an existing `Day` for the provided date or create/insert one if missing.
@@ -45,7 +78,7 @@ class Day {
     ///   - date: the date to find (normalizes to start-of-day)
     ///   - context: the active `ModelContext` to perform fetch/insert
     /// - Returns: an existing or newly created `Day` instance (inserted into `context` when created)
-    static func fetchOrCreate(for date: Date, in context: ModelContext) -> Day {
+    static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil) -> Day {
         let dayStart = Calendar.current.startOfDay(for: date)
 
         // Use a FetchDescriptor with a SwiftData predicate to find an exact match on the day date.
@@ -108,7 +141,20 @@ class Day {
             // ignore and fall back to inherited value
         }
 
-        let newDay = Day(id: UUID().uuidString, date: dayStart, caloriesConsumed: 0, calorieGoal: inheritedCalorieGoal, maintenanceCalories: computedMaintenance, macroFocusRaw: inheritedMacroFocusRaw)
+        var consumptions: [MacroConsumption] = []
+        if let tracked = trackedMacros {
+            consumptions = tracked.map { MacroConsumption(trackedMacroId: $0.id, name: $0.name, unit: $0.unit, consumed: 0) }
+        }
+
+        let newDay = Day(
+            id: UUID().uuidString,
+            date: dayStart,
+            caloriesConsumed: 0,
+            calorieGoal: inheritedCalorieGoal,
+            maintenanceCalories: computedMaintenance,
+            macroFocusRaw: inheritedMacroFocusRaw,
+            macroConsumptions: consumptions
+        )
         context.insert(newDay)
         do {
             try context.save()
@@ -117,5 +163,36 @@ class Day {
             print("Day.fetchOrCreate: failed to save new Day to context: \(error)")
         }
         return newDay
+    }
+
+    /// Align this day's macro consumptions with the provided tracked macros.
+    /// Adds missing macros with zero consumption and removes any stale ones.
+    func ensureMacroConsumptions(for trackedMacros: [TrackedMacro]) {
+        var updated = macroConsumptions
+
+        // Add or refresh existing macros
+        for macro in trackedMacros {
+            if let idx = updated.firstIndex(where: { $0.trackedMacroId == macro.id }) {
+                // keep existing consumed value but update name/unit in case they changed
+                updated[idx].name = macro.name
+                updated[idx].unit = macro.unit
+            } else {
+                updated.append(
+                    MacroConsumption(
+                        trackedMacroId: macro.id,
+                        name: macro.name,
+                        unit: macro.unit,
+                        consumed: 0
+                    )
+                )
+            }
+        }
+
+        // Remove consumptions for macros no longer tracked
+        updated.removeAll { consumption in
+            !trackedMacros.contains(where: { $0.id == consumption.trackedMacroId })
+        }
+
+        macroConsumptions = updated
     }
 }

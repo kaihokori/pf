@@ -24,7 +24,8 @@ class AccountFirestoreService {
                 theme: data["theme"] as? String,
                 unitSystem: data["unitSystem"] as? String,
                 activityLevel: data["activityLevel"] as? String,
-                startWeekOn: data["startWeekOn"] as? String
+                startWeekOn: data["startWeekOn"] as? String,
+                trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) }
             )
             completion(account)
         }
@@ -46,7 +47,8 @@ class AccountFirestoreService {
             "theme": account.theme ?? "",
             "unitSystem": account.unitSystem ?? "",
             "activityLevel": account.activityLevel ?? "",
-            "startWeekOn": account.startWeekOn ?? ""
+            "startWeekOn": account.startWeekOn ?? "",
+            "trackedMacros": account.trackedMacros.map { $0.asDictionary }
         ]
         db.collection(collection).document(id).setData(data) { error in
             completion(error == nil)

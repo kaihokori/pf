@@ -23,6 +23,8 @@ struct RootView: View {
     @State private var calorieGoal: Int = 0
     @State private var maintenanceCalories: Int = 0
     @State private var selectedMacroFocus: MacroFocusOption? = nil
+    @State private var trackedMacros: [TrackedMacro] = []
+    @State private var macroConsumptions: [MacroConsumption] = []
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @Query private var accounts: [Account]
@@ -79,109 +81,21 @@ struct RootView: View {
         }
         .task {
             ensureAccountExists()
+            initializeTrackedMacrosFromLocal()
             printSignedInUserDetails()
             // Ensure onboarding status is evaluated on startup
             checkOnboardingStatus()
             // Ensure today's Day exists locally and attempt to sync to Firestore
-            print("RootView: fetching today's Day for selectedDate=\(selectedDate)")
-            dayFirestoreService.fetchDay(for: selectedDate, in: modelContext) { day in
-                if let d = day {
-                    print("RootView: fetched/created local Day for date=\(d.date)")
-                    DispatchQueue.main.async {
-                        consumedCalories = d.caloriesConsumed
-                        maintenanceCalories = d.maintenanceCalories
-                        // Only update calorieGoal if the fetched day has a non-zero value;
-                        // otherwise preserve the last-known goal so switching dates
-                        // doesn't reset it to 0.
-                        if d.calorieGoal > 0 {
-                            calorieGoal = d.calorieGoal
-                        }
-                        // Only update macro focus if the fetched day actually has one;
-                        // otherwise keep the previously-selected macro focus.
-                        if let raw = d.macroFocusRaw, let mf = MacroFocusOption(rawValue: raw) {
-                            selectedMacroFocus = mf
-                        }
-
-                        // If the fetched Day lacks values but the UI has last-known
-                        // values, persist those to the Day and upload only the
-                        // missing fields so Firestore stays in sync with UI.
-                        var fieldsToUpdate: [String: Any] = [:]
-                        if d.calorieGoal == 0 && calorieGoal > 0 {
-                            d.calorieGoal = calorieGoal
-                            fieldsToUpdate["calorieGoal"] = calorieGoal
-                        }
-                        if d.macroFocusRaw == nil, let localMF = selectedMacroFocus {
-                            d.macroFocusRaw = localMF.rawValue
-                            fieldsToUpdate["macroFocus"] = localMF.rawValue
-                        }
-                        if !fieldsToUpdate.isEmpty {
-                            do {
-                                try modelContext.save()
-                            } catch {
-                                print("RootView: failed to save inherited Day values: \(error)")
-                            }
-                            dayFirestoreService.updateDayFields(fieldsToUpdate, for: d) { success in
-                                if success {
-                                    print("RootView: synced inherited Day fields for date=\(selectedDate): \(fieldsToUpdate)")
-                                } else {
-                                    print("RootView: failed to sync inherited Day fields for date=\(selectedDate)")
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    print("RootView: failed to fetch/create local Day for selectedDate=\(selectedDate)")
-                }
-            }
+            loadDay(for: selectedDate)
         }
         .onChange(of: selectedDate) { _, newDate in
             print("RootView: selectedDate changed to \(newDate), fetching Day from Firestore...")
-            dayFirestoreService.fetchDay(for: newDate, in: modelContext) { day in
-                if let d = day {
-                    print("RootView: fetched/created local Day for date=\(d.date)")
-                    DispatchQueue.main.async {
-                        consumedCalories = d.caloriesConsumed
-                        maintenanceCalories = d.maintenanceCalories
-                        if d.calorieGoal > 0 {
-                            calorieGoal = d.calorieGoal
-                        }
-                        if let raw = d.macroFocusRaw, let mf = MacroFocusOption(rawValue: raw) {
-                            selectedMacroFocus = mf
-                        }
-
-                        var fieldsToUpdate: [String: Any] = [:]
-                        if d.calorieGoal == 0 && calorieGoal > 0 {
-                            d.calorieGoal = calorieGoal
-                            fieldsToUpdate["calorieGoal"] = calorieGoal
-                        }
-                        if d.macroFocusRaw == nil, let localMF = selectedMacroFocus {
-                            d.macroFocusRaw = localMF.rawValue
-                            fieldsToUpdate["macroFocus"] = localMF.rawValue
-                        }
-                        if !fieldsToUpdate.isEmpty {
-                            do {
-                                try modelContext.save()
-                            } catch {
-                                print("RootView: failed to save inherited Day values: \(error)")
-                            }
-                            dayFirestoreService.updateDayFields(fieldsToUpdate, for: d) { success in
-                                if success {
-                                    print("RootView: synced inherited Day fields for date=\(newDate): \(fieldsToUpdate)")
-                                } else {
-                                    print("RootView: failed to sync inherited Day fields for date=\(newDate)")
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    print("RootView: failed to fetch/create local Day for selectedDate=\(newDate)")
-                }
-            }
+            loadDay(for: newDate)
         }
         .onChange(of: consumedCalories) { _, newValue in
             // Persist the updated calories to the local SwiftData Day and attempt to sync to Firestore
             Task {
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
                 day.caloriesConsumed = newValue
                 do {
                     try modelContext.save()
@@ -204,7 +118,7 @@ struct RootView: View {
 
         .onChange(of: calorieGoal) { _, newValue in
             Task {
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
                 day.calorieGoal = newValue
                 do {
                     try modelContext.save()
@@ -224,7 +138,7 @@ struct RootView: View {
 
         .onChange(of: selectedMacroFocus) { _, newValue in
             Task {
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
                 day.macroFocusRaw = newValue?.rawValue
                 // Ensure the calorie goal is persisted alongside macro focus so
                 // changing the macro (which may update the UI's calorieGoal)
@@ -248,6 +162,12 @@ struct RootView: View {
                     }
                 }
             }
+        }
+        .onChange(of: trackedMacros) { _, newValue in
+            persistTrackedMacros(newValue)
+        }
+        .onChange(of: macroConsumptions) { _, newValue in
+            persistMacroConsumptions(newValue)
         }
         .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in
             // Keep the UI's maintenanceCalories in sync with the local Account entity
@@ -273,10 +193,19 @@ struct RootView: View {
                 if account != nil {
                     hasCompletedOnboarding = true
                     selectedTab = .nutrition
-                    if let fetched = account {
+                    if var fetched = account {
+                        if fetched.trackedMacros.isEmpty {
+                            fetched.trackedMacros = TrackedMacro.defaults
+                            accountFirestoreService.saveAccount(fetched) { success in
+                                if !success {
+                                    print("RootView: failed to seed default tracked macros to Firestore")
+                                }
+                            }
+                        }
                         upsertLocalAccount(with: fetched)
                         // Use the fetched maintenance calories from the account on app load
                         maintenanceCalories = fetched.maintenanceCalories
+                        trackedMacros = fetched.trackedMacros
                     }
                 } else {
                     hasCompletedOnboarding = false
@@ -316,10 +245,12 @@ private extension RootView {
                     theme: "default",
                     unitSystem: "metric",
                     activityLevel: ActivityLevelOption.moderatelyActive.rawValue,
-                    startWeekOn: "monday"
+                    startWeekOn: "monday",
+                    trackedMacros: TrackedMacro.defaults
                 )
                 modelContext.insert(defaultAccount)
                 try modelContext.save()
+                trackedMacros = defaultAccount.trackedMacros
             }
         } catch {
             print("Failed to ensure Account exists: \(error)")
@@ -334,6 +265,147 @@ private extension RootView {
         } catch {
             print("Failed to fetch Account: \(error)")
             return nil
+        }
+    }
+
+    func initializeTrackedMacrosFromLocal() {
+        guard let account = fetchAccount() else {
+            trackedMacros = TrackedMacro.defaults
+            return
+        }
+
+        if account.trackedMacros.isEmpty {
+            account.trackedMacros = TrackedMacro.defaults
+            trackedMacros = account.trackedMacros
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save default tracked macros locally: \(error)")
+            }
+        } else {
+            trackedMacros = account.trackedMacros
+        }
+    }
+
+    func loadDay(for date: Date) {
+        dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
+            if let d = day {
+                print("RootView: fetched/created local Day for date=\(d.date)")
+                DispatchQueue.main.async {
+                    applyDayState(d, for: date)
+                }
+            } else {
+                print("RootView: failed to fetch/create local Day for selectedDate=\(date)")
+            }
+        }
+    }
+
+    func applyDayState(_ day: Day, for targetDate: Date) {
+        consumedCalories = day.caloriesConsumed
+        maintenanceCalories = day.maintenanceCalories
+        if day.calorieGoal > 0 {
+            calorieGoal = day.calorieGoal
+        }
+        if let raw = day.macroFocusRaw, let mf = MacroFocusOption(rawValue: raw) {
+            selectedMacroFocus = mf
+        }
+
+        let previousCount = macroConsumptions.count
+        if !trackedMacros.isEmpty {
+            day.ensureMacroConsumptions(for: trackedMacros)
+        }
+        macroConsumptions = day.macroConsumptions
+
+        var fieldsToUpdate: [String: Any] = [:]
+        if day.calorieGoal == 0 && calorieGoal > 0 {
+            day.calorieGoal = calorieGoal
+            fieldsToUpdate["calorieGoal"] = calorieGoal
+        }
+        if day.macroFocusRaw == nil, let localMF = selectedMacroFocus {
+            day.macroFocusRaw = localMF.rawValue
+            fieldsToUpdate["macroFocus"] = localMF.rawValue
+        }
+
+        if !fieldsToUpdate.isEmpty || previousCount != macroConsumptions.count {
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save Day after applying state: \(error)")
+            }
+
+            if !fieldsToUpdate.isEmpty {
+                dayFirestoreService.updateDayFields(fieldsToUpdate, for: day) { success in
+                    if success {
+                        print("RootView: synced inherited Day fields for date=\(targetDate): \(fieldsToUpdate)")
+                    } else {
+                        print("RootView: failed to sync inherited Day fields for date=\(targetDate)")
+                    }
+                }
+            } else {
+                dayFirestoreService.saveDay(day) { success in
+                    if !success {
+                        print("RootView: failed to sync macro consumptions for date=\(targetDate)")
+                    }
+                }
+            }
+        }
+    }
+
+    func persistTrackedMacros(_ macros: [TrackedMacro]) {
+        guard let account = fetchAccount() else { return }
+
+        account.trackedMacros = macros
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save tracked macros locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+                print("RootView: synced tracked macros to Firestore")
+            } else {
+                print("RootView: failed to sync tracked macros to Firestore")
+            }
+        }
+
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: macros)
+        day.ensureMacroConsumptions(for: macros)
+        macroConsumptions = day.macroConsumptions
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save day macro alignments: \(error)")
+        }
+
+        dayFirestoreService.saveDay(day) { success in
+            if success {
+                print("RootView: synced day macros after tracked macro change")
+            } else {
+                print("RootView: failed to sync day macros after tracked macro change")
+            }
+        }
+    }
+
+    func persistMacroConsumptions(_ consumptions: [MacroConsumption]) {
+        Task {
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.macroConsumptions = consumptions
+            do {
+                try modelContext.save()
+                print("RootView: saved macro consumptions for date=\(selectedDate)")
+            } catch {
+                print("RootView: failed to save macro consumptions locally: \(error)")
+            }
+
+            dayFirestoreService.saveDay(day) { success in
+                if success {
+                    print("RootView: synced macro consumptions to Firestore for date=\(selectedDate)")
+                } else {
+                    print("RootView: failed to sync macro consumptions to Firestore for date=\(selectedDate)")
+                }
+            }
         }
     }
 
@@ -356,6 +428,7 @@ private extension RootView {
                 local.unitSystem = fetched.unitSystem
                 local.activityLevel = fetched.activityLevel
                 local.startWeekOn = fetched.startWeekOn
+                local.trackedMacros = fetched.trackedMacros
                 try modelContext.save()
             } else {
                 let newAccount = Account(
@@ -371,7 +444,8 @@ private extension RootView {
                     theme: fetched.theme,
                     unitSystem: fetched.unitSystem,
                     activityLevel: fetched.activityLevel,
-                    startWeekOn: fetched.startWeekOn
+                    startWeekOn: fetched.startWeekOn,
+                    trackedMacros: fetched.trackedMacros
                 )
                 modelContext.insert(newAccount)
                 try modelContext.save()
@@ -436,6 +510,7 @@ private extension RootView {
                                         local.theme = newAccount.theme
                                         local.unitSystem = newAccount.unitSystem
                                         local.startWeekOn = newAccount.startWeekOn
+                                        local.trackedMacros = newAccount.trackedMacros
                                         try modelContext.save()
                                     }
                                 } catch {
@@ -450,7 +525,16 @@ private extension RootView {
                                 systemImage: AppTab.nutrition.systemImage,
                                 value: AppTab.nutrition
                             ) {
-                                NutritionTabView(account: accountBinding, consumedCalories: $consumedCalories, selectedDate: $selectedDate, calorieGoal: $calorieGoal, selectedMacroFocus: $selectedMacroFocus, maintenanceCalories: $maintenanceCalories)
+                                NutritionTabView(
+                                    account: accountBinding,
+                                    consumedCalories: $consumedCalories,
+                                    selectedDate: $selectedDate,
+                                    calorieGoal: $calorieGoal,
+                                    selectedMacroFocus: $selectedMacroFocus,
+                                    trackedMacros: $trackedMacros,
+                                    macroConsumptions: $macroConsumptions,
+                                    maintenanceCalories: $maintenanceCalories
+                                )
                             }
                             Tab(
                                 "Routine",

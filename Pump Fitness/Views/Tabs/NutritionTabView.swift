@@ -14,8 +14,9 @@ struct NutritionTabView: View {
     @State private var showCalorieGoalSheet = false
     @Binding var calorieGoal: Int
     @Binding var selectedMacroFocus: MacroFocusOption?
+    @Binding var trackedMacros: [TrackedMacro]
+    @Binding var macroConsumptions: [MacroConsumption]
     @State private var showMacroEditorSheet = false
-    @State private var macroMetrics: [MacroMetric] = MacroPreset.defaultActiveMetrics
     @State private var selectedMacroForLog: MacroMetric?
     @State private var showConsumedSheet = false
     @State private var showProtocolSheet = false
@@ -25,9 +26,9 @@ struct NutritionTabView: View {
 
     // Sample cravings list
     @State private var cravingsList: [CravingItem] = [
-        CravingItem(name: "Dick", calories: 2060),
-        CravingItem(name: "Spotted Dick", calories: 220),
-        CravingItem(name: "Lesbian Sweet Biscuits", calories: 150)
+        CravingItem(name: "Chocolate Chip Cookie", calories: 220),
+        CravingItem(name: "Salted Pretzel", calories: 180),
+        CravingItem(name: "Berry Smoothie", calories: 250)
     ]
 
     // Weekly progress state (lifted so header Add button can open editor)
@@ -403,7 +404,7 @@ struct NutritionTabView: View {
         .accentColor(accentOverride ?? .accentColor)
         .sheet(isPresented: $showMacroEditorSheet) {
             MacroEditorSheet(
-                macros: $macroMetrics,
+                macros: macroEditorBinding,
                 tint: accentOverride ?? .accentColor,
                 isMultiColourTheme: themeManager.selectedTheme == .multiColour,
                 macroFocus: selectedMacroFocus,
@@ -457,7 +458,7 @@ struct NutritionTabView: View {
         .sheet(item: $selectedMacroForLog) { metric in
             MacroLogEntrySheet(
                 metric: metric,
-                initialValue: numericValue(from: metric.currentLabel) ?? 0,
+                initialValue: macroConsumptions.first(where: { $0.trackedMacroId == metric.id.uuidString })?.consumed ?? 0,
                 unitSuffix: inferredUnitSuffix(for: metric)
             ) { newValue in
                 updateMacro(metric, with: newValue)
@@ -787,6 +788,54 @@ private extension NutritionTabView {
         return themeManager.selectedTheme.accent(for: colorScheme)
     }
 
+    private var macroMetrics: [MacroMetric] {
+        trackedMacros.map { macroMetric(from: $0) }
+    }
+
+    private var macroEditorBinding: Binding<[MacroMetric]> {
+        Binding(
+            get: { macroMetrics },
+            set: { incoming in
+                trackedMacros = incoming.map { trackedMacro(from: $0) }
+            }
+        )
+    }
+
+    private func macroMetric(from tracked: TrackedMacro) -> MacroMetric {
+        let consumed = currentConsumption(for: tracked)
+        let percent = tracked.target > 0 ? min(max(consumed / tracked.target, 0), 1) : 0
+        let preset = MacroPreset.allCases.first { $0.displayName.lowercased() == tracked.name.lowercased() }
+        let targetLabel = formattedMacroValue(tracked.target, suffix: tracked.unit)
+        let currentLabel = formattedMacroValue(consumed, suffix: tracked.unit)
+
+        return MacroMetric(
+            id: UUID(uuidString: tracked.id) ?? UUID(),
+            title: tracked.name,
+            percent: percent,
+            currentLabel: currentLabel,
+            targetLabel: targetLabel,
+            color: tracked.color,
+            source: preset.map { .preset($0) } ?? .custom
+        )
+    }
+
+    private func trackedMacro(from metric: MacroMetric) -> TrackedMacro {
+        let targetValue = numericValue(from: metric.targetLabel) ?? 0
+        let suffix = unitSuffix(from: metric.targetLabel).isEmpty ? unitSuffix(from: metric.currentLabel) : unitSuffix(from: metric.targetLabel)
+        let colorHex = metric.color.toHex() ?? "#FF3B30"
+        return TrackedMacro(
+            id: metric.id.uuidString,
+            name: metric.title,
+            target: targetValue,
+            unit: suffix.isEmpty ? "g" : suffix,
+            colorHex: colorHex
+        )
+    }
+
+    private func currentConsumption(for tracked: TrackedMacro) -> Double {
+        macroConsumptions.first(where: { $0.trackedMacroId == tracked.id })?.consumed ?? 0
+    }
+
     func numericValue(from label: String) -> Double? {
         let allowed = CharacterSet(charactersIn: "0123456789.")
         let filteredScalars = label.unicodeScalars.filter { allowed.contains($0) }
@@ -816,12 +865,20 @@ private extension NutritionTabView {
     }
 
     func updateMacro(_ metric: MacroMetric, with newValue: Double) {
-        guard let index = macroMetrics.firstIndex(where: { $0.id == metric.id }) else { return }
         let suffix = inferredUnitSuffix(for: metric)
-        macroMetrics[index].currentLabel = formattedMacroValue(newValue, suffix: suffix)
-        if let targetValue = numericValue(from: macroMetrics[index].targetLabel), targetValue > 0 {
-            let percent = min(max(newValue / targetValue, 0), 1)
-            macroMetrics[index].percent = percent
+        let updatedValue = max(0, newValue)
+        if let idx = macroConsumptions.firstIndex(where: { $0.trackedMacroId == metric.id.uuidString }) {
+            macroConsumptions[idx].consumed = updatedValue
+            macroConsumptions[idx].unit = suffix.isEmpty ? macroConsumptions[idx].unit : suffix
+        } else {
+            macroConsumptions.append(
+                MacroConsumption(
+                    trackedMacroId: metric.id.uuidString,
+                    name: metric.title,
+                    unit: suffix.isEmpty ? unitSuffix(from: metric.targetLabel) : suffix,
+                    consumed: updatedValue
+                )
+            )
         }
     }
 }

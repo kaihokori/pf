@@ -23,12 +23,33 @@ class DayFirestoreService {
         return fmt.string(from: dayStart)
     }
 
+    private func encodeMacroConsumptions(_ macros: [MacroConsumption]) -> [[String: Any]] {
+        macros.map { macro in
+            [
+                "id": macro.id,
+                "trackedMacroId": macro.trackedMacroId,
+                "name": macro.name,
+                "unit": macro.unit,
+                "consumed": macro.consumed
+            ]
+        }
+    }
+
+    private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
+        guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
+        let id = raw["id"] as? String ?? UUID().uuidString
+        let name = raw["name"] as? String ?? ""
+        let unit = raw["unit"] as? String ?? "g"
+        let consumed = (raw["consumed"] as? NSNumber)?.doubleValue ?? 0
+        return MacroConsumption(id: id, trackedMacroId: trackedMacroId, name: name, unit: unit, consumed: consumed)
+    }
+
     /// Fetch a Day from Firestore for a given date. If not present remotely, a local `Day` is created (via `Day.fetchOrCreate`) and uploaded.
     /// - Parameters:
     ///   - date: date to fetch (normalized to start-of-day)
     ///   - context: optional `ModelContext` used to insert/find local model instances
     ///   - completion: returns the `Day` (local instance) or `nil` on unrecoverable errors
-    func fetchDay(for date: Date, in context: ModelContext?, completion: @escaping (Day?) -> Void) {
+    func fetchDay(for date: Date, in context: ModelContext?, trackedMacros: [TrackedMacro]? = nil, completion: @escaping (Day?) -> Void) {
         let key = dateKey(for: date)
 
         // Choose docRef: user-scoped `accounts/{userID}/days/{dayDate}` when signed in, otherwise legacy `days/{dayDate}`
@@ -45,7 +66,7 @@ class DayFirestoreService {
                 // On error, fall back to local cache if available
                 print("DayFirestoreService: error fetching doc for key=\(key): \(String(describing: error))")
                 if let ctx = context {
-                    let local = Day.fetchOrCreate(for: date, in: ctx)
+                    let local = Day.fetchOrCreate(for: date, in: ctx, trackedMacros: trackedMacros)
                     print("DayFirestoreService: falling back to local day for key=\(key)")
                     completion(local)
                     return
@@ -62,8 +83,9 @@ class DayFirestoreService {
                 let calorieGoalOpt = data["calorieGoal"] as? Int
                 let maintenanceOpt = data["maintenanceCalories"] as? Int
                 let macroFocusOpt = data["macroFocus"] as? String
+                let macroConsumptionsRemote = (data["macroConsumptions"] as? [[String: Any]] ?? []).compactMap { self.decodeMacroConsumption($0) }
                 if let ctx = context {
-                    let day = Day.fetchOrCreate(for: remoteDate, in: ctx)
+                    let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
                     // Only overwrite fields if the remote document actually contains them.
                     if let calories = caloriesOpt {
                         day.caloriesConsumed = calories
@@ -77,6 +99,11 @@ class DayFirestoreService {
                     if let macroFocus = macroFocusOpt {
                         day.macroFocusRaw = macroFocus
                     }
+                    if !macroConsumptionsRemote.isEmpty {
+                        day.macroConsumptions = macroConsumptionsRemote
+                    } else if let tracked = trackedMacros {
+                        day.ensureMacroConsumptions(for: tracked)
+                    }
                     print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(day.caloriesConsumed)")
                     completion(day)
                     return
@@ -85,7 +112,14 @@ class DayFirestoreService {
                     let calories = caloriesOpt ?? 0
                     let calorieGoal = calorieGoalOpt ?? 0
                     let maintenance = maintenanceOpt ?? 0
-                    let day = Day(date: remoteDate, caloriesConsumed: calories, calorieGoal: calorieGoal, maintenanceCalories: maintenance, macroFocusRaw: macroFocusOpt)
+                    let day = Day(
+                        date: remoteDate,
+                        caloriesConsumed: calories,
+                        calorieGoal: calorieGoal,
+                        maintenanceCalories: maintenance,
+                        macroFocusRaw: macroFocusOpt,
+                        macroConsumptions: macroConsumptionsRemote
+                    )
                     print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
                     return
@@ -95,7 +129,7 @@ class DayFirestoreService {
                 print("DayFirestoreService: no remote day for key=\(key). Creating local default.")
                 // Create local default
                 if let ctx = context {
-                    let day = Day.fetchOrCreate(for: date, in: ctx)
+                    let day = Day.fetchOrCreate(for: date, in: ctx, trackedMacros: trackedMacros)
                     // If user is signed in, attempt immediate upload; otherwise mark for later
                     if Auth.auth().currentUser != nil {
                         print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key)")
@@ -108,7 +142,7 @@ class DayFirestoreService {
                     }
                     return
                 } else {
-                    let day = Day(date: date)
+                    let day = Day(date: date, macroConsumptions: trackedMacros?.map { MacroConsumption(trackedMacroId: $0.id, name: $0.name, unit: $0.unit, consumed: 0) } ?? [])
                     if Auth.auth().currentUser != nil {
                         print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key) (no context)")
                         self.saveDay(day) { _ in completion(day) }
@@ -139,6 +173,9 @@ class DayFirestoreService {
             data["maintenanceCalories"] = day.maintenanceCalories
         if let macro = day.macroFocusRaw {
             data["macroFocus"] = macro
+        }
+        if !day.macroConsumptions.isEmpty {
+            data["macroConsumptions"] = encodeMacroConsumptions(day.macroConsumptions)
         }
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}

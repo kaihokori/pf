@@ -37,6 +37,19 @@ struct LookupTabView: View {
                 VStack(spacing: 12) {
                     HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
                         .environmentObject(account)
+                    
+                    HStack {
+                      Text("Food Lookup")
+                          .font(.title3)
+                          .fontWeight(.semibold)
+                          .foregroundStyle(.primary)
+
+                      Spacer()
+                  }
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .padding(.horizontal, 18)
+                  .padding(.top, 48)
+                  .padding(.bottom, 8)
 
                     // Search bar + portion size + button (inline)
                     HStack(spacing: 8) {

@@ -157,8 +157,6 @@ struct AccountsView: View {
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
 
-                                    Spacer()
-
                                     if let gender = viewModel.draft.selectedGender, gender == .male || gender == .female {
                                         Button(action: {
                                             Task { await MainActor.run { viewModel.calculateMaintenanceCalories() } }

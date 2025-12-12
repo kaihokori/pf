@@ -21,12 +21,14 @@ class AccountFirestoreService {
                 height: data["height"] as? Double,
                 weight: data["weight"] as? Double,
                 maintenanceCalories: data["maintenanceCalories"] as? Int ?? 0,
+                intermittentFastingMinutes: data["intermittentFastingMinutes"] as? Int ?? 16 * 60,
                 theme: data["theme"] as? String,
                 unitSystem: data["unitSystem"] as? String,
                 activityLevel: data["activityLevel"] as? String,
                 startWeekOn: data["startWeekOn"] as? String,
                 trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) },
-                cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) }
+                cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) },
+                mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) }
             )
             completion(account)
         }
@@ -45,12 +47,14 @@ class AccountFirestoreService {
             "height": account.height ?? 0,
             "weight": account.weight ?? 0,
             "maintenanceCalories": account.maintenanceCalories,
+            "intermittentFastingMinutes": account.intermittentFastingMinutes,
             "theme": account.theme ?? "",
             "unitSystem": account.unitSystem ?? "",
             "activityLevel": account.activityLevel ?? "",
             "startWeekOn": account.startWeekOn ?? "",
             "trackedMacros": account.trackedMacros.map { $0.asDictionary },
-            "cravings": account.cravings.map { $0.asDictionary }
+            "cravings": account.cravings.map { $0.asDictionary },
+            "mealReminders": account.mealReminders.map { $0.asDictionary }
         ]
         db.collection(collection).document(id).setData(data) { error in
             completion(error == nil)

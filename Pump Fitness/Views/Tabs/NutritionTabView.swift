@@ -1,12 +1,16 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import SwiftData
+import UserNotifications
+import Combine
 
 struct NutritionTabView: View {
     @Binding var account: Account
     @Binding var consumedCalories: Int
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
@@ -17,12 +21,15 @@ struct NutritionTabView: View {
     @Binding var trackedMacros: [TrackedMacro]
     @Binding var macroConsumptions: [MacroConsumption]
     @Binding var cravings: [CravingItem]
+    @Binding var mealReminders: [MealReminder]
+    @Binding var checkedMeals: Set<String>
     @State private var showMacroEditorSheet = false
     @State private var selectedMacroForLog: MacroMetric?
     @State private var showConsumedSheet = false
     @State private var showProtocolSheet = false
     @State private var showSupplementEditor = false
     @State private var showCravingEditor = false
+    @State private var showMealReminderSheet = false
     @State private var supplements: [SupplementItem] = SupplementItem.defaultSupplements
     @State private var nutritionSearchText: String = ""
 
@@ -42,10 +49,35 @@ struct NutritionTabView: View {
     // store in-memory picked images for entries (id -> image data)
     @State private var weeklyEntryImages: [UUID: Data] = [:]
 
-    // Track which meal schedule cells are checked (by name)
-    @State private var checkedMeals: Set<String> = []
-
     @Binding var maintenanceCalories: Int
+
+    private let accountFirestoreService = AccountFirestoreService()
+
+    init(
+        account: Binding<Account>,
+        consumedCalories: Binding<Int>,
+        selectedDate: Binding<Date>,
+        calorieGoal: Binding<Int>,
+        selectedMacroFocus: Binding<MacroFocusOption?>,
+        trackedMacros: Binding<[TrackedMacro]>,
+        macroConsumptions: Binding<[MacroConsumption]>,
+        cravings: Binding<[CravingItem]>,
+        mealReminders: Binding<[MealReminder]>,
+        checkedMeals: Binding<Set<String>>,
+        maintenanceCalories: Binding<Int>
+    ) {
+        _account = account
+        _consumedCalories = consumedCalories
+        _selectedDate = selectedDate
+        _calorieGoal = calorieGoal
+        _selectedMacroFocus = selectedMacroFocus
+        _trackedMacros = trackedMacros
+        _macroConsumptions = macroConsumptions
+        _cravings = cravings
+        _mealReminders = mealReminders
+        _checkedMeals = checkedMeals
+        _maintenanceCalories = maintenanceCalories
+    }
 
     private let caloriesBurnedToday: Int = 620
     private let caloriesBurnGoal: Int = 800
@@ -63,6 +95,25 @@ struct NutritionTabView: View {
 
     private var formattedStepsGoal: String {
         NumberFormatter.withComma.string(from: NSNumber(value: stepsGoalToday)) ?? "\(stepsGoalToday)"
+    }
+
+    private func persistIntermittentFasting(minutes: Int) {
+        account.intermittentFastingMinutes = minutes
+
+        do {
+            try modelContext.save()
+            print("NutritionTabView: saved intermittent fasting minutes locally = \(minutes)")
+        } catch {
+            print("NutritionTabView: failed to save intermittent fasting minutes locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+                print("NutritionTabView: synced intermittent fasting minutes to Firestore")
+            } else {
+                print("NutritionTabView: failed to sync intermittent fasting minutes to Firestore")
+            }
+        }
     }
     var body: some View {
         NavigationStack {
@@ -166,7 +217,7 @@ struct NutritionTabView: View {
                             Spacer()
 
                             Button {
-                                // Meal Tracking edit — no action (kept for parity)
+                                    showMealReminderSheet = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -183,7 +234,8 @@ struct NutritionTabView: View {
                         
                         MealScheduleSection(
                             accentColorOverride: accentOverride,
-                            checkedMeals: $checkedMeals
+                            checkedMeals: $checkedMeals,
+                            mealReminders: mealReminders
                         )
 
                         DailyMealLogSection(
@@ -342,7 +394,11 @@ struct NutritionTabView: View {
 
                         FastingTimerCard(
                             accentColorOverride: accentOverride,
-                            showProtocolSheet: $showProtocolSheet
+                            showProtocolSheet: $showProtocolSheet,
+                            currentFastingMinutes: account.intermittentFastingMinutes,
+                            onProtocolChanged: { minutes in
+                                persistIntermittentFasting(minutes: minutes)
+                            }
                         )
                         .padding(.horizontal, 18)
                         .padding(.top, 12)
@@ -449,6 +505,13 @@ struct NutritionTabView: View {
                 onDone: { showCravingEditor = false }
             )
             .presentationDetents([.large, .medium])
+        }
+        .sheet(isPresented: $showMealReminderSheet) {
+            MealReminderEditorSheet(
+                mealReminders: $mealReminders,
+                tint: accentOverride ?? .accentColor
+            )
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showConsumedSheet) {
             CalorieConsumedAdjustmentSheet(
@@ -2343,6 +2406,7 @@ struct DailyMealLogSection: View {
     private let meals: [MealLogEntry] = MealLogEntry.sampleEntries
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         let tint = accentColorOverride ?? .accentColor
@@ -2419,39 +2483,8 @@ struct DailyMealLogSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            let cal = Calendar.current
-                            let today = Date()
-                            let weekday = cal.component(.weekday, from: today) // 1 = Sunday
-                            let startIndex = weekStartsOnMonday ? 2 : 1
-                            let offsetToStart = (weekday - startIndex + 7) % 7
-                            let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
-
-                            let weekDates: [Date] = (0..<7).compactMap { i in
-                                cal.date(byAdding: .day, value: i, to: startOfWeek)
-                            }
-
-                            ForEach(weekDates, id: \.self) { day in
-                                // Determine whether this day should be considered a "future" day
-                                let weekday = Calendar.current.component(.weekday, from: day) // 1 = Sunday, 5 = Thursday
-                                let isFutureDay = weekday >= 5
-
-                                if let entry = weeklyEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
-                                    let idx = weeklyEntries.firstIndex(where: { $0.id == entry.id }) ?? 0
-                                    let protein = Int(60 + Double(idx) * 3)
-                                    let carbs = Int(140 - Double(idx) * 4)
-                                    let fats = Int(30 + Double(idx) * 2)
-                                    let calories = Int(1800 + Double(idx) * 120)
-                                    let waterLitres = Double(1.8 + Double(idx) * 0.1)
-                                    MacroDayColumn(date: day, tint: tint, calories: calories, protein: protein, carbs: carbs, fats: fats, waterLitres: waterLitres, isFuture: isFutureDay)
-                                } else {
-                                    let idx = Calendar.current.ordinality(of: .day, in: .year, for: day) ?? 0
-                                    let protein = 60 + (idx % 5) * 3
-                                    let carbs = 140 - (idx % 6) * 4
-                                    let fats = 30 + (idx % 4) * 2
-                                    let calories = 2000 + (idx % 7) * 100
-                                    let waterLitres = 1.8 + Double(idx % 5) * 0.1
-                                    MacroDayColumn(date: day, tint: tint, calories: calories, protein: protein, carbs: carbs, fats: fats, waterLitres: waterLitres, isFuture: isFutureDay)
-                                }
+                            ForEach(weeklyMacroSummaries(weekStartsOnMonday: weekStartsOnMonday)) { summary in
+                                DynamicMacroDayColumn(summary: summary, tint: tint)
                             }
                         }
                         .padding(.vertical, 4)
@@ -2468,26 +2501,137 @@ struct DailyMealLogSection: View {
         .padding(.horizontal, 18)
         .padding(.top, 12)
     }
+
+    private func weeklyMacroSummaries(weekStartsOnMonday: Bool) -> [WeeklyMacroSummary] {
+        let cal = Calendar.current
+        let today = Date()
+        let weekday = cal.component(.weekday, from: today) // 1 = Sunday
+        let startIndex = weekStartsOnMonday ? 2 : 1
+        let offsetToStart = (weekday - startIndex + 7) % 7
+        let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
+
+        let weekDates: [Date] = (0..<7).compactMap { i in
+            cal.date(byAdding: .day, value: i, to: startOfWeek)
+        }
+
+        return weekDates.map { date in
+            let dayStart = cal.startOfDay(for: date)
+            let isFuture = dayStart > cal.startOfDay(for: today)
+
+            let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == dayStart })
+            let day: Day? = (try? modelContext.fetch(request))?.first
+
+            let calories = day?.caloriesConsumed ?? 0
+            let macros = day?.macroConsumptions ?? []
+
+            return WeeklyMacroSummary(
+                date: dayStart,
+                calories: calories,
+                macros: macros,
+                isFuture: isFuture
+            )
+        }
+    }
+}
+
+private struct MealReminderEditorSheet: View {
+    @Binding var mealReminders: [MealReminder]
+    var tint: Color
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var workingReminders: [MealReminder]
+
+    init(mealReminders: Binding<[MealReminder]>, tint: Color) {
+        _mealReminders = mealReminders
+        self.tint = tint
+        _workingReminders = State(initialValue: MealReminderEditorSheet.normalizedReminders(mealReminders.wrappedValue))
+    }
+
+    private static func sortedReminders(_ reminders: [MealReminder]) -> [MealReminder] {
+        let order: [MealType: Int] = [.breakfast: 0, .lunch: 1, .dinner: 2, .snack: 3]
+        return reminders.sorted { lhs, rhs in
+            order[lhs.mealType, default: 0] < order[rhs.mealType, default: 0]
+        }
+    }
+
+    private static func normalizedReminders(_ reminders: [MealReminder]) -> [MealReminder] {
+        var map = [MealType: MealReminder]()
+        for reminder in reminders {
+            map[reminder.mealType] = reminder
+        }
+        for defaultReminder in MealReminder.defaults where map[defaultReminder.mealType] == nil {
+            map[defaultReminder.mealType] = defaultReminder
+        }
+        return sortedReminders(Array(map.values))
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach($workingReminders) { $reminder in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(reminder.mealType.displayName)
+                                .font(.body.weight(.semibold))
+                            Text("Reminder time")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        DatePicker(
+                            "",
+                            selection: Binding<Date>(
+                                get: { reminder.dateForToday },
+                                set: { newValue in
+                                    let comps = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                                    reminder.hour = comps.hour ?? reminder.hour
+                                    reminder.minute = comps.minute ?? reminder.minute
+                                }
+                            ),
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .tint(tint)
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Meal Times")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        mealReminders = MealReminderEditorSheet.normalizedReminders(workingReminders)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
 }
 
 // New 2x2 Meal Schedule grid section
 private struct MealScheduleSection: View {
     var accentColorOverride: Color?
     @Binding var checkedMeals: Set<String>
+    var mealReminders: [MealReminder]
 
     private struct MealCell: Identifiable {
         let id = UUID()
-        let key: String
+        let mealType: MealType
         let icon: String
-        let displayName: String
-        let timeText: String
+        let defaultTime: String
     }
 
     private let cells: [MealCell] = [
-        MealCell(key: "Breakfast", icon: "sunrise.fill", displayName: "Breakfast", timeText: "7:30 AM"),
-        MealCell(key: "Lunch", icon: "fork.knife", displayName: "Lunch", timeText: "12:30 PM"),
-        MealCell(key: "Dinner", icon: "moon.stars.fill", displayName: "Dinner", timeText: "7:00 PM"),
-        MealCell(key: "Snack", icon: "cup.and.saucer.fill", displayName: "Snack", timeText: "3:30 PM")
+        MealCell(mealType: .breakfast, icon: "sunrise.fill", defaultTime: "7:30 AM"),
+        MealCell(mealType: .lunch, icon: "fork.knife", defaultTime: "12:30 PM"),
+        MealCell(mealType: .dinner, icon: "moon.stars.fill", defaultTime: "7:00 PM"),
+        MealCell(mealType: .snack, icon: "cup.and.saucer.fill", defaultTime: "3:30 PM")
     ]
 
     var body: some View {
@@ -2495,20 +2639,21 @@ private struct MealScheduleSection: View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             ForEach(cells) { cell in
                 Button(action: {
+                    let key = cell.mealType.rawValue
                     withAnimation(.easeInOut) {
-                        if checkedMeals.contains(cell.key) {
-                            checkedMeals.remove(cell.key)
+                        if checkedMeals.contains(key) {
+                            checkedMeals.remove(key)
                         } else {
-                            checkedMeals.insert(cell.key)
+                            checkedMeals.insert(key)
                         }
                     }
                 }) {
                     HStack(spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill((checkedMeals.contains(cell.key) ? tint.opacity(0.18) : Color(.systemGray6)))
+                                .fill((checkedMeals.contains(cell.mealType.rawValue) ? tint.opacity(0.18) : Color(.systemGray6)))
                                 .frame(width: 44, height: 44)
-                            if checkedMeals.contains(cell.key) {
+                            if checkedMeals.contains(cell.mealType.rawValue) {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(tint)
@@ -2520,10 +2665,10 @@ private struct MealScheduleSection: View {
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(cell.displayName)
+                            Text(cell.mealType.displayName)
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(checkedMeals.contains(cell.key) ? tint : .primary)
-                            Text(cell.timeText)
+                                .foregroundStyle(checkedMeals.contains(cell.mealType.rawValue) ? tint : .primary)
+                            Text(timeText(for: cell.mealType, fallback: cell.defaultTime))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -2535,7 +2680,7 @@ private struct MealScheduleSection: View {
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(checkedMeals.contains(cell.key) ? tint.opacity(0.08) : Color.clear)
+                            .fill(checkedMeals.contains(cell.mealType.rawValue) ? tint.opacity(0.08) : Color.clear)
                     )
                     .glassEffect(in: .rect(cornerRadius: 12.0))
                 }
@@ -2545,6 +2690,85 @@ private struct MealScheduleSection: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func timeText(for mealType: MealType, fallback: String) -> String {
+        if let reminder = mealReminders.first(where: { $0.mealType == mealType }) {
+            return reminder.displayTime
+        }
+        return fallback
+    }
+}
+
+private struct WeeklyMacroSummary: Identifiable {
+    let id = UUID()
+    let date: Date
+    let calories: Int
+    let macros: [MacroConsumption]
+    let isFuture: Bool
+}
+
+private struct DynamicMacroDayColumn: View {
+    var summary: WeeklyMacroSummary
+    var tint: Color
+
+    private var dayLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "E"
+        return f.string(from: summary.date)
+    }
+
+    private var macroMaxValue: Double {
+        max(summary.macros.map { $0.consumed }.max() ?? 0, 1)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(dayLabel)
+                .font(.caption)
+                .fontWeight(.semibold)
+
+            if summary.isFuture {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    Text("Upcoming")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("No data yet")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary.opacity(0.8))
+                }
+                Spacer()
+            } else {
+                VStack(spacing: 10) {
+                    MacroIndicatorRow(label: "Calories", color: .primary, value: Double(summary.calories), maxValue: 4000, unit: "cal")
+
+                    if summary.macros.isEmpty {
+                        Text("No macros logged")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(summary.macros, id: \.id) { macro in
+                            MacroIndicatorRow(
+                                label: macro.name,
+                                color: tint,
+                                value: macro.consumed,
+                                maxValue: macroMaxValue,
+                                unit: macro.unit
+                            )
+                        }
+                    }
+                }
+                Spacer(minLength: 4)
+            }
+        }
+        .padding(EdgeInsets(top: 28, leading: 12, bottom: 12, trailing: 12))
+        .frame(width: 160, height: 240)
+        .liquidGlass(cornerRadius: 14)
     }
 }
 
@@ -2680,28 +2904,86 @@ private struct MealLogEntry: Identifiable {
 struct FastingTimerCard: View {
     var accentColorOverride: Color?
     @Binding var showProtocolSheet: Bool
-    let fastingState: String = "FASTING"
-    let hoursElapsed: Double = 12.5
-    let nextMeal: String = "Starts at 11:10 AM"
-    @State private var selectedProtocol: FastingProtocolOption = .sixteenEight
-    @State private var customHours: String = "16"
-    @State private var customMinutes: String = "00"
+    var onProtocolChanged: (Int) -> Void
+
+    @State private var selectedProtocol: FastingProtocolOption
+    @State private var customHours: String
+    @State private var customMinutes: String
+    @State private var fastingMinutes: Int
+    @State private var fastingStartDate: Date? = nil
+    @State private var now: Date = Date()
+    @State private var hasScheduledNotification = false
+    @State private var hasFiredOverNotification = false
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    init(
+        accentColorOverride: Color?,
+        showProtocolSheet: Binding<Bool>,
+        currentFastingMinutes: Int,
+        onProtocolChanged: @escaping (Int) -> Void
+    ) {
+        self.accentColorOverride = accentColorOverride
+        _showProtocolSheet = showProtocolSheet
+        self.onProtocolChanged = onProtocolChanged
+
+        let minutes = max(currentFastingMinutes, 0)
+        _fastingMinutes = State(initialValue: minutes)
+        _selectedProtocol = State(initialValue: FastingProtocolOption.from(minutes: minutes))
+        let hoursComponent = minutes / 60
+        let minutesComponent = minutes % 60
+        _customHours = State(initialValue: String(hoursComponent))
+        _customMinutes = State(initialValue: String(format: "%02d", minutesComponent))
+    }
+
+    private var tint: Color {
+        accentColorOverride ?? .green
+    }
+
+    private var fastingDuration: TimeInterval {
+        TimeInterval(fastingMinutes * 60)
+    }
+
+    private var fastingEndDate: Date? {
+        fastingStartDate?.addingTimeInterval(fastingDuration)
+    }
+
+    private var remainingSeconds: TimeInterval {
+        guard let start = fastingStartDate else { return fastingDuration }
+        return start.addingTimeInterval(fastingDuration).timeIntervalSince(now)
+    }
+
+    private var isActive: Bool {
+        fastingStartDate != nil
+    }
+
+    private var isOverTime: Bool {
+        isActive && remainingSeconds <= 0
+    }
 
     private var progress: Double {
-        guard fastingDurationHours > 0 else { return 0 }
-        return min(max(hoursElapsed / fastingDurationHours, 0), 1)
+        guard isActive, fastingDuration > 0 else { return 0 }
+        let elapsed = now.timeIntervalSince(fastingStartDate ?? now)
+        return min(max(elapsed / fastingDuration, 0), 1)
     }
 
-    private var remainingHours: Double {
-        max(fastingDurationHours - hoursElapsed, 0)
+    private var displayTime: String {
+        if isOverTime {
+            return formattedDuration(seconds: abs(remainingSeconds))
+        }
+        return formattedDuration(seconds: max(remainingSeconds, 0))
     }
 
-    private var remainingTimeString: String {
-        formattedTimeString(for: remainingHours)
-    }
+    private var nextMealText: String {
+        guard let end = fastingEndDate else {
+            return ""
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
 
-    private var elapsedTimeString: String {
-        formattedTimeString(for: fastingDurationHours)
+        if isOverTime {
+            return "Time gone over since \(formatter.string(from: end))"
+        }
+        return "Starts at \(formatter.string(from: end))"
     }
 
     private var protocolDisplayText: String {
@@ -2719,33 +3001,121 @@ struct FastingTimerCard: View {
         }
     }
 
-    private var fastingDurationHours: Double {
-        switch selectedProtocol {
-        case .twelveTwelve:
-            return 12
-        case .fourteenTen:
-            return 14
-        case .sixteenEight:
-            return 16
-        case .custom:
-            let hoursValue = Double(customHours) ?? 0
-            let minutesValue = Double(customMinutes) ?? 0
-            let normalizedMinutes = max(min(minutesValue, 59), 0)
-            return max(hoursValue, 0) + normalizedMinutes / 60
-        }
-    }
-
-    private func formattedTimeString(for hoursValue: Double) -> String {
-        let safeHours = max(hoursValue, 0)
-        let hoursComponent = Int(safeHours)
-        let minutesComponent = Int((safeHours - Double(hoursComponent)) * 60)
+    private func formattedDuration(seconds: TimeInterval) -> String {
+        let clamped = max(seconds, 0)
+        let totalMinutes = Int(clamped / 60)
+        let hoursComponent = totalMinutes / 60
+        let minutesComponent = totalMinutes % 60
         return String(format: "%02dh %02dm", hoursComponent, minutesComponent)
     }
 
+    private func resolvedMinutes() -> Int {
+        switch selectedProtocol {
+        case .twelveTwelve:
+            return FastingProtocolOption.twelveTwelve.minutes
+        case .fourteenTen:
+            return FastingProtocolOption.fourteenTen.minutes
+        case .sixteenEight:
+            return FastingProtocolOption.sixteenEight.minutes
+        case .custom:
+            let hoursValue = max(Int(customHours) ?? 0, 0)
+            let minutesValue = min(max(Int(customMinutes) ?? 0, 0), 59)
+            return max(hoursValue, 0) * 60 + minutesValue
+        }
+    }
+
+    private func syncCustomFields(from minutes: Int) {
+        let hoursComponent = minutes / 60
+        let minutesComponent = minutes % 60
+        customHours = String(hoursComponent)
+        customMinutes = String(format: "%02d", minutesComponent)
+    }
+
+    private func applyProtocolChange() {
+        let minutes = resolvedMinutes()
+        fastingMinutes = minutes
+        syncCustomFields(from: minutes)
+        onProtocolChanged(minutes)
+
+        if isActive {
+            hasScheduledNotification = false
+            hasFiredOverNotification = false
+            scheduleNotificationIfNeeded()
+        }
+    }
+
+    private func startFast() {
+        fastingStartDate = Date()
+        hasScheduledNotification = false
+        hasFiredOverNotification = false
+        scheduleNotificationIfNeeded()
+    }
+
+    private func endFast() {
+        fastingStartDate = nil
+        hasScheduledNotification = false
+        hasFiredOverNotification = false
+        cancelFastingNotification()
+    }
+
+    private func scheduleNotificationIfNeeded() {
+        guard let end = fastingEndDate else { return }
+        if hasScheduledNotification { return }
+        let center = UNUserNotificationCenter.current()
+        let identifier = "fasting.end"
+
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("FastingTimerCard: notification permission error: \(error)")
+            }
+            guard granted else {
+                print("FastingTimerCard: notification permission not granted")
+                return
+            }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Fast Complete"
+            content.body = "Your fasting window finished. Time to refuel."
+            content.sound = .default
+
+            center.removePendingNotificationRequests(withIdentifiers: [identifier])
+            let interval = max(end.timeIntervalSinceNow, 1)
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            center.add(request) { error in
+                if let error = error {
+                    print("FastingTimerCard: failed to schedule notification: \(error)")
+                }
+            }
+            hasScheduledNotification = true
+        }
+    }
+
+    private func sendCompletionNotificationIfNeeded() {
+        guard isOverTime, !hasFiredOverNotification else { return }
+        hasFiredOverNotification = true
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = "Fast Complete"
+        content.body = "Your fasting window finished. Time to refuel."
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: "fasting.end.immediate", content: content, trigger: nil)
+        center.add(request) { error in
+            if let error = error {
+                print("FastingTimerCard: failed to deliver completion notification: \(error)")
+            }
+        }
+    }
+
+    private func cancelFastingNotification() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["fasting.end", "fasting.end.immediate"])
+    }
+
     var body: some View {
-        let tint = accentColorOverride ?? .green
         VStack(alignment: .leading, spacing: 14) {
-            Text("\(protocolDisplayText)")
+            Text(protocolDisplayText)
                 .font(.title)
                 .fontWeight(.semibold)
 
@@ -2757,30 +3127,39 @@ struct FastingTimerCard: View {
                     .stroke(tint, style: StrokeStyle(lineWidth: 14, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 6) {
-                    Text("Time Left")
+                    Text(isOverTime ? "Over Time" : "Time Left")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(remainingTimeString)
+                    Text(displayTime)
                         .font(.title2)
                         .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: 180)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Next Meal")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(nextMeal)
-                    .font(.headline)
-                    .fontWeight(.medium)
+                if isActive {
+                    Text("Next Meal")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(nextMealText)
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                }
             }
+            .frame(height: 40)
 
             Button {
-                // hooking up to backend will start/stop fasting windows
+                if isActive {
+                    endFast()
+                } else {
+                    startFast()
+                }
             } label: {
-                Text("End Fast")
+                Text(isActive ? "End Fast" : "Start Fast")
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -2790,6 +3169,27 @@ struct FastingTimerCard: View {
         }
         .padding(20)
         .glassEffect(in: .rect(cornerRadius: 16.0))
+        .onReceive(timer) { date in
+            now = date
+            if isOverTime {
+                sendCompletionNotificationIfNeeded()
+            }
+        }
+        .onChange(of: selectedProtocol) { _, _ in
+            applyProtocolChange()
+        }
+        .onChange(of: customHours) { _, _ in
+            if selectedProtocol != .custom {
+                selectedProtocol = .custom
+            }
+            applyProtocolChange()
+        }
+        .onChange(of: customMinutes) { _, _ in
+            if selectedProtocol != .custom {
+                selectedProtocol = .custom
+            }
+            applyProtocolChange()
+        }
         .sheet(isPresented: $showProtocolSheet) {
             FastingProtocolSheet(
                 selectedProtocol: $selectedProtocol,
@@ -2909,6 +3309,32 @@ private enum FastingProtocolOption: CaseIterable {
             return "16:8"
         case .custom:
             return "Custom"
+        }
+    }
+
+    var minutes: Int {
+        switch self {
+        case .twelveTwelve:
+            return 12 * 60
+        case .fourteenTen:
+            return 14 * 60
+        case .sixteenEight:
+            return 16 * 60
+        case .custom:
+            return 0
+        }
+    }
+
+    static func from(minutes: Int) -> FastingProtocolOption {
+        switch minutes {
+        case 12 * 60:
+            return .twelveTwelve
+        case 14 * 60:
+            return .fourteenTen
+        case 16 * 60:
+            return .sixteenEight
+        default:
+            return .custom
         }
     }
 }

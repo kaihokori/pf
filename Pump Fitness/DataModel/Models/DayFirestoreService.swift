@@ -86,6 +86,7 @@ class DayFirestoreService {
                 let maintenanceOpt = data["maintenanceCalories"] as? Int
                 let macroFocusOpt = data["macroFocus"] as? String
                 let macroConsumptionsRemote = (data["macroConsumptions"] as? [[String: Any]] ?? []).compactMap { self.decodeMacroConsumption($0) }
+                let completedMealsRemote = data["completedMeals"] as? [String]
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
                     // Only overwrite fields if the remote document actually contains them.
@@ -106,6 +107,9 @@ class DayFirestoreService {
                     } else if let tracked = trackedMacros {
                         day.ensureMacroConsumptions(for: tracked)
                     }
+                    if let completedMealsRemote = completedMealsRemote {
+                        day.completedMeals = completedMealsRemote
+                    }
                     print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(day.caloriesConsumed)")
                     completion(day)
                     return
@@ -120,7 +124,8 @@ class DayFirestoreService {
                         calorieGoal: calorieGoal,
                         maintenanceCalories: maintenance,
                         macroFocusRaw: macroFocusOpt,
-                        macroConsumptions: macroConsumptionsRemote
+                        macroConsumptions: macroConsumptionsRemote,
+                        completedMeals: completedMealsRemote ?? []
                     )
                     print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
@@ -175,7 +180,8 @@ class DayFirestoreService {
         ]
         data["caloriesConsumed"] = day.caloriesConsumed
         data["calorieGoal"] = day.calorieGoal
-            data["maintenanceCalories"] = day.maintenanceCalories
+        data["maintenanceCalories"] = day.maintenanceCalories
+        data["completedMeals"] = day.completedMeals
         if let macro = day.macroFocusRaw {
             data["macroFocus"] = macro
         }

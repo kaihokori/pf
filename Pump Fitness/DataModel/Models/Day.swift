@@ -47,6 +47,9 @@ class Day {
     // per-macro consumption for this day (mirrors tracked macros from Account)
     var macroConsumptions: [MacroConsumption]
 
+    // meal completion checklist (stores MealType raw values)
+    var completedMeals: [String] = []
+
     // human friendly representation useful in previews / logs
     var dayString: String {
         let fmt = DateFormatter()
@@ -62,7 +65,8 @@ class Day {
         calorieGoal: Int = 0,
         maintenanceCalories: Int = 0,
         macroFocusRaw: String? = nil,
-        macroConsumptions: [MacroConsumption] = []
+        macroConsumptions: [MacroConsumption] = [],
+        completedMeals: [String] = []
     ) {
         self.id = id
         self.date = Calendar.current.startOfDay(for: date)
@@ -71,6 +75,7 @@ class Day {
         self.maintenanceCalories = maintenanceCalories
         self.macroFocusRaw = macroFocusRaw
         self.macroConsumptions = macroConsumptions
+        self.completedMeals = completedMeals
     }
 
     /// Fetch an existing `Day` for the provided date or create/insert one if missing.
@@ -153,7 +158,8 @@ class Day {
             calorieGoal: inheritedCalorieGoal,
             maintenanceCalories: computedMaintenance,
             macroFocusRaw: inheritedMacroFocusRaw,
-            macroConsumptions: consumptions
+            macroConsumptions: consumptions,
+            completedMeals: []
         )
         context.insert(newDay)
         do {

@@ -58,6 +58,87 @@ struct TrackedMacro: Codable, Hashable, Identifiable {
     }
 }
 
+enum MealType: String, Codable, CaseIterable, Identifiable {
+    case breakfast
+    case lunch
+    case dinner
+    case snack
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .breakfast: return "Breakfast"
+        case .lunch: return "Lunch"
+        case .dinner: return "Dinner"
+        case .snack: return "Snack"
+        }
+    }
+}
+
+struct MealReminder: Codable, Hashable, Identifiable {
+    var id: String
+    var mealType: MealType
+    var hour: Int
+    var minute: Int
+
+    init(id: String = UUID().uuidString, mealType: MealType, hour: Int, minute: Int) {
+        self.id = id
+        self.mealType = mealType
+        self.hour = hour
+        self.minute = minute
+    }
+
+    var displayTime: String {
+        var components = DateComponents()
+        components.hour = hour
+        components.minute = minute
+        let calendar = Calendar.current
+        guard let date = calendar.date(from: components) else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+
+    var dateForToday: Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        components.hour = hour
+        components.minute = minute
+        return Calendar.current.date(from: components) ?? Date()
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "mealType": mealType.rawValue,
+            "hour": hour,
+            "minute": minute
+        ]
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard
+            let rawType = dictionary["mealType"] as? String,
+            let mealType = MealType(rawValue: rawType)
+        else { return nil }
+
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let hour = (dictionary["hour"] as? NSNumber)?.intValue ?? dictionary["hour"] as? Int ?? 7
+        let minute = (dictionary["minute"] as? NSNumber)?.intValue ?? dictionary["minute"] as? Int ?? 30
+
+        self.init(id: id, mealType: mealType, hour: hour, minute: minute)
+    }
+
+    static var defaults: [MealReminder] {
+        [
+            MealReminder(mealType: .breakfast, hour: 7, minute: 30),
+            MealReminder(mealType: .lunch, hour: 12, minute: 30),
+            MealReminder(mealType: .dinner, hour: 19, minute: 0),
+            MealReminder(mealType: .snack, hour: 15, minute: 30)
+        ]
+    }
+}
+
 @Model
 class Account: ObservableObject {
         // MARK: - Avatar Helpers
@@ -92,12 +173,14 @@ class Account: ObservableObject {
     var height: Double? = nil
     var weight: Double? = nil
     var maintenanceCalories: Int = 0
+    var intermittentFastingMinutes: Int = 16 * 60
     var theme: String? = nil
     var unitSystem: String? = nil
     var activityLevel: String? = nil
     var startWeekOn: String? = nil
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
+    var mealReminders: [MealReminder] = MealReminder.defaults
 
     init(
         id: String? = UUID().uuidString,
@@ -109,12 +192,14 @@ class Account: ObservableObject {
         height: Double? = nil,
         weight: Double? = nil,
         maintenanceCalories: Int = 0,
+        intermittentFastingMinutes: Int = 16 * 60,
         theme: String? = nil,
         unitSystem: String? = nil,
         activityLevel: String? = nil,
         startWeekOn: String? = nil,
         trackedMacros: [TrackedMacro] = [],
-        cravings: [CravingItem] = []
+        cravings: [CravingItem] = [],
+        mealReminders: [MealReminder] = MealReminder.defaults
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -125,12 +210,14 @@ class Account: ObservableObject {
         self.height = height
         self.weight = weight
         self.maintenanceCalories = maintenanceCalories
+        self.intermittentFastingMinutes = intermittentFastingMinutes
         self.theme = theme
         self.unitSystem = unitSystem
         self.activityLevel = activityLevel
         self.startWeekOn = startWeekOn
         self.trackedMacros = trackedMacros
         self.cravings = cravings
+        self.mealReminders = mealReminders
         
     }
 }

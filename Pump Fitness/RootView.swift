@@ -12,6 +12,7 @@ import FirebaseAuth
 import FirebaseCore
 import Combine
 import AuthenticationServices
+import UserNotifications
 
 struct RootView: View {
     @EnvironmentObject private var themeManager: ThemeManager
@@ -26,6 +27,8 @@ struct RootView: View {
     @State private var trackedMacros: [TrackedMacro] = []
     @State private var macroConsumptions: [MacroConsumption] = []
     @State private var cravings: [CravingItem] = []
+    @State private var checkedMeals: Set<String> = []
+    @State private var mealReminders: [MealReminder] = MealReminder.defaults
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @Query private var accounts: [Account]
@@ -83,6 +86,7 @@ struct RootView: View {
         .task {
             ensureAccountExists()
             initializeTrackedMacrosFromLocal()
+            initializeMealRemindersFromLocal()
             printSignedInUserDetails()
             // Ensure onboarding status is evaluated on startup
             checkOnboardingStatus()
@@ -173,6 +177,12 @@ struct RootView: View {
         .onChange(of: cravings) { _, newValue in
             persistCravings(newValue)
         }
+        .onChange(of: mealReminders) { _, newValue in
+            persistMealReminders(newValue)
+        }
+        .onChange(of: checkedMeals) { _, newValue in
+            persistCheckedMeals(newValue)
+        }
         .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in
             // Keep the UI's maintenanceCalories in sync with the local Account entity
             if let updated = newValue {
@@ -182,9 +192,9 @@ struct RootView: View {
             }
         }
     }
-        private var isSignedIn: Bool {
-            Auth.auth().currentUser != nil
-        }
+    private var isSignedIn: Bool {
+        Auth.auth().currentUser != nil
+    }
     /// Checks if the signed-in user has a Firebase account document and sets onboarding status.
     private func checkOnboardingStatus() {
         guard let user = Auth.auth().currentUser else {
@@ -197,7 +207,7 @@ struct RootView: View {
                 if account != nil {
                     hasCompletedOnboarding = true
                     selectedTab = .nutrition
-                    if var fetched = account {
+                    if let fetched = account {
                         if fetched.trackedMacros.isEmpty {
                             fetched.trackedMacros = TrackedMacro.defaults
                             accountFirestoreService.saveAccount(fetched) { success in
@@ -211,6 +221,12 @@ struct RootView: View {
                         maintenanceCalories = fetched.maintenanceCalories
                         trackedMacros = fetched.trackedMacros
                         cravings = fetched.cravings
+                        if fetched.mealReminders.isEmpty {
+                            mealReminders = MealReminder.defaults
+                        } else {
+                            mealReminders = fetched.mealReminders
+                        }
+                        scheduleMealNotifications(mealReminders)
                     }
                 } else {
                     hasCompletedOnboarding = false
@@ -247,17 +263,21 @@ private extension RootView {
                     dateOfBirth: nil,
                     height: 170,
                     weight: 70,
+                    maintenanceCalories: 0,
+                    intermittentFastingMinutes: 16 * 60,
                     theme: "default",
                     unitSystem: "metric",
                     activityLevel: ActivityLevelOption.moderatelyActive.rawValue,
                     startWeekOn: "monday",
                     trackedMacros: TrackedMacro.defaults,
-                    cravings: []
+                    cravings: [],
+                    mealReminders: MealReminder.defaults
                 )
                 modelContext.insert(defaultAccount)
                 try modelContext.save()
                 trackedMacros = defaultAccount.trackedMacros
                 cravings = defaultAccount.cravings
+                mealReminders = defaultAccount.mealReminders
             }
         } catch {
             print("Failed to ensure Account exists: \(error)")
@@ -325,6 +345,10 @@ private extension RootView {
             day.ensureMacroConsumptions(for: trackedMacros)
         }
         macroConsumptions = day.macroConsumptions
+
+        let validMeals = Set(MealType.allCases.map { $0.rawValue })
+        let completed = Set(day.completedMeals.map { $0.lowercased() }).intersection(validMeals)
+        checkedMeals = completed
 
         var fieldsToUpdate: [String: Any] = [:]
         if day.calorieGoal == 0 && calorieGoal > 0 {
@@ -439,6 +463,128 @@ private extension RootView {
         }
     }
 
+    func persistCheckedMeals(_ meals: Set<String>) {
+        Task {
+            let normalizedSet = Set(meals.map { $0.lowercased() })
+            let ordered = MealType.allCases.map { $0.rawValue }.filter { normalizedSet.contains($0) }
+
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.completedMeals = ordered
+
+            do {
+                try modelContext.save()
+                print("RootView: saved completed meals for date=\(selectedDate): \(ordered)")
+            } catch {
+                print("RootView: failed to save completed meals locally: \(error)")
+            }
+
+            dayFirestoreService.updateDayFields(["completedMeals": ordered], for: day) { success in
+                if success {
+                    print("RootView: synced completed meals to Firestore for date=\(selectedDate)")
+                } else {
+                    print("RootView: failed to sync completed meals to Firestore for date=\(selectedDate)")
+                }
+            }
+        }
+    }
+
+    func initializeMealRemindersFromLocal() {
+        guard let account = fetchAccount() else {
+            mealReminders = MealReminder.defaults
+            return
+        }
+
+        if account.mealReminders.isEmpty {
+            account.mealReminders = MealReminder.defaults
+            mealReminders = account.mealReminders
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save default meal reminders locally: \(error)")
+            }
+            accountFirestoreService.saveAccount(account) { success in
+                if !success {
+                    print("RootView: failed to seed default meal reminders to Firestore")
+                }
+            }
+        } else {
+            mealReminders = account.mealReminders
+        }
+
+        scheduleMealNotifications(mealReminders)
+    }
+
+    func persistMealReminders(_ reminders: [MealReminder]) {
+        guard let account = fetchAccount() else { return }
+
+        account.mealReminders = reminders
+        do {
+            try modelContext.save()
+            print("RootView: saved meal reminders locally")
+        } catch {
+            print("RootView: failed to save meal reminders locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+                print("RootView: synced meal reminders to Firestore")
+            } else {
+                print("RootView: failed to sync meal reminders to Firestore")
+            }
+        }
+
+        scheduleMealNotifications(reminders)
+    }
+
+    func scheduleMealNotifications(_ reminders: [MealReminder]) {
+        let center = UNUserNotificationCenter.current()
+
+        let allIdentifiers = MealType.allCases.map { "mealReminder.\($0.rawValue)" }
+        if reminders.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: allIdentifiers)
+            return
+        }
+
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("RootView: notification permission error: \(error)")
+            }
+            guard granted else {
+                print("RootView: notification permission not granted for meal reminders")
+                return
+            }
+
+            center.getNotificationSettings { settings in
+                guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+                    print("RootView: notification settings not authorized")
+                    return
+                }
+
+                for reminder in reminders {
+                    let identifier = "mealReminder.\(reminder.mealType.rawValue)"
+                    center.removePendingNotificationRequests(withIdentifiers: [identifier])
+
+                    var components = DateComponents()
+                    components.hour = reminder.hour
+                    components.minute = reminder.minute
+
+                    let content = UNMutableNotificationContent()
+                    content.title = "\(reminder.mealType.displayName) Reminder"
+                    content.body = "Don't forget to log your \(reminder.mealType.displayName.lowercased())!"
+                    content.sound = .default
+
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                    let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                    center.add(request) { error in
+                        if let error = error {
+                            print("RootView: failed to schedule \(identifier) notification: \(error)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Upsert a Firestore-backed `Account` into the local SwiftData store so
     /// the app UI reads the most recent server values.
     func upsertLocalAccount(with fetched: Account) {
@@ -460,6 +606,8 @@ private extension RootView {
                 local.startWeekOn = fetched.startWeekOn
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings
+                local.mealReminders = fetched.mealReminders
+                local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 try modelContext.save()
             } else {
                 let newAccount = Account(
@@ -472,12 +620,14 @@ private extension RootView {
                     height: fetched.height,
                     weight: fetched.weight,
                     maintenanceCalories: fetched.maintenanceCalories,
+                    intermittentFastingMinutes: fetched.intermittentFastingMinutes,
                     theme: fetched.theme,
                     unitSystem: fetched.unitSystem,
                     activityLevel: fetched.activityLevel,
                     startWeekOn: fetched.startWeekOn,
                     trackedMacros: fetched.trackedMacros,
-                    cravings: fetched.cravings
+                    cravings: fetched.cravings,
+                    mealReminders: fetched.mealReminders
                 )
                 modelContext.insert(newAccount)
                 try modelContext.save()
@@ -544,7 +694,9 @@ private extension RootView {
                                         local.startWeekOn = newAccount.startWeekOn
                                         local.trackedMacros = newAccount.trackedMacros
                                         local.cravings = newAccount.cravings
+                                        local.mealReminders = newAccount.mealReminders
                                         try modelContext.save()
+                                        mealReminders = newAccount.mealReminders
                                     }
                                 } catch {
                                     print("RootView: failed to apply account binding set: \(error)")
@@ -567,6 +719,8 @@ private extension RootView {
                                     trackedMacros: $trackedMacros,
                                     macroConsumptions: $macroConsumptions,
                                     cravings: $cravings,
+                                    mealReminders: $mealReminders,
+                                    checkedMeals: $checkedMeals,
                                     maintenanceCalories: $maintenanceCalories
                                 )
                             }

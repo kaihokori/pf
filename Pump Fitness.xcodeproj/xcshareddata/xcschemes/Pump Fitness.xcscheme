@@ -56,6 +56,11 @@
             value = "bPr4F8qkrxNaEFW1v3GHJZUdtSPqLS9UALRwFdDD"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "USDA_API_KEY"
+            value = "bPr4F8qkrxNaEFW1v3GHJZUdtSPqLS9UALRwFdDD"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction

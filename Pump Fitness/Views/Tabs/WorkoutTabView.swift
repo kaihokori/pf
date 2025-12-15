@@ -1,4 +1,6 @@
 import SwiftUI
+import SwiftData
+import HealthKit
 
 private struct MacroEditorSummaryChip: View {
     let currentCount: Int
@@ -24,6 +26,20 @@ private struct MacroEditorSummaryChip: View {
     }
 }
 
+private extension WorkoutTabView {
+    func fetchDayTakenWorkoutSupplements() {
+        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext) { day in
+            DispatchQueue.main.async {
+                if let day = day {
+                    dayTakenWorkoutSupplementIDs = Set(day.takenWorkoutSupplements)
+                } else {
+                    dayTakenWorkoutSupplementIDs = []
+                }
+            }
+        }
+    }
+}
+
 private struct MacroEditorSectionHeader: View {
     let title: String
     var body: some View {
@@ -36,25 +52,25 @@ private struct MacroEditorSectionHeader: View {
 // MARK: - Exercise Supplement Editor Sheet
 
 struct ExerciseSupplementEditorSheet: View {
-    @Binding var supplements: [SupplementItem]
+    @Binding var supplements: [Supplement]
     var tint: Color
     var onDone: () -> Void
 
     // local working state
-    @State private var working: [SupplementItem] = []
+    @State private var working: [Supplement] = []
     @State private var newName: String = ""
     @State private var newTarget: String = ""
     @State private var hasLoaded = false
 
     // presets available in Quick Add (some may not be selected initially)
-    private var presets: [SupplementItem] {
+    private var presets: [Supplement] {
         [
-            SupplementItem(name: "Pre-workout", amountLabel: "1 scoop"),
-            SupplementItem(name: "Creatine", amountLabel: "5 g"),
-            SupplementItem(name: "BCAA", amountLabel: "10 g"),
-            SupplementItem(name: "Whey Protein", amountLabel: "30 g"),
-            SupplementItem(name: "L-Carnitine", amountLabel: "500 mg"),
-            SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
+            Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
+            Supplement(name: "Creatine", amountLabel: "5 g"),
+            Supplement(name: "BCAA", amountLabel: "10 g"),
+            Supplement(name: "Whey Protein", amountLabel: "30 g"),
+            Supplement(name: "L-Carnitine", amountLabel: "500 mg"),
+            Supplement(name: "Electrolytes", amountLabel: "1 scoop")
         ]
     }
 
@@ -80,7 +96,7 @@ struct ExerciseSupplementEditorSheet: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 MacroEditorSectionHeader(title: "Tracked Supplements")
                                 VStack(spacing: 12) {
-                                    ForEach(Array(working.enumerated()), id: \ .element.id) { idx, item in
+                                    ForEach(Array(working.enumerated()), id: \.element.id) { idx, item in
                                         let binding = $working[idx]
                                         VStack(spacing: 8) {
                                             HStack(spacing: 12) {
@@ -96,8 +112,8 @@ struct ExerciseSupplementEditorSheet: View {
                                                     TextField("Name", text: binding.name)
                                                         .font(.subheadline.weight(.semibold))
                                                     TextField("Amount or note (e.g. 5 g or 3 scoops)", text: Binding(
-                                                        get: { binding.customLabel.wrappedValue ?? item.measurementDescription },
-                                                        set: { binding.customLabel.wrappedValue = $0 }
+                                                        get: { binding.amountLabel.wrappedValue ?? "" },
+                                                        set: { binding.amountLabel.wrappedValue = $0 }
                                                     ))
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
@@ -139,7 +155,7 @@ struct ExerciseSupplementEditorSheet: View {
                                                 VStack(alignment: .leading) {
                                                     Text(preset.name)
                                                         .font(.subheadline.weight(.semibold))
-                                                    Text(preset.measurementDescription)
+                                                    Text(preset.amountLabel ?? "")
                                                         .font(.caption)
                                                         .foregroundStyle(.secondary)
                                                 }
@@ -222,7 +238,7 @@ struct ExerciseSupplementEditorSheet: View {
         hasLoaded = true
     }
 
-    private func togglePreset(_ preset: SupplementItem) {
+    private func togglePreset(_ preset: Supplement) {
         if isPresetSelected(preset) {
             working.removeAll { $0.name == preset.name }
         } else if canAddMore {
@@ -230,18 +246,18 @@ struct ExerciseSupplementEditorSheet: View {
         }
     }
 
-    private func isPresetSelected(_ preset: SupplementItem) -> Bool {
+    private func isPresetSelected(_ preset: Supplement) -> Bool {
         working.contains { $0.name == preset.name }
     }
 
-    private func removeSupplement(_ id: UUID) {
+    private func removeSupplement(_ id: String) {
         // Find the supplement being removed
         guard let item = working.first(where: { $0.id == id }) else { return }
         // If it's a preset (by name), remove all with that name so preset returns to Quick Add
         if presets.contains(where: { $0.name == item.name }) {
             working.removeAll { $0.name == item.name }
         } else {
-            working.removeAll { $0.id == id }
+            working.removeAll { $0.id == item.id }
         }
     }
 
@@ -249,7 +265,7 @@ struct ExerciseSupplementEditorSheet: View {
         guard canAddCustom else { return }
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let new = SupplementItem(name: trimmed, amountLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines), customLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines))
+        let new = Supplement(name: trimmed, amountLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines))
         working.append(new)
         newName = ""
         newTarget = ""
@@ -260,25 +276,36 @@ struct WorkoutTabView: View {
     @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
     @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.checkIn, .checkIn, .notLogged, .checkIn, .rest, .notLogged, .notLogged]
     private let coachingCurrentDayIndex = 5
-    @State private var supplements: [SupplementItem] = coachingDefaultSupplements
+    // Use Account.supplements as the canonical source of supplement definitions
+    // no local supplement store — use `account.supplements`
     @State private var showSupplementEditor = false
+    private let accountFirestoreService = AccountFirestoreService()
+    @State private var dayTakenWorkoutSupplementIDs: Set<String> = []
+    private let dayFirestoreService = DayFirestoreService()
+    private let healthKitService = HealthKitService()
+    @State private var healthKitAuthorized: Bool = false
+    @State private var showingAdjustSheet: Bool = false
+    @State private var adjustTarget: String? = nil
+    // raw HealthKit readings (kept separate from any manual adjustments)
+    @State private var hkCaloriesValue: Double? = nil
+    @State private var hkStepsValue: Double? = nil
+    @State private var hkDistanceValue: Double? = nil
     
     // Daily summary sample values (moved from Nutrition tab)
-    private let caloriesBurnedToday: Int = 620
+    @State private var caloriesBurnedToday: Double = 0
     private let caloriesBurnGoal: Int = 800
-    private let stepsTakenToday: Int = 8_500
+    @State private var stepsTakenToday: Double = 0
     private let stepsGoalToday: Int = 10_000
 
-    // New: walking and running distance (in meters)
-    private let walkingDistanceToday: Double = 2_100 // meters
+    // New: walking distance (in meters)
+    @State private var walkingDistanceToday: Double = 0 // meters
     private let walkingDistanceGoal: Double = 3_000 // meters
-    private let runningDistanceToday: Double = 1_200 // meters
-    private let runningDistanceGoal: Double = 2_000 // meters
 
     private var stepsProgress: Double {
         guard stepsGoalToday > 0 else { return 0 }
@@ -290,13 +317,8 @@ struct WorkoutTabView: View {
         return min(max(walkingDistanceToday / walkingDistanceGoal, 0), 1)
     }
 
-    private var runningProgress: Double {
-        guard runningDistanceGoal > 0 else { return 0 }
-        return min(max(runningDistanceToday / runningDistanceGoal, 0), 1)
-    }
-
     private var formattedStepsTaken: String {
-        NumberFormatter.withComma.string(from: NSNumber(value: stepsTakenToday)) ?? "\(stepsTakenToday)"
+        NumberFormatter.withComma.string(from: NSNumber(value: Int(stepsTakenToday))) ?? "\(Int(stepsTakenToday))"
     }
 
     private var formattedStepsGoal: String {
@@ -310,15 +332,6 @@ struct WorkoutTabView: View {
     private var formattedWalkingGoal: String {
         String(format: "Goal %.1f km", walkingDistanceGoal / 1000)
     }
-
-    private var formattedRunningDistance: String {
-        String(format: "%.2f km", runningDistanceToday / 1000)
-    }
-
-    private var formattedRunningGoal: String {
-        String(format: "Goal %.1f km", runningDistanceGoal / 1000)
-    }
-    
 
     var body: some View {
         ZStack {
@@ -373,17 +386,24 @@ struct WorkoutTabView: View {
 
                     // Two rows of two cards each for summary
                     VStack(spacing: 12) {
-                        HStack(alignment: .top, spacing: 12) {
-                            ActivityProgressCard(
-                                title: "Calories Burned",
-                                iconName: "flame.fill",
-                                tint: accentOverride ?? .orange,
-                                currentValueText: "\(caloriesBurnedToday)",
-                                goalValueText: "Goal \(caloriesBurnGoal)",
-                                progress: Double(caloriesBurnedToday) / Double(caloriesBurnGoal)
-                            )
-                            .frame(maxWidth: .infinity)
+                        // First row: Calories spans full width
+                        ActivityProgressCard(
+                            title: "Calories Burned",
+                            iconName: "flame.fill",
+                            tint: accentOverride ?? .orange,
+                            currentValueText: "\(Int(caloriesBurnedToday))",
+                            goalValueText: "Goal \(caloriesBurnGoal)",
+                            progress: min(Double(caloriesBurnedToday) / Double(caloriesBurnGoal), 1.0)
+                        )
+                        .frame(maxWidth: .infinity)
+                        .onTapGesture {
+                            adjustTarget = "calories"
+                            refreshHealthKitValues()
+                            showingAdjustSheet = true
+                        }
 
+                        // Second row: Steps and Distance
+                        HStack(alignment: .top, spacing: 12) {
                             ActivityProgressCard(
                                 title: "Steps Taken",
                                 iconName: "figure.walk",
@@ -393,43 +413,44 @@ struct WorkoutTabView: View {
                                 progress: stepsProgress
                             )
                             .frame(maxWidth: .infinity)
-                        }
-                        HStack(alignment: .top, spacing: 12) {
+                            .onTapGesture {
+                                adjustTarget = "steps"
+                                refreshHealthKitValues()
+                                showingAdjustSheet = true
+                            }
+
                             ActivityProgressCard(
-                                title: "Walking Distance",
-                                iconName: "figure.walk",
+                                title: "Distance Travelled",
+                                iconName: "point.bottomleft.forward.to.point.topright.filled.scurvepath",
                                 tint: accentOverride ?? .blue,
                                 currentValueText: formattedWalkingDistance,
                                 goalValueText: formattedWalkingGoal,
                                 progress: walkingProgress
                             )
                             .frame(maxWidth: .infinity)
-
-                            ActivityProgressCard(
-                                title: "Running Distance",
-                                iconName: "figure.run",
-                                tint: accentOverride ?? .pink,
-                                currentValueText: formattedRunningDistance,
-                                goalValueText: formattedRunningGoal,
-                                progress: runningProgress
-                            )
-                            .frame(maxWidth: .infinity)
+                            .onTapGesture {
+                                adjustTarget = "walking"
+                                refreshHealthKitValues()
+                                showingAdjustSheet = true
+                            }
                         }
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
 
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Synced with Apple Health.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                    if healthKitAuthorized {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Synced with Apple Health.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 8)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 8)
                     
                     HStack {
                         Text("Workout Supplement Tracking")
@@ -449,14 +470,82 @@ struct WorkoutTabView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 18)
                     .padding(.top, 48)
-
+                    // Tappable cards: if HealthKit not authorized, allow manual adjust
+                    .onTapGesture { /* noop */ }
                     SupplementTrackingView(
                         accentColorOverride: .purple,
-                        supplements: $supplements
+                        supplements: account.supplements,
+                        takenSupplementIDs: $dayTakenWorkoutSupplementIDs,
+                        onToggle: { supplement in
+                            // optimistic UI update
+                            var newSet = dayTakenWorkoutSupplementIDs
+                            if newSet.contains(supplement.id) {
+                                newSet.remove(supplement.id)
+                            } else {
+                                newSet.insert(supplement.id)
+                            }
+                            dayTakenWorkoutSupplementIDs = newSet
+
+                            // persist canonical array to Day and Firestore
+                            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                            day.takenWorkoutSupplements = Array(newSet)
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                print("WorkoutTabView: failed to save Day after toggling workout supplement: \(error)")
+                            }
+                            dayFirestoreService.updateDayFields(["takenWorkoutSupplements": day.takenWorkoutSupplements], for: day) { success in
+                                if !success { print("WorkoutTabView: failed to sync takenWorkoutSupplements to Firestore") }
+                            }
+                        },
+                        onRemove: { supp in
+                            account.supplements.removeAll { $0.id == supp.id }
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                print("WorkoutTabView: failed to save Account after removing supplement: \(error)")
+                            }
+                            accountFirestoreService.saveAccount(account) { success in
+                                if !success { print("WorkoutTabView: failed to sync account supplements to Firestore") }
+                            }
+                        }
                     )
+                    .onAppear {
+                        // Seed account supplements with coaching defaults if empty
+                        if account.supplements.isEmpty {
+                            account.supplements = coachingDefaultSupplements
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                print("WorkoutTabView: failed to save Account after seeding supplements: \(error)")
+                            }
+                            accountFirestoreService.saveAccount(account) { success in
+                                if !success { print("WorkoutTabView: failed to sync seeded account supplements to Firestore") }
+                            }
+                        }
+                        fetchDayTakenWorkoutSupplements()
+                    }
+                    .onChange(of: selectedDate) { _, _ in
+                        fetchDayTakenWorkoutSupplements()
+                    }
                     .sheet(isPresented: $showSupplementEditor) {
+                        let supplementsBinding = Binding<[Supplement]>(
+                            get: { account.supplements },
+                            set: { newValue in
+                                account.supplements = newValue
+                                do {
+                                    try modelContext.save()
+                                } catch {
+                                    print("WorkoutTabView: failed to save Account after editing supplements: \(error)")
+                                }
+                                accountFirestoreService.saveAccount(account) { success in
+                                    if !success { print("WorkoutTabView: failed to sync account supplements to Firestore") }
+                                }
+                            }
+                        )
+
                         ExerciseSupplementEditorSheet(
-                            supplements: $supplements,
+                            supplements: supplementsBinding,
                             tint: .purple,
                             onDone: { showSupplementEditor = false }
                         )
@@ -505,6 +594,290 @@ struct WorkoutTabView: View {
         }
         .navigationTitle("Coaching")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingAdjustSheet) {
+            let hkVal: Double? = {
+                switch adjustTarget {
+                case "steps": return hkStepsValue
+                case "walking": return hkDistanceValue
+                case "calories": return hkCaloriesValue
+                default: return nil
+                }
+            }()
+
+            ActivityAdjustSheet(
+                activityName: adjustTarget ?? "",
+                unit: unitForTarget(adjustTarget),
+                hkValue: hkVal,
+                initialValue: "0"
+            ) { isAdd, value in
+                handleAdjustAction(isAddition: isAdd, valueString: value, target: adjustTarget)
+                showingAdjustSheet = false
+            }
+        }
+        .onAppear {
+            // request HealthKit authorization and load values
+            healthKitService.requestAuthorization { ok in
+                DispatchQueue.main.async {
+                    healthKitAuthorized = ok
+                    if ok {
+                        refreshHealthKitValues()
+                    } else {
+                        // load any manual overrides for today
+                        loadManualOverrides()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Manual adjust sheet
+struct ActivityAdjustSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let activityName: String
+    let unit: String
+    let hkValue: Double?
+    @State var inputValue: String
+    var handleAction: (_ isAddition: Bool, _ value: String) -> Void
+
+    init(activityName: String, unit: String, hkValue: Double? = nil, initialValue: String = "0", handleAction: @escaping (_ isAddition: Bool, _ value: String) -> Void) {
+        self.activityName = activityName
+        self.unit = unit
+        self.hkValue = hkValue
+        self._inputValue = State(initialValue: initialValue)
+        self.handleAction = handleAction
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Adjust Progress")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Text("Enter the amount to add or remove from today's total.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let hk = hkValue {
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("HealthKit")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text("\(Int(hk)) \(unit)")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        Spacer()
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    TextField("0", text: $inputValue)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.plain)
+                    Text("\(unit)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .surfaceCard(16)
+
+                HStack(spacing: 16) {
+                    Button(action: { handleAction(false, inputValue); dismiss() }) {
+                        Label("Remove", systemImage: "minus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { handleAction(true, inputValue); dismiss() }) {
+                        Label("Add", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("\(activityName) Progress")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// helpers
+private extension WorkoutTabView {
+    func unitForTarget(_ target: String?) -> String {
+        switch target {
+        case "steps": return "steps"
+        case "walking": return "m"
+        case "calories": return "cal"
+        default: return ""
+        }
+    }
+
+    func handleAdjustAction(isAddition: Bool, valueString: String, target: String?) {
+        guard let val = Double(valueString) else { return }
+        switch target {
+        case "steps":
+            stepsTakenToday += (isAddition ? val : -val)
+            persistActivityToDay(steps: stepsTakenToday)
+        case "walking":
+            walkingDistanceToday += (isAddition ? val : -val)
+            persistActivityToDay(distance: walkingDistanceToday)
+        case "calories":
+            caloriesBurnedToday += (isAddition ? val : -val)
+            persistActivityToDay(calories: caloriesBurnedToday)
+        default:
+            break
+        }
+    }
+
+    func dateKey(for date: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = Calendar.current.startOfDay(for: date)
+        let fmt = DateFormatter()
+        fmt.calendar = cal
+        fmt.timeZone = cal.timeZone
+        fmt.dateFormat = "dd-MM-yyyy"
+        return fmt.string(from: dayStart)
+    }
+
+    func manualKey(_ metric: String) -> String {
+        "manual.\(dateKey(for: selectedDate)).\(metric)"
+    }
+
+    func saveManualOverride(key: String, value: Double) {
+        // legacy: keep in UserDefaults for quick fallback, but persist canonical state to Day+Firestore
+        UserDefaults.standard.set(value, forKey: manualKey(key))
+    }
+
+    func loadManualOverrides() {
+        // Prefer local Day values (persisted in Core Data). Fall back to UserDefaults if Day not present.
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        stepsTakenToday = day.stepsTaken
+        walkingDistanceToday = day.distanceTravelled
+        caloriesBurnedToday = day.caloriesBurned
+        // If Day had no values, fallback to UserDefaults or estimate
+        if stepsTakenToday == 0 {
+            let steps = UserDefaults.standard.double(forKey: manualKey("steps"))
+            if steps > 0 { stepsTakenToday = steps }
+        }
+        if walkingDistanceToday == 0 {
+            let walking = UserDefaults.standard.double(forKey: manualKey("walking"))
+            if walking > 0 { walkingDistanceToday = walking }
+        }
+        if caloriesBurnedToday == 0 {
+            let cals = UserDefaults.standard.double(forKey: manualKey("calories"))
+            if cals > 0 { caloriesBurnedToday = cals }
+            else { caloriesBurnedToday = estimateCaloriesFromAccount() }
+        }
+    }
+
+    func refreshHealthKitValues() {
+        healthKitService.fetchTodaySteps { v in
+            DispatchQueue.main.async {
+                if let v = v { stepsTakenToday = v }
+            }
+        }
+                    healthKitService.fetchTodayDistance { v in
+            DispatchQueue.main.async {
+                if let v = v {
+                                // treat fetched distance as walking distance for display simplicity
+                                walkingDistanceToday = v
+                }
+            }
+        }
+        healthKitService.fetchTodayActiveEnergy { v in
+            DispatchQueue.main.async {
+                if let v = v { caloriesBurnedToday = v }
+                else { caloriesBurnedToday = estimateCaloriesFromAccount() }
+
+                // persist fetched values to Day + Firestore
+                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                day.stepsTaken = stepsTakenToday
+                day.distanceTravelled = walkingDistanceToday
+                day.caloriesBurned = caloriesBurnedToday
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("WorkoutTabView: failed to save Day after HealthKit refresh: \(error)")
+                }
+                dayFirestoreService.updateDayFields([
+                    "stepsTaken": stepsTakenToday,
+                    "distanceTravelled": walkingDistanceToday,
+                    "caloriesBurned": caloriesBurnedToday
+                ], for: day) { success in
+                    if !success { print("WorkoutTabView: failed to sync activity metrics to Firestore") }
+                }
+            }
+        }
+    }
+
+    func persistActivityToDay(calories: Double? = nil, steps: Double? = nil, distance: Double? = nil) {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        if let c = calories { day.caloriesBurned = c }
+        if let s = steps { day.stepsTaken = s }
+        if let d = distance { day.distanceTravelled = d }
+        do {
+            try modelContext.save()
+        } catch {
+            print("WorkoutTabView: failed to save Day after manual adjust: \(error)")
+        }
+        var fields: [String: Any] = [:]
+        if let c = calories { fields["caloriesBurned"] = c }
+        if let s = steps { fields["stepsTaken"] = s }
+        if let d = distance { fields["distanceTravelled"] = d }
+        if !fields.isEmpty {
+            dayFirestoreService.updateDayFields(fields, for: day) { success in
+                if !success { print("WorkoutTabView: failed to sync manual activity metrics to Firestore") }
+            }
+        }
+    }
+
+    func estimateCaloriesFromAccount() -> Double {
+        // crude estimate using steps + distances + account fields
+        let weight = account.weight ?? 70.0
+        let height = account.height ?? 170.0
+        let age: Int = {
+            if let dob = account.dateOfBirth {
+                let comps = Calendar.current.dateComponents([.year], from: dob, to: Date())
+                return comps.year ?? 30
+            }
+            return 30
+        }()
+        let genderFactor: Double = {
+            let g = account.gender?.lowercased() ?? ""
+            if g.starts(with: "f") || g == "female" { return -161 }
+            return 5
+        }()
+        _ = 10.0 * (account.weight ?? weight) + 6.25 * (account.height ?? height) - 5.0 * Double(age) + genderFactor
+
+        // distance-based estimates (kcal per km per kg approx)
+        let walkKm = walkingDistanceToday / 1000.0
+        let walkCals = walkKm * (account.weight ?? weight) * 0.7
+        let stepCals = stepsTakenToday * 0.04
+
+        let active = max(stepCals, walkCals)
+        // ensure at least a small active component
+        return max(active, 0)
     }
 }
 
@@ -558,13 +931,13 @@ private enum WorkoutDayStatus {
     }
 }
 
-private let coachingDefaultSupplements: [SupplementItem] = [
-    SupplementItem(name: "Pre-workout", amountLabel: "1 scoop"),
-    SupplementItem(name: "Creatine", amountLabel: "5 g"),
-    SupplementItem(name: "BCAA", amountLabel: "10 g"),
-    SupplementItem(name: "Whey Protein", amountLabel: "30 g"),
-    SupplementItem(name: "L-Carnitine", amountLabel: "500 mg"),
-    SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
+private let coachingDefaultSupplements: [Supplement] = [
+    Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
+    Supplement(name: "Creatine", amountLabel: "5 g"),
+    Supplement(name: "BCAA", amountLabel: "10 g"),
+    Supplement(name: "Whey Protein", amountLabel: "30 g"),
+    Supplement(name: "L-Carnitine", amountLabel: "500 mg"),
+    Supplement(name: "Electrolytes", amountLabel: "1 scoop")
 ]
 
 // Sample weekly schedule for coaching tab

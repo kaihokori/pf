@@ -435,12 +435,12 @@ extension Color {
 }
 
 // Workout uses the shared `SupplementTrackingView` component. Provide workout-specific defaults.
-private let workoutDefaultSupplements: [SupplementItem] = [
-    SupplementItem(name: "Pre-Workout", amountLabel: "1 scoop"),
-    SupplementItem(name: "Creatine", amountLabel: "5 g"),
-    SupplementItem(name: "BCAA", amountLabel: "10 g"),
-    SupplementItem(name: "Protein Powder", amountLabel: "30 g"),
-    SupplementItem(name: "L-Carnitine", amountLabel: "500 mg"),
-    SupplementItem(name: "Caffeine", amountLabel: "200 mg"),
-    SupplementItem(name: "Electrolytes", amountLabel: "1 scoop")
+private let workoutDefaultSupplements: [Supplement] = [
+    Supplement(name: "Pre-Workout", amountLabel: "1 scoop"),
+    Supplement(name: "Creatine", amountLabel: "5 g"),
+    Supplement(name: "BCAA", amountLabel: "10 g"),
+    Supplement(name: "Protein Powder", amountLabel: "30 g"),
+    Supplement(name: "L-Carnitine", amountLabel: "500 mg"),
+    Supplement(name: "Caffeine", amountLabel: "200 mg"),
+    Supplement(name: "Electrolytes", amountLabel: "1 scoop")
 ]

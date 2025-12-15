@@ -111,33 +111,42 @@ struct RootView: View {
 
                 // Attempt to upload only the changed field to Firestore so we don't
                 // overwrite other values that may be stale in-memory.
-                dayFirestoreService.updateDayFields(["caloriesConsumed": newValue], for: day) { success in
-                    if success {
-                        print("RootView: successfully synced caloriesConsumed to Firestore for date=\(selectedDate)")
-                    } else {
-                        print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
+                if newValue != 0 {
+                    dayFirestoreService.updateDayFields(["caloriesConsumed": newValue], for: day) { success in
+                        if success {
+                            print("RootView: successfully synced caloriesConsumed to Firestore for date=\(selectedDate)")
+                        } else {
+                            print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
+                        }
                     }
                 }
             }
         }
 
         .onChange(of: calorieGoal) { _, newValue in
+            guard let account = fetchAccount() else { return }
+            account.calorieGoal = newValue
+
+            do {
+                try modelContext.save()
+                print("RootView: saved calorieGoal=\(newValue) to local Account")
+            } catch {
+                print("RootView: failed to save calorieGoal to local Account: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if success {
+                    print("RootView: synced calorieGoal to Firestore via Account")
+                } else {
+                    print("RootView: failed to sync calorieGoal to Firestore via Account")
+                }
+            }
+
+            // Keep local Day in sync for offline UI, but do not upload via DayFirestoreService.
             Task {
                 let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
                 day.calorieGoal = newValue
-                do {
-                    try modelContext.save()
-                    print("RootView: saved calorieGoal=\(newValue) for date=\(selectedDate) to local store")
-                } catch {
-                    print("RootView: failed to save local Day (calorieGoal): \(error)")
-                }
-                dayFirestoreService.updateDayFields(["calorieGoal": newValue], for: day) { success in
-                    if success {
-                        print("RootView: successfully synced calorieGoal to Firestore for date=\(selectedDate)")
-                    } else {
-                        print("RootView: failed to sync calorieGoal to Firestore for date=\(selectedDate)")
-                    }
-                }
+                try? modelContext.save()
             }
         }
 
@@ -145,25 +154,27 @@ struct RootView: View {
             Task {
                 let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
                 day.macroFocusRaw = newValue?.rawValue
-                // Ensure the calorie goal is persisted alongside macro focus so
-                // changing the macro (which may update the UI's calorieGoal)
-                // doesn't leave the Day out of sync.
-                day.calorieGoal = calorieGoal
                 do {
                     try modelContext.save()
                     print("RootView: saved macroFocus=\(String(describing: newValue)) for date=\(selectedDate) to local store")
                 } catch {
                     print("RootView: failed to save local Day (macroFocus): \(error)")
                 }
-                var fields: [String: Any] = ["calorieGoal": day.calorieGoal]
-                if let raw = newValue?.rawValue {
-                    fields["macroFocus"] = raw
+            }
+
+            if let account = fetchAccount() {
+                account.macroFocusRaw = newValue?.rawValue
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("RootView: failed to save macroFocus to Account locally: \(error)")
                 }
-                dayFirestoreService.updateDayFields(fields, for: day) { success in
+
+                accountFirestoreService.saveAccount(account) { success in
                     if success {
-                        print("RootView: successfully synced macroFocus to Firestore for date=\(selectedDate)")
+                        print("RootView: synced macroFocus to Firestore via Account")
                     } else {
-                        print("RootView: failed to sync macroFocus to Firestore for date=\(selectedDate)")
+                        print("RootView: failed to sync macroFocus to Firestore via Account")
                     }
                 }
             }
@@ -219,6 +230,10 @@ struct RootView: View {
                         upsertLocalAccount(with: fetched)
                         // Use the fetched maintenance calories from the account on app load
                         maintenanceCalories = fetched.maintenanceCalories
+                        calorieGoal = fetched.calorieGoal
+                        if let rawMF = fetched.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
+                            selectedMacroFocus = mf
+                        }
                         trackedMacros = fetched.trackedMacros
                         cravings = fetched.cravings
                         if fetched.mealReminders.isEmpty {
@@ -264,6 +279,8 @@ private extension RootView {
                     height: 170,
                     weight: 70,
                     maintenanceCalories: 0,
+                    calorieGoal: 0,
+                    macroFocusRaw: nil,
                     intermittentFastingMinutes: 16 * 60,
                     theme: "default",
                     unitSystem: "metric",
@@ -299,6 +316,8 @@ private extension RootView {
         guard let account = fetchAccount() else {
             trackedMacros = TrackedMacro.defaults
             cravings = []
+            maintenanceCalories = 0
+            calorieGoal = 0
             return
         }
 
@@ -315,6 +334,11 @@ private extension RootView {
         }
 
         cravings = account.cravings
+        maintenanceCalories = account.maintenanceCalories
+        calorieGoal = account.calorieGoal
+        if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
+            selectedMacroFocus = mf
+        }
     }
 
     func loadDay(for date: Date) {
@@ -331,14 +355,14 @@ private extension RootView {
     }
 
     func applyDayState(_ day: Day, for targetDate: Date) {
+        if let account = fetchAccount() {
+            maintenanceCalories = account.maintenanceCalories
+            calorieGoal = account.calorieGoal
+            if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
+                selectedMacroFocus = mf
+            }
+        }
         consumedCalories = day.caloriesConsumed
-        maintenanceCalories = day.maintenanceCalories
-        if day.calorieGoal > 0 {
-            calorieGoal = day.calorieGoal
-        }
-        if let raw = day.macroFocusRaw, let mf = MacroFocusOption(rawValue: raw) {
-            selectedMacroFocus = mf
-        }
 
         let previousCount = macroConsumptions.count
         if !trackedMacros.isEmpty {
@@ -433,11 +457,14 @@ private extension RootView {
                 print("RootView: failed to save macro consumptions locally: \(error)")
             }
 
-            dayFirestoreService.saveDay(day) { success in
-                if success {
-                    print("RootView: synced macro consumptions to Firestore for date=\(selectedDate)")
-                } else {
-                    print("RootView: failed to sync macro consumptions to Firestore for date=\(selectedDate)")
+            let hasConsumption = consumptions.contains { $0.consumed != 0 }
+            if hasConsumption {
+                dayFirestoreService.saveDay(day) { success in
+                    if success {
+                        print("RootView: synced macro consumptions to Firestore for date=\(selectedDate)")
+                    } else {
+                        print("RootView: failed to sync macro consumptions to Firestore for date=\(selectedDate)")
+                    }
                 }
             }
         }
@@ -598,6 +625,8 @@ private extension RootView {
                 local.gender = fetched.gender
                 local.dateOfBirth = fetched.dateOfBirth
                 local.maintenanceCalories = fetched.maintenanceCalories
+                local.calorieGoal = fetched.calorieGoal
+                local.macroFocusRaw = fetched.macroFocusRaw
                 local.height = fetched.height
                 local.weight = fetched.weight
                 local.theme = fetched.theme
@@ -620,6 +649,8 @@ private extension RootView {
                     height: fetched.height,
                     weight: fetched.weight,
                     maintenanceCalories: fetched.maintenanceCalories,
+                    calorieGoal: fetched.calorieGoal,
+                    macroFocusRaw: fetched.macroFocusRaw,
                     intermittentFastingMinutes: fetched.intermittentFastingMinutes,
                     theme: fetched.theme,
                     unitSystem: fetched.unitSystem,
@@ -687,6 +718,8 @@ private extension RootView {
                                         local.gender = newAccount.gender
                                         local.dateOfBirth = newAccount.dateOfBirth
                                         local.maintenanceCalories = newAccount.maintenanceCalories
+                                        local.calorieGoal = newAccount.calorieGoal
+                                        local.macroFocusRaw = newAccount.macroFocusRaw
                                         local.height = newAccount.height
                                         local.weight = newAccount.weight
                                         local.theme = newAccount.theme

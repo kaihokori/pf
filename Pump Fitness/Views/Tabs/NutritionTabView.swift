@@ -5,6 +5,10 @@ import SwiftData
 import UserNotifications
 import Combine
 
+extension Notification.Name {
+    static let dayDataDidChange = Notification.Name("DayDataDidChangeNotification")
+}
+
 struct NutritionTabView: View {
     @Binding var account: Account
     @Binding var consumedCalories: Int
@@ -15,6 +19,7 @@ struct NutritionTabView: View {
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
     @State private var showAddSheet = false
+    @State private var showLogIntakeSheet = false
     @State private var showCalorieGoalSheet = false
     @Binding var calorieGoal: Int
     @Binding var selectedMacroFocus: MacroFocusOption?
@@ -30,7 +35,8 @@ struct NutritionTabView: View {
     @State private var showSupplementEditor = false
     @State private var showCravingEditor = false
     @State private var showMealReminderSheet = false
-    @State private var supplements: [SupplementItem] = SupplementItem.defaultSupplements
+    // supplements are persisted on Account; per-day taken state is stored on Day
+    @State private var dayTakenSupplementIDs: Set<String> = []
     @State private var nutritionSearchText: String = ""
 
     // Weekly progress state (persisted via Account + Firestore)
@@ -42,6 +48,7 @@ struct NutritionTabView: View {
     @Binding var maintenanceCalories: Int
 
     private let accountFirestoreService = AccountFirestoreService()
+    private let dayFirestoreService = DayFirestoreService()
 
     init(
         account: Binding<Account>,
@@ -105,6 +112,18 @@ struct NutritionTabView: View {
             }
         }
     }
+
+    private func fetchDayTakenSupplements() {
+        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { day in
+            DispatchQueue.main.async {
+                if let day = day {
+                    dayTakenSupplementIDs = Set(day.takenSupplements)
+                } else {
+                    dayTakenSupplementIDs = []
+                }
+            }
+        }
+    }
     var body: some View {
         NavigationStack {
             ZStack {
@@ -153,13 +172,14 @@ struct NutritionTabView: View {
                         .padding(.top, 14)
 
                         Button {
-                            // 
+                            showLogIntakeSheet = true
                         } label: {
                             Label("Log Intake", systemImage: "plus")
-                                .font(.callout.weight(.semibold))
-                                .padding(.vertical, 18)
-                                .frame(maxWidth: .infinity, minHeight: 52)
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                              .font(.callout.weight(.semibold))
+                              .padding(.vertical, 18)
+                              .frame(maxWidth: .infinity, minHeight: 52)
+                              .glassEffect(in: .rect(cornerRadius: 16.0))
+                              .contentShape(Rectangle())
                         }
                         .padding(.horizontal, 18)
                         .padding(.top, 18)
@@ -231,7 +251,12 @@ struct NutritionTabView: View {
                         DailyMealLogSection(
                             accentColorOverride: accentOverride,
                             weeklyEntries: weeklyEntries,
-                            weekStartsOnMonday: false
+                            weekStartsOnMonday: false,
+                            trackedMacros: trackedMacros,
+                            selectedDate: selectedDate,
+                            currentConsumedCalories: consumedCalories,
+                            currentCalorieGoal: calorieGoal,
+                            currentMacroConsumptions: macroConsumptions
                         )
                         
                         HStack {
@@ -260,8 +285,49 @@ struct NutritionTabView: View {
 
                         SupplementTrackingView(
                             accentColorOverride: .orange,
-                            supplements: $supplements
+                            supplements: account.supplements,
+                            takenSupplementIDs: $dayTakenSupplementIDs,
+                            onToggle: { supplement in
+                                // Optimistically update UI state first to avoid stale reads
+                                var newSet = dayTakenSupplementIDs
+                                if newSet.contains(supplement.id) {
+                                    newSet.remove(supplement.id)
+                                } else {
+                                    newSet.insert(supplement.id)
+                                }
+                                dayTakenSupplementIDs = newSet
+
+                                // Persist the canonical array to the Day model and Firestore
+                                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+                                day.takenSupplements = Array(newSet)
+                                do {
+                                    try modelContext.save()
+                                } catch {
+                                    print("NutritionTabView: failed to save Day after toggling supplement: \(error)")
+                                }
+                                dayFirestoreService.updateDayFields(["takenSupplements": day.takenSupplements], for: day) { success in
+                                    if !success { print("NutritionTabView: failed to sync takenSupplements to Firestore") }
+                                }
+                            },
+                            onRemove: { supplement in
+                                // remove supplement from Account then persist
+                                account.supplements.removeAll { $0.id == supplement.id }
+                                do {
+                                    try modelContext.save()
+                                } catch {
+                                    print("NutritionTabView: failed to save Account after removing supplement: \(error)")
+                                }
+                                accountFirestoreService.saveAccount(account) { success in
+                                    if !success { print("NutritionTabView: failed to sync removed supplement to Firestore") }
+                                }
+                            }
                         )
+                        .onAppear {
+                            fetchDayTakenSupplements()
+                        }
+                        .onChange(of: selectedDate) {
+                            fetchDayTakenSupplements()
+                        }
 
                         HStack {
                             Text("Cravings")
@@ -473,6 +539,19 @@ struct NutritionTabView: View {
                             )
             .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showLogIntakeSheet) {
+            MealIntakeSheet(
+                tint: accentOverride ?? .accentColor,
+                trackedMacros: trackedMacros,
+                onSave: { entry in
+                    handleMealIntakeSave(entry)
+                    showLogIntakeSheet = false
+                },
+                onCancel: { showLogIntakeSheet = false }
+            )
+            .presentationDetents([.large, .medium])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showAddSheet) {
             WeeklyProgressAddSheet(
                 tint: accentOverride ?? .accentColor,
@@ -491,8 +570,23 @@ struct NutritionTabView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showSupplementEditor) {
+            let supplementsBinding = Binding<[Supplement]>(
+                get: { account.supplements },
+                set: { newValue in
+                    account.supplements = newValue
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        print("NutritionTabView: failed to save Account after editing supplements: \(error)")
+                    }
+                    accountFirestoreService.saveAccount(account) { success in
+                        if !success { print("NutritionTabView: failed to sync account supplements to Firestore") }
+                    }
+                }
+            )
+
             SupplementEditorSheet(
-                supplements: $supplements,
+                supplements: supplementsBinding,
                 tint: accentOverride ?? .orange,
                 onDone: { showSupplementEditor = false }
             )
@@ -941,6 +1035,58 @@ private extension NutritionTabView {
         }
     }
 
+    func handleMealIntakeSave(_ entry: MealIntakeEntry) {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+
+        // Store the detailed entry
+        day.mealIntakes.append(entry)
+
+        // Update calorie aggregate
+        if entry.calories != 0 {
+            day.caloriesConsumed = max(0, day.caloriesConsumed + entry.calories)
+            consumedCalories = day.caloriesConsumed
+        }
+
+        // Update macro aggregates to keep summaries in sync
+        if day.macroConsumptions.isEmpty {
+            day.ensureMacroConsumptions(for: trackedMacros)
+        }
+
+        for macro in entry.macros {
+            guard macro.amount != 0 else { continue }
+            if let idx = day.macroConsumptions.firstIndex(where: { $0.trackedMacroId == macro.trackedMacroId }) {
+                day.macroConsumptions[idx].consumed = max(0, day.macroConsumptions[idx].consumed + macro.amount)
+                day.macroConsumptions[idx].unit = macro.unit
+                day.macroConsumptions[idx].name = macro.name
+            } else {
+                day.macroConsumptions.append(
+                    MacroConsumption(
+                        trackedMacroId: macro.trackedMacroId,
+                        name: macro.name,
+                        unit: macro.unit,
+                        consumed: max(0, macro.amount)
+                    )
+                )
+            }
+        }
+
+        macroConsumptions = day.macroConsumptions
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save Day after logging intake: \(error)")
+        }
+
+        dayFirestoreService.saveDay(day) { success in
+            if !success {
+                print("NutritionTabView: failed to sync logged intake to Firestore")
+            }
+            // Notify other UI that this day's data changed so they can refresh
+            NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
+        }
+    }
+
     func reloadWeeklyProgressFromAccount() {
         weeklyEntries = account.weeklyProgress
             .map {
@@ -957,7 +1103,13 @@ private extension NutritionTabView {
     }
 
     func persistWeeklyProgressEntries() {
-        account.weeklyProgress = weeklyEntries.map {
+        let filteredEntries = weeklyEntries.filter { entry in
+            entry.weight != 0 || entry.waterPercent != nil || entry.bodyFatPercent != nil || entry.photoData != nil
+        }
+
+        weeklyEntries = filteredEntries
+
+        account.weeklyProgress = filteredEntries.map {
             WeeklyProgressRecord(
                 id: $0.id.uuidString,
                 date: $0.date,
@@ -974,6 +1126,8 @@ private extension NutritionTabView {
         } catch {
             print("NutritionTabView: failed to save weekly progress locally: \(error)")
         }
+
+        guard !filteredEntries.isEmpty else { return }
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
@@ -1002,32 +1156,14 @@ private extension NutritionTabView {
     }
 
     func ensurePlaceholderIfNeeded(persist: Bool) {
-        let beforeCount = weeklyEntries.count
         weeklyEntries.sort { $0.date < $1.date }
 
-        let today = Calendar.current.startOfDay(for: Date())
-
-        if weeklyEntries.isEmpty {
-            weeklyEntries.append(
-                WeeklyProgressEntry(date: today, weight: 0, waterPercent: nil, bodyFatPercent: nil, photoData: nil)
-            )
-        } else if let last = weeklyEntries.last {
-            let lastDay = Calendar.current.startOfDay(for: last.date)
-            let delta = Calendar.current.dateComponents([.day], from: lastDay, to: today).day ?? 0
-            if delta >= 7 {
-                weeklyEntries.append(
-                    WeeklyProgressEntry(date: today, weight: 0, waterPercent: nil, bodyFatPercent: nil, photoData: nil)
-                )
-            }
+        // Do not create placeholder entries; only persist real data.
+        if persist {
+            persistWeeklyProgressEntries()
         }
 
-        weeklyEntries.sort { $0.date < $1.date }
-
-        let added = weeklyEntries.count != beforeCount
-        if added {
-            if persist {
-                persistWeeklyProgressEntries()
-            }
+        if !weeklyEntries.isEmpty {
             scheduleProgressReminder()
         }
     }
@@ -1186,27 +1322,36 @@ struct CravingEditorSheet: View {
                                                 .fill(tint.opacity(0.15))
                                                 .frame(width: 44, height: 44)
                                                 .overlay(
-                                                    Image(systemName: binding.wrappedValue.isChecked ? "checkmark.circle.fill" : "checkmark.circle")
+                                                    Image(systemName: "birthday.cake")
                                                         .foregroundStyle(tint)
                                                 )
 
-                                            VStack(alignment: .leading, spacing: 6) {
-                                                TextField("Name", text: binding.name)
+                                            VStack(alignment: .leading) {
+                                                Text(binding.wrappedValue.name)
                                                     .font(.subheadline.weight(.semibold))
-                                                HStack(spacing: 6) {
-                                                    TextField(
-                                                        "Calories",
-                                                        value: binding.calories,
-                                                        formatter: caloriesFormatter
-                                                    )
-                                                    .keyboardType(.numberPad)
+                                                Text("\(binding.wrappedValue.calories) cal")
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
-                                                    Text("cal")
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
                                             }
+
+                                            // VStack(alignment: .leading, spacing: 6) {
+                                            //     TextField("Name", text: binding.name)
+                                            //         .font(.subheadline.weight(.semibold))
+                                            //     HStack(spacing: 6) {
+                                            //         TextField(
+                                            //             "Calories",
+                                            //             value: binding.calories,
+                                            //             formatter: caloriesFormatter
+                                            //         )
+                                            //         .keyboardType(.numberPad)
+                                            //         .font(.caption)
+                                            //         .foregroundStyle(.secondary)
+                                            //         Text("cal")
+                                            //             .font(.caption)
+                                            //             .foregroundStyle(.secondary)
+                                            //         Spacer()
+                                            //     }
+                                            // }
 
                                             Spacer()
 
@@ -1357,31 +1502,33 @@ struct CravingEditorSheet: View {
 }
 
 struct SupplementEditorSheet: View {
-    @Binding var supplements: [SupplementItem]
+    @Binding var supplements: [Supplement]
     var tint: Color
     var onDone: () -> Void
 
+    @Environment(\.modelContext) private var modelContext
+
     // local working state
-    @State private var working: [SupplementItem] = []
+    @State private var working: [Supplement] = []
     @State private var newName: String = ""
     @State private var newTarget: String = ""
     @State private var hasLoaded = false
 
     // presets available in Quick Add (some may not be selected initially)
-    private var presets: [SupplementItem] {
+    private var presets: [Supplement] {
         [
-            SupplementItem(name: "Vitamin D", amountLabel: "50 μg"),
-            SupplementItem(name: "Vitamin B Complex", amountLabel: "50 mg"),
-            SupplementItem(name: "Magnesium", amountLabel: "200 mg"),
-            SupplementItem(name: "Probiotics", amountLabel: "10 Billion CFU"),
-            SupplementItem(name: "Fish Oil", amountLabel: "1000 mg"),
-            SupplementItem(name: "Ashwagandha", amountLabel: "500 mg"),
-            SupplementItem(name: "Melatonin", amountLabel: "3 mg"),
-            SupplementItem(name: "Calcium", amountLabel: "500 mg"),
-            SupplementItem(name: "Iron", amountLabel: "18 mg"),
-            SupplementItem(name: "Zinc", amountLabel: "15 mg"),
-            SupplementItem(name: "Vitamin C", amountLabel: "1000 mg"),
-            SupplementItem(name: "Caffeine", amountLabel: "200 mg")
+            Supplement(name: "Vitamin D", amountLabel: "50 μg"),
+            Supplement(name: "Vitamin B Complex", amountLabel: "50 mg"),
+            Supplement(name: "Magnesium", amountLabel: "200 mg"),
+            Supplement(name: "Probiotics", amountLabel: "10 Billion CFU"),
+            Supplement(name: "Fish Oil", amountLabel: "1000 mg"),
+            Supplement(name: "Ashwagandha", amountLabel: "500 mg"),
+            Supplement(name: "Melatonin", amountLabel: "3 mg"),
+            Supplement(name: "Calcium", amountLabel: "500 mg"),
+            Supplement(name: "Iron", amountLabel: "18 mg"),
+            Supplement(name: "Zinc", amountLabel: "15 mg"),
+            Supplement(name: "Vitamin C", amountLabel: "1000 mg"),
+            Supplement(name: "Caffeine", amountLabel: "200 mg")
         ]
     }
 
@@ -1422,8 +1569,8 @@ struct SupplementEditorSheet: View {
                                                 TextField("Name", text: binding.name)
                                                     .font(.subheadline.weight(.semibold))
                                                 TextField("Amount or note (e.g. 5 g or 3 scoops)", text: Binding(
-                                                    get: { binding.customLabel.wrappedValue ?? item.measurementDescription },
-                                                    set: { binding.customLabel.wrappedValue = $0 }
+                                                    get: { binding.amountLabel.wrappedValue ?? "" },
+                                                    set: { binding.amountLabel.wrappedValue = $0 }
                                                 ))
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
@@ -1452,7 +1599,7 @@ struct SupplementEditorSheet: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 MacroEditorSectionHeader(title: "Quick Add")
                                 VStack(spacing: 12) {
-                                    ForEach(presets.filter { !isPresetSelected($0) }, id: \.name) { preset in
+                                        ForEach(presets.filter { !isPresetSelected($0) }, id: \.name) { preset in
                                         HStack(spacing: 14) {
                                             Circle()
                                                 .fill(tint.opacity(0.15))
@@ -1465,7 +1612,7 @@ struct SupplementEditorSheet: View {
                                             VStack(alignment: .leading) {
                                                 Text(preset.name)
                                                     .font(.subheadline.weight(.semibold))
-                                                Text(preset.measurementDescription)
+                                                Text(preset.amountLabel ?? "")
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
                                             }
@@ -1531,8 +1678,7 @@ struct SupplementEditorSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        supplements = working
-                        onDone()
+                        donePressed()
                     }
                     .fontWeight(.semibold)
                 }
@@ -1547,7 +1693,7 @@ struct SupplementEditorSheet: View {
         hasLoaded = true
     }
 
-    private func togglePreset(_ preset: SupplementItem) {
+    private func togglePreset(_ preset: Supplement) {
         if isPresetSelected(preset) {
             working.removeAll { $0.name == preset.name }
         } else if canAddMore {
@@ -1555,19 +1701,19 @@ struct SupplementEditorSheet: View {
         }
     }
 
-    private func isPresetSelected(_ preset: SupplementItem) -> Bool {
+    private func isPresetSelected(_ preset: Supplement) -> Bool {
         // Only consider a preset selected if any working item matches its name
         return working.contains { $0.name == preset.name }
     }
 
-    private func removeSupplement(_ id: UUID) {
+    private func removeSupplement(_ id: String) {
         // Find the supplement being removed
         guard let item = working.first(where: { $0.id == id }) else { return }
         // Always remove all with that name if it's a preset, so preset returns to Quick Add
         if presets.contains(where: { $0.name == item.name }) {
             working.removeAll { $0.name == item.name }
         } else {
-            working.removeAll { $0.id == id }
+            working.removeAll { $0.id == item.id }
         }
     }
 
@@ -1575,10 +1721,33 @@ struct SupplementEditorSheet: View {
         guard canAddCustom else { return }
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let new = SupplementItem(name: trimmed, amountLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines), customLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines))
+        let new = Supplement(name: trimmed, amountLabel: newTarget.trimmingCharacters(in: .whitespacesAndNewlines))
         working.append(new)
         newName = ""
         newTarget = ""
+    }
+
+    // Persist working to the binding and save to Firestore
+    private func donePressed() {
+        supplements = working
+        do {
+            try modelContext.save()
+        } catch {
+            print("SupplementEditorSheet: failed to save context: \(error)")
+        }
+        // Attempt to sync account if available in the context
+        let acctReq = FetchDescriptor<Account>()
+        do {
+            let accounts = try modelContext.fetch(acctReq)
+            if let acct = accounts.first {
+                AccountFirestoreService().saveAccount(acct) { success in
+                    if !success { print("SupplementEditorSheet: failed to sync account supplements to Firestore") }
+                }
+            }
+        } catch {
+            // ignore
+        }
+        onDone()
     }
 }
 
@@ -2438,6 +2607,689 @@ private struct CalorieConsumedAdjustmentSheet: View {
     }
 }
 
+private struct MealIntakeSheet: View {
+    var tint: Color
+    var trackedMacros: [TrackedMacro]
+    var onSave: (MealIntakeEntry) -> Void
+    var onCancel: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedMealType: MealType = .breakfast
+    @State private var itemName: String = ""
+    @State private var portionSizeGrams: String = "100"
+    @State private var caloriesText: String = ""
+    @State private var macroInputs: [String: String]
+    @State private var showLookupSheet = false
+    @State private var lookupSearchText: String = ""
+
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+
+    init(
+        tint: Color,
+        trackedMacros: [TrackedMacro],
+        onSave: @escaping (MealIntakeEntry) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.tint = tint
+        self.trackedMacros = trackedMacros
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _macroInputs = State(initialValue: Dictionary(uniqueKeysWithValues: trackedMacros.map { ($0.id, "") }))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Meal type")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
+                            ForEach(MealType.allCases) { type in
+                                SelectablePillComponent(
+                                    label: type.displayName,
+                                    isSelected: selectedMealType == type,
+                                    selectedTint: tint
+                                ) {
+                                    selectedMealType = type
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Item details")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            TextField("Item name", text: $itemName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack {
+                                TextField("0", text: $portionSizeGrams)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.plain)
+                                Text("g")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .frame(width: 100)
+                            .glassEffect(in: .rect(cornerRadius: 8.0))
+                            .onChange(of: portionSizeGrams) { _, newValue in
+                                let filtered = newValue.filter { "0123456789".contains($0) }
+                                if filtered != newValue {
+                                    portionSizeGrams = filtered
+                                }
+                                if portionSizeGrams.isEmpty {
+                                    portionSizeGrams = "0"
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        lookupSearchText = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        showLookupSheet = true
+                    } label: {
+                        Label("Quick Lookup", systemImage: "magnifyingglass")
+                            .font(.callout.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Calories")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            TextField("Calories", text: $caloriesText)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.plain)
+                            Text("cal")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .glassEffect(in: .rect(cornerRadius: 8.0))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Macros")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if trackedMacros.isEmpty {
+                            Text("Add tracked macros to your account to log macro amounts.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                                .surfaceCard(16)
+                        } else {
+                            VStack(spacing: 12) {
+                                ForEach(trackedMacros, id: \.id) { macro in
+                                    HStack(spacing: 8) {
+                                        TextField("\(macro.name) (\(macro.unit))", text: Binding(
+                                            get: { macroInputs[macro.id, default: ""] },
+                                            set: { macroInputs[macro.id] = $0 }
+                                        ))
+                                        .keyboardType(.decimalPad)
+                                        .textFieldStyle(.plain)
+
+                                        Text(macro.unit)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding()
+                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Log Intake")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { handleSave() }
+                        .fontWeight(.semibold)
+                        .disabled(itemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .sheet(isPresented: $showLookupSheet) {
+                QuickLookupSheet(
+                    tint: tint,
+                    initialQuery: lookupSearchText,
+                    initialPortionGrams: portionSizeGrams
+                ) { selection in
+                    applyLookupSelection(selection)
+                    showLookupSheet = false
+                } onCancel: {
+                    showLookupSheet = false
+                }
+            }
+        }
+    }
+
+    private func handleSave() {
+        let cleanedName = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let portion = portionSizeGrams.trimmingCharacters(in: .whitespacesAndNewlines)
+        let calories = Int(caloriesText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let macros = trackedMacros.map { macro in
+            let value = macroInputs[macro.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let amount = Double(value) ?? 0
+            return MealMacroEntry(
+                trackedMacroId: macro.id,
+                name: macro.name,
+                unit: macro.unit,
+                amount: amount
+            )
+        }
+
+        let entry = MealIntakeEntry(
+            mealType: selectedMealType,
+            itemName: cleanedName,
+            quantityPerServing: portion.isEmpty ? "0" : portion,
+            calories: calories,
+            macros: macros
+        )
+        onSave(entry)
+        dismiss()
+    }
+
+    private func applyLookupSelection(_ selection: LookupFoodItem) {
+        itemName = selection.name
+        if selection.calories > 0 {
+            caloriesText = "\(selection.calories)"
+        }
+
+        for macro in trackedMacros {
+            let lower = macro.name.lowercased()
+            if lower.contains("protein") {
+                macroInputs[macro.id] = selection.protein > 0 ? "\(selection.protein)" : macroInputs[macro.id]
+            } else if lower.contains("carb") {
+                macroInputs[macro.id] = selection.carbs > 0 ? "\(selection.carbs)" : macroInputs[macro.id]
+            } else if lower.contains("fat") {
+                macroInputs[macro.id] = selection.fat > 0 ? "\(selection.fat)" : macroInputs[macro.id]
+            } else if lower.contains("sugar") {
+                macroInputs[macro.id] = selection.sugar > 0 ? "\(selection.sugar)" : macroInputs[macro.id]
+            } else if lower.contains("sodium") || lower.contains("salt") {
+                if selection.sodium > 0 {
+                    if macro.unit.lowercased().contains("mg") {
+                        macroInputs[macro.id] = "\(selection.sodium)"
+                    } else {
+                        let grams = Double(selection.sodium) / 1000.0
+                        macroInputs[macro.id] = grams > 0 ? String(format: "%.2f", grams) : macroInputs[macro.id]
+                    }
+                }
+            } else if lower.contains("potassium") {
+                if selection.potassium > 0 {
+                    if macro.unit.lowercased().contains("mg") {
+                        macroInputs[macro.id] = "\(selection.potassium)"
+                    } else {
+                        let grams = Double(selection.potassium) / 1000.0
+                        macroInputs[macro.id] = grams > 0 ? String(format: "%.2f", grams) : macroInputs[macro.id]
+                    }
+                }
+            }
+        }
+    }
+}
+
+// USDA Quick Lookup Sheet (matches LookupTabView styling)
+private struct QuickLookupSheet: View {
+    var tint: Color
+    var initialQuery: String
+    var onSelect: (LookupFoodItem) -> Void
+    var onCancel: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String
+    @State private var portionSizeGrams: String = "100"
+    @State private var foundItems: [LookupFoodItem] = []
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
+    @State private var showDetail = false
+    @State private var selectedItem: LookupFoodItem?
+
+    init(tint: Color, initialQuery: String, initialPortionGrams: String = "100", onSelect: @escaping (LookupFoodItem) -> Void, onCancel: @escaping () -> Void) {
+        self.tint = tint
+        self.initialQuery = initialQuery
+        self.onSelect = onSelect
+        self.onCancel = onCancel
+        _searchText = State(initialValue: initialQuery)
+        _portionSizeGrams = State(initialValue: initialPortionGrams.isEmpty ? "100" : initialPortionGrams)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                GradientBackground(theme: .lookup)
+                    .ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("Food Lookup")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 24)
+
+                        HStack(spacing: 8) {
+                            TextField("", text: $searchText, prompt: Text("Search foods..."))
+                                .textInputAutocapitalization(.words)
+                                .disableAutocorrection(true)
+                                .padding()
+                                .glassEffect(in: .rect(cornerRadius: 8.0))
+                                .onSubmit { performSearch() }
+
+                            HStack {
+                                TextField("0", text: $portionSizeGrams)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.plain)
+                                Text("g")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .frame(width: 100)
+                            .glassEffect(in: .rect(cornerRadius: 8.0))
+                            .onChange(of: portionSizeGrams) { _, newValue in
+                                let filtered = newValue.filter { "0123456789".contains($0) }
+                                if filtered != newValue {
+                                    portionSizeGrams = filtered
+                                }
+                                if portionSizeGrams.isEmpty {
+                                    portionSizeGrams = "0"
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        Button(action: { performSearch() }) {
+                            Label("Search", systemImage: "magnifyingglass")
+                                .font(.callout.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                        }
+                        .padding(.horizontal, 18)
+                        .buttonStyle(.plain)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Data sourced from the U.S. Department of Agriculture")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+
+                        Group {
+                            if isLoading {
+                                HStack { Spacer(); ProgressView().padding(); Spacer() }
+                            } else if let msg = errorMessage {
+                                HStack { Spacer(); Text(msg).foregroundColor(.red).font(.caption); Spacer() }
+                            }
+                        }
+                        .padding(.top, 32)
+
+                        LazyVStack(spacing: 10) {
+                            ForEach(foundItems) { item in
+                                let grams = Double(portionSizeGrams) ?? 100.0
+                                let scaled = item.scaled(to: grams)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text(item.name)
+                                            .font(.headline)
+
+                                        Text("\(Int(grams))g")
+                                            .font(.caption2)
+                                            .padding(.vertical, 4)
+                                            .padding(.horizontal, 6)
+                                            .background(tint.opacity(0.15))
+                                            .cornerRadius(6)
+
+                                        Spacer()
+                                        Button {
+                                            selectedItem = item
+                                            showDetail = true
+                                        } label: {
+                                            Image(systemName: "info.circle")
+                                                .imageScale(.large)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+
+                                    HStack(spacing: 12) {
+                                        nutrientPill(color: .primary.opacity(0.8), label: "\(scaled.calories) cal")
+                                        nutrientPill(color: .red, label: "\(scaled.protein)g")
+                                        nutrientPill(color: Color(.systemTeal), label: "\(scaled.carbs)g")
+                                        nutrientPill(color: .orange, label: "\(scaled.fat)g")
+                                        if scaled.sugar > 0 {
+                                            nutrientPill(color: .pink, label: "Sugar \(scaled.sugar)g")
+                                        }
+                                        if scaled.sodium > 0 {
+                                            nutrientPill(color: .blue.opacity(0.7), label: "Sodium \(scaled.sodium)mg")
+                                        }
+                                        if scaled.potassium > 0 {
+                                            nutrientPill(color: .green.opacity(0.7), label: "Potassium \(scaled.potassium)mg")
+                                        }
+                                        Spacer()
+                                        Button {
+                                            onSelect(item.scaledItem(to: grams))
+                                            dismiss()
+                                        } label: {
+                                            Text("Use")
+                                                .font(.footnote.weight(.semibold))
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(tint.opacity(0.15))
+                                                .cornerRadius(8)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding()
+                                .background(Color(.systemBackground).opacity(0.9))
+                                .cornerRadius(12)
+                                .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
+                                .padding(.horizontal)
+                            }
+                        }
+                        .padding(.bottom, 24)
+                    }
+                }
+            }
+            .navigationTitle("Quick Lookup")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+            }
+            .sheet(isPresented: $showDetail) {
+                if let selectedItem = selectedItem {
+                    NutritionDetailView(item: selectedItem) {
+                        showDetail = false
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if !initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                performSearch()
+            }
+        }
+    }
+
+    private func performSearch() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            foundItems = []
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+        Task {
+            do {
+                let results = try await fetchUSDA(query: query)
+                if results.isEmpty {
+                    foundItems = []
+                    errorMessage = "No results found for \(query)."
+                } else {
+                    foundItems = results
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+                foundItems = []
+            }
+            isLoading = false
+        }
+    }
+
+    private func nutrientPill(color: Color, label: String) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func fetchUSDA(query: String) async throws -> [LookupFoodItem] {
+        let candidates = [
+            "USDA_API_KEY",
+            "INFOPLIST_KEY_USDA_API_KEY"
+        ]
+
+        var apiKey: String? = nil
+        for key in candidates {
+            if let val = Bundle.main.object(forInfoDictionaryKey: key) as? String, !val.isEmpty {
+                apiKey = val
+                break
+            }
+            if let val = ProcessInfo.processInfo.environment[key], !val.isEmpty {
+                apiKey = val
+                break
+            }
+            if let val = Bundle.main.infoDictionary?[key] as? String, !val.isEmpty {
+                apiKey = val
+                break
+            }
+            if let val = UserDefaults.standard.string(forKey: key), !val.isEmpty {
+                apiKey = val
+                break
+            }
+        }
+
+        if let k = apiKey, k == "REPLACE_ME_USDA_API_KEY" {
+            apiKey = nil
+        }
+
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            let guidance = "USDA API key not found. Add `USDA_API_KEY` in your scheme environment or build setting `INFOPLIST_KEY_USDA_API_KEY`."
+            throw NSError(domain: "USDA", code: 0, userInfo: [NSLocalizedDescriptionKey: guidance])
+        }
+
+        guard let url = URL(string: "https://api.nal.usda.gov/fdc/v1/foods/search?api_key=\(apiKey)") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "query": query,
+            "pageSize": 25
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let msg = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            throw NSError(domain: "USDA", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+
+        struct SearchResponse: Codable { let foods: [FoodData]? }
+        struct FoodData: Codable { let description: String?; let foodNutrients: [Nutrient]? }
+        struct Nutrient: Codable { let nutrientName: String?; let value: Double? }
+
+        let decoder = JSONDecoder()
+        let resp = try decoder.decode(SearchResponse.self, from: data)
+        let foods = resp.foods ?? []
+
+        let rawMapped: [LookupFoodItem] = foods.compactMap { f in
+            let name = f.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown"
+            var calories = 0
+            var protein = 0
+            var carbs = 0
+            var fat = 0
+            var sugar = 0
+            var sodium = 0 // mg
+            var potassium = 0 // mg
+
+            if let nutrients = f.foodNutrients {
+                for n in nutrients {
+                    guard let nName = n.nutrientName?.lowercased(), let val = n.value else { continue }
+                    if nName.contains("energy") || nName.contains("kcal") || nName.contains("calorie") {
+                        calories = Int(round(val))
+                    } else if nName.contains("protein") {
+                        protein = Int(round(val))
+                    } else if nName.contains("carbohydrate") || nName.contains("carb") {
+                        carbs = Int(round(val))
+                    } else if nName.contains("sugar") {
+                        sugar = Int(round(val))
+                    } else if nName.contains("sodium") {
+                        sodium = Int(round(val))
+                    } else if nName.contains("potassium") {
+                        potassium = Int(round(val))
+                    } else if nName.contains("fat") || nName.contains("lipid") {
+                        fat = Int(round(val))
+                    }
+                }
+            }
+
+            return LookupFoodItem(
+                name: name,
+                calories: calories,
+                protein: protein,
+                carbs: carbs,
+                fat: fat,
+                sugar: sugar,
+                sodium: sodium,
+                potassium: potassium
+            )
+        }
+
+        var deduped: [String: LookupFoodItem] = [:]
+        func score(_ item: LookupFoodItem) -> Int {
+            item.calories + item.protein + item.carbs + item.fat + item.sugar + item.sodium + item.potassium
+        }
+
+        for item in rawMapped {
+            let key = item.name.lowercased()
+            if let existing = deduped[key] {
+                if score(item) > score(existing) {
+                    deduped[key] = item
+                }
+            } else {
+                deduped[key] = item
+            }
+        }
+
+        return deduped.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+}
+
+private struct LookupFoodItem: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let calories: Int
+    let protein: Int
+    let carbs: Int
+    let fat: Int
+    let sugar: Int
+    let sodium: Int // mg
+    let potassium: Int // mg
+
+    func scaled(to grams: Double) -> LookupFoodItem {
+        let factor = grams / 100.0
+        return LookupFoodItem(
+            name: name,
+            calories: Int(round(Double(calories) * factor)),
+            protein: Int(round(Double(protein) * factor)),
+            carbs: Int(round(Double(carbs) * factor)),
+            fat: Int(round(Double(fat) * factor)),
+            sugar: Int(round(Double(sugar) * factor)),
+            sodium: Int(round(Double(sodium) * factor)),
+            potassium: Int(round(Double(potassium) * factor))
+        )
+    }
+
+    func scaledItem(to grams: Double) -> LookupFoodItem {
+        scaled(to: grams)
+    }
+
+    var macroInputs: [String: String] {
+        [
+            "protein": protein > 0 ? "\(protein)" : "",
+            "carbs": carbs > 0 ? "\(carbs)" : "",
+            "fat": fat > 0 ? "\(fat)" : "",
+            "sugar": sugar > 0 ? "\(sugar)" : "",
+            "sodium": sodium > 0 ? "\(sodium)" : "",
+            "potassium": potassium > 0 ? "\(potassium)" : ""
+        ]
+    }
+}
+
+private struct NutritionDetailView: View {
+    let item: LookupFoodItem
+    var onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(item.name)
+                    .font(.largeTitle)
+                    .bold()
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Calories: \(item.calories)")
+                        Text("Protein: \(item.protein) g")
+                        Text("Carbs: \(item.carbs) g")
+                        Text("Fat: \(item.fat) g")
+                        if item.sugar > 0 { Text("Sugar: \(item.sugar) g") }
+                        if item.sodium > 0 { Text("Sodium: \(item.sodium) mg") }
+                        if item.potassium > 0 { Text("Potassium: \(item.potassium) mg") }
+                    }
+                    Spacer()
+                }
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Nutrition")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { onDone() }
+                }
+            }
+        }
+    }
+}
+
 private struct MacroLogEntrySheet: View {
     var metric: MacroMetric
     var initialValue: Double
@@ -2527,9 +3379,16 @@ struct DailyMealLogSection: View {
     var accentColorOverride: Color?
     var weeklyEntries: [WeeklyProgressEntry] = []
     var weekStartsOnMonday: Bool = false
-    private let meals: [MealLogEntry] = MealLogEntry.sampleEntries
+    var trackedMacros: [TrackedMacro] = []
+    var selectedDate: Date
+    var currentConsumedCalories: Int
+    var currentCalorieGoal: Int
+    var currentMacroConsumptions: [MacroConsumption]
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
+    @State private var isLoadingMeals = false
+    @State private var day: Day?
+    private let dayFirestoreService = DayFirestoreService()
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
@@ -2550,33 +3409,48 @@ struct DailyMealLogSection: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(meals) { meal in
-                        HStack(alignment: .top, spacing: 14) {
-                            ZStack {
-                                Circle()
-                                    .fill(tint.opacity(0.12))
-                                    .frame(width: 42, height: 42)
-                                Image(systemName: meal.iconName)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(tint)
-                            }
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(meal.title)
-                                        .font(.subheadline.weight(.semibold))
-                                    Spacer()
-                                }
-                                Text(meal.itemsSummary)
-                                    .font(.footnote)
-                                    .foregroundStyle(Color.primary.opacity(0.85))
-                            }
+                    if isLoadingMeals && displayedMeals.isEmpty {
+                        HStack(spacing: 10) {
+                            ProgressView().tint(tint)
+                            Text("Syncing meals for this day...")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if displayedMeals.isEmpty {
+                        Text("No meals logged yet. Tap \"Log Intake\" to add what you ate.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(displayedMeals) { meal in
+                            HStack(alignment: .top, spacing: 14) {
+                                ZStack {
+                                    Circle()
+                                        .fill(tint.opacity(0.12))
+                                        .frame(width: 42, height: 42)
+                                    Image(systemName: meal.iconName)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(tint)
+                                }
 
-                        if meal.id != meals.last?.id {
-                            Divider()
-                                .overlay(Color.white.opacity(0.12))
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        Text(meal.title)
+                                            .font(.subheadline.weight(.semibold))
+                                        Spacer()
+                                    }
+                                    Text(meal.itemsSummary)
+                                        .font(.footnote)
+                                        .foregroundStyle(Color.primary.opacity(0.85))
+                                }
+                            }
+                            .padding(.vertical, 4)
+
+                            if meal.id != displayedMeals.last?.id {
+                                Divider()
+                                    .overlay(Color.white.opacity(0.12))
+                            }
                         }
                     }
                 }
@@ -2607,8 +3481,8 @@ struct DailyMealLogSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(weeklyMacroSummaries(weekStartsOnMonday: weekStartsOnMonday)) { summary in
-                                DynamicMacroDayColumn(summary: summary, tint: tint)
+                            ForEach(weeklyMacroSummaries(weekStartsOnMonday: weekStartsOnMonday, trackedMacros: trackedMacros, selectedDate: selectedDate, currentConsumedCalories: currentConsumedCalories, currentCalorieGoal: currentCalorieGoal, currentMacroConsumptions: currentMacroConsumptions)) { summary in
+                                DynamicMacroDayColumn(summary: summary, tint: tint, trackedMacros: trackedMacros)
                             }
                         }
                         .padding(.vertical, 4)
@@ -2624,10 +3498,109 @@ struct DailyMealLogSection: View {
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
+        .onAppear {
+            refreshMeals()
+        }
+        .onChange(of: selectedDate) {
+            refreshMeals()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dayDataDidChange)) { note in
+            if let info = note.userInfo as? [String: Any], let date = info["date"] as? Date {
+                var cal = Calendar(identifier: .gregorian)
+                cal.timeZone = TimeZone(secondsFromGMT: 0)!
+                let a = cal.startOfDay(for: date)
+                let b = cal.startOfDay(for: selectedDate)
+                if a == b {
+                    refreshMeals()
+                }
+            } else {
+                // If notification doesn't include date, just refresh conservatively
+                refreshMeals()
+            }
+        }
     }
 
-    private func weeklyMacroSummaries(weekStartsOnMonday: Bool) -> [WeeklyMacroSummary] {
-        let cal = Calendar.current
+    private var displayedMeals: [MealLogEntry] {
+        let grouped = Dictionary(grouping: mealEntries) { $0.mealType }
+        return orderedMealTypes.compactMap { mealType in
+            guard let entries = grouped[mealType], !entries.isEmpty else { return nil }
+            let items = entries
+                .sorted { $0.itemName.localizedCaseInsensitiveCompare($1.itemName) == .orderedAscending }
+                .map { mealSummary(for: $0) }
+            return MealLogEntry(
+                id: mealType.rawValue,
+                title: mealType.displayName,
+                items: items,
+                iconName: iconName(for: mealType)
+            )
+        }
+    }
+
+    private var orderedMealTypes: [MealType] {
+        [.breakfast, .lunch, .dinner, .snack]
+    }
+
+    private var mealEntries: [MealIntakeEntry] {
+        day?.mealIntakes ?? []
+    }
+
+    private func refreshMeals() {
+        day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        isLoadingMeals = true
+        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { _ in
+            DispatchQueue.main.async {
+                day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+                isLoadingMeals = false
+            }
+        }
+    }
+
+    private func mealSummary(for entry: MealIntakeEntry) -> String {
+        var parts: [String] = []
+        let name = entry.itemName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty {
+            parts.append(name)
+        }
+        let quantity = entry.quantityPerServing.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !quantity.isEmpty {
+            parts.append(quantity)
+        }
+        if entry.calories > 0 {
+            parts.append("\(entry.calories) cal")
+        }
+        let macroText = macroSummary(for: entry)
+        if !macroText.isEmpty {
+            parts.append(macroText)
+        }
+        if parts.isEmpty {
+            return "Logged meal"
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    private func macroSummary(for entry: MealIntakeEntry) -> String {
+        entry.macros.compactMap { macro in
+            guard macro.amount > 0 else { return nil }
+            let unit = macro.unit.isEmpty ? "g" : macro.unit
+            let isWhole = macro.amount.truncatingRemainder(dividingBy: 1) == 0
+            let formatted = isWhole ? String(format: "%.0f", macro.amount) : String(format: "%.1f", macro.amount)
+            return "\(macro.name) \(formatted)\(unit)"
+        }
+        .joined(separator: " · ")
+    }
+
+    private func iconName(for mealType: MealType) -> String {
+        switch mealType {
+        case .breakfast: return "sunrise.fill"
+        case .lunch: return "fork.knife"
+        case .dinner: return "moon.stars.fill"
+        case .snack: return "cup.and.saucer.fill"
+        }
+    }
+
+    private func weeklyMacroSummaries(weekStartsOnMonday: Bool, trackedMacros: [TrackedMacro], selectedDate: Date, currentConsumedCalories: Int, currentCalorieGoal: Int, currentMacroConsumptions: [MacroConsumption]) -> [WeeklyMacroSummary] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
         let today = Date()
         let weekday = cal.component(.weekday, from: today) // 1 = Sunday
         let startIndex = weekStartsOnMonday ? 2 : 1
@@ -2637,20 +3610,50 @@ struct DailyMealLogSection: View {
         let weekDates: [Date] = (0..<7).compactMap { i in
             cal.date(byAdding: .day, value: i, to: startOfWeek)
         }
+        // Normalize selectedDate to UTC start-of-day for comparison
+        let selDayStart = cal.startOfDay(for: selectedDate)
 
         return weekDates.map { date in
             let dayStart = cal.startOfDay(for: date)
             let isFuture = dayStart > cal.startOfDay(for: today)
 
+            // If this is the currently-selected date, prefer the in-memory
+            // binding values so the UI updates immediately while the save
+            // to the ModelContext/Firestore completes asynchronously.
+            if dayStart == selDayStart {
+                let calories = currentConsumedCalories
+                let macros: [MacroConsumption] = !currentMacroConsumptions.isEmpty ? currentMacroConsumptions : trackedMacros.map { tracked in
+                    MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: 0)
+                }
+
+                return WeeklyMacroSummary(
+                    date: dayStart,
+                    calories: calories,
+                    calorieGoal: currentCalorieGoal,
+                    macros: macros,
+                    isFuture: isFuture
+                )
+            }
+
             let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == dayStart })
             let day: Day? = (try? modelContext.fetch(request))?.first
 
             let calories = day?.caloriesConsumed ?? 0
-            let macros = day?.macroConsumptions ?? []
+            let calorieGoal = day?.calorieGoal ?? 0
+            let macros: [MacroConsumption]
+            if let d = day, !d.macroConsumptions.isEmpty {
+                macros = d.macroConsumptions
+            } else {
+                // Fall back to passed-in tracked macros so each tracked macro shows a row (with 0 consumed)
+                macros = trackedMacros.map { tracked in
+                    MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: 0)
+                }
+            }
 
             return WeeklyMacroSummary(
                 date: dayStart,
                 calories: calories,
+                calorieGoal: calorieGoal,
                 macros: macros,
                 isFuture: isFuture
             )
@@ -2828,6 +3831,7 @@ private struct WeeklyMacroSummary: Identifiable {
     let id = UUID()
     let date: Date
     let calories: Int
+    let calorieGoal: Int
     let macros: [MacroConsumption]
     let isFuture: Bool
 }
@@ -2835,15 +3839,21 @@ private struct WeeklyMacroSummary: Identifiable {
 private struct DynamicMacroDayColumn: View {
     var summary: WeeklyMacroSummary
     var tint: Color
+    var trackedMacros: [TrackedMacro] = []
 
     private var dayLabel: String {
         let f = DateFormatter()
-        f.dateFormat = "E"
+        f.dateFormat = "E, d MMM"
         return f.string(from: summary.date)
     }
 
     private var macroMaxValue: Double {
-        max(summary.macros.map { $0.consumed }.max() ?? 0, 1)
+        let targetMax = summary.macros.compactMap { macro in
+            trackedMacros.first(where: { $0.id == macro.trackedMacroId })?.target
+        }.max() ?? 0
+        let consumedMax = summary.macros.map { $0.consumed }.max() ?? 0
+        let fallback = max(consumedMax, 1)
+        return targetMax > 0 ? targetMax : fallback
     }
 
     var body: some View {
@@ -2868,7 +3878,8 @@ private struct DynamicMacroDayColumn: View {
                 Spacer()
             } else {
                 VStack(spacing: 10) {
-                    MacroIndicatorRow(label: "Calories", color: .primary, value: Double(summary.calories), maxValue: 4000, unit: "cal")
+                    let calorieMax = summary.calorieGoal > 0 ? Double(summary.calorieGoal) : 4000
+                    MacroIndicatorRow(label: "Calories", color: .primary, value: Double(summary.calories), maxValue: calorieMax, unit: "cal")
 
                     if summary.macros.isEmpty {
                         Text("No macros logged")
@@ -2877,11 +3888,21 @@ private struct DynamicMacroDayColumn: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         ForEach(summary.macros, id: \.id) { macro in
+                            let macroColor: Color = {
+                                if let tracked = trackedMacros.first(where: { $0.id == macro.trackedMacroId }) {
+                                    return tracked.color
+                                }
+                                return tint
+                            }()
+
+                            let macroTarget = trackedMacros.first(where: { $0.id == macro.trackedMacroId })?.target ?? 0
+                            let maxValue = macroTarget > 0 ? macroTarget : macroMaxValue
+
                             MacroIndicatorRow(
                                 label: macro.name,
-                                color: tint,
+                                color: macroColor,
                                 value: macro.consumed,
-                                maxValue: macroMaxValue,
+                                maxValue: maxValue,
                                 unit: macro.unit
                             )
                         }
@@ -2945,7 +3966,7 @@ private struct MacroDayColumn: View {
 
     private var dayLabel: String {
         let f = DateFormatter()
-        f.dateFormat = "E"
+        f.dateFormat = "E, d MMM"
         return f.string(from: date)
     }
 
@@ -3008,20 +4029,27 @@ extension View {
 }
 
 private struct MealLogEntry: Identifiable {
-    let id = UUID()
+    let id: String
     let title: String
     let items: [String]
     let iconName: String
+
+    init(id: String = UUID().uuidString, title: String, items: [String], iconName: String) {
+        self.id = id
+        self.title = title
+        self.items = items
+        self.iconName = iconName
+    }
 
     var itemsSummary: String {
         items.joined(separator: ", ")
     }
 
     static let sampleEntries: [MealLogEntry] = [
-        MealLogEntry(title: "Breakfast", items: ["Overnight oats", "Blueberries", "Cold brew"], iconName: "sunrise.fill"),
-        MealLogEntry(title: "Lunch", items: ["Chicken power bowl", "Roasted veggies"], iconName: "fork.knife"),
-        MealLogEntry(title: "Dinner", items: ["Salmon + quinoa", "Side salad", "Sparkling water"], iconName: "moon.stars.fill"),
-        MealLogEntry(title: "Snack", items: ["Greek yogurt", "Almonds"], iconName: "cup.and.saucer.fill")
+        MealLogEntry(id: MealType.breakfast.rawValue, title: "Breakfast", items: ["Overnight oats", "Blueberries", "Cold brew"], iconName: "sunrise.fill"),
+        MealLogEntry(id: MealType.lunch.rawValue, title: "Lunch", items: ["Chicken power bowl", "Roasted veggies"], iconName: "fork.knife"),
+        MealLogEntry(id: MealType.dinner.rawValue, title: "Dinner", items: ["Salmon + quinoa", "Side salad", "Sparkling water"], iconName: "moon.stars.fill"),
+        MealLogEntry(id: MealType.snack.rawValue, title: "Snack", items: ["Greek yogurt", "Almonds"], iconName: "cup.and.saucer.fill")
     ]
 }
 
@@ -3030,6 +4058,9 @@ struct FastingTimerCard: View {
     @Binding var showProtocolSheet: Bool
     var onProtocolChanged: (Int) -> Void
 
+    @AppStorage("fasting.startTimestamp") private var storedFastingStartTimestamp: Double = 0
+    @AppStorage("fasting.durationMinutes") private var storedFastingDurationMinutes: Int = 0
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedProtocol: FastingProtocolOption
     @State private var customHours: String
     @State private var customMinutes: String
@@ -3050,13 +4081,21 @@ struct FastingTimerCard: View {
         _showProtocolSheet = showProtocolSheet
         self.onProtocolChanged = onProtocolChanged
 
-        let minutes = max(currentFastingMinutes, 0)
-        _fastingMinutes = State(initialValue: minutes)
-        _selectedProtocol = State(initialValue: FastingProtocolOption.from(minutes: minutes))
-        let hoursComponent = minutes / 60
-        let minutesComponent = minutes % 60
+        // Prefer persisted duration if available so the timer resumes without flicker on app relaunch
+        let restoredMinutes = UserDefaults.standard.integer(forKey: "fasting.durationMinutes")
+        let resolvedMinutes = restoredMinutes > 0 ? restoredMinutes : max(currentFastingMinutes, 0)
+        _fastingMinutes = State(initialValue: resolvedMinutes)
+        _selectedProtocol = State(initialValue: FastingProtocolOption.from(minutes: resolvedMinutes))
+        let hoursComponent = resolvedMinutes / 60
+        let minutesComponent = resolvedMinutes % 60
         _customHours = State(initialValue: String(hoursComponent))
         _customMinutes = State(initialValue: String(format: "%02d", minutesComponent))
+
+        // If a persisted start exists, seed the state so the UI shows the running timer immediately
+        let persistedStart = UserDefaults.standard.double(forKey: "fasting.startTimestamp")
+        if persistedStart > 0 {
+            _fastingStartDate = State(initialValue: Date(timeIntervalSince1970: persistedStart))
+        }
     }
 
     private var tint: Color {
@@ -3167,6 +4206,10 @@ struct FastingTimerCard: View {
         onProtocolChanged(minutes)
 
         if isActive {
+            storedFastingDurationMinutes = minutes
+        }
+
+        if isActive {
             hasScheduledNotification = false
             hasFiredOverNotification = false
             scheduleNotificationIfNeeded()
@@ -3174,7 +4217,10 @@ struct FastingTimerCard: View {
     }
 
     private func startFast() {
-        fastingStartDate = Date()
+        let start = Date()
+        fastingStartDate = start
+        storedFastingStartTimestamp = start.timeIntervalSince1970
+        storedFastingDurationMinutes = fastingMinutes
         hasScheduledNotification = false
         hasFiredOverNotification = false
         scheduleNotificationIfNeeded()
@@ -3182,9 +4228,27 @@ struct FastingTimerCard: View {
 
     private func endFast() {
         fastingStartDate = nil
+        storedFastingStartTimestamp = 0
+        storedFastingDurationMinutes = 0
         hasScheduledNotification = false
         hasFiredOverNotification = false
         cancelFastingNotification()
+    }
+
+    private func restoreFastingStateIfNeeded() {
+        guard storedFastingStartTimestamp > 0 else { return }
+        let restoredStart = Date(timeIntervalSince1970: storedFastingStartTimestamp)
+        fastingStartDate = restoredStart
+
+        let restoredDuration = storedFastingDurationMinutes > 0 ? storedFastingDurationMinutes : fastingMinutes
+        fastingMinutes = restoredDuration
+        let protocolFromDuration = FastingProtocolOption.from(minutes: restoredDuration)
+        selectedProtocol = protocolFromDuration
+        syncCustomFields(from: restoredDuration)
+
+        hasScheduledNotification = false
+        hasFiredOverNotification = false
+        scheduleNotificationIfNeeded()
     }
 
     private func scheduleNotificationIfNeeded() {
@@ -3307,6 +4371,14 @@ struct FastingTimerCard: View {
             if isOverTime {
                 sendCompletionNotificationIfNeeded()
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                restoreFastingStateIfNeeded()
+            }
+        }
+        .onAppear {
+            restoreFastingStateIfNeeded()
         }
         .onChange(of: selectedProtocol) { _, _ in
             applyProtocolChange()
@@ -3503,7 +4575,7 @@ private struct WeeklyProgressCarousel: View {
     
     private var dateFormatter: DateFormatter {
         let f = DateFormatter()
-        f.dateFormat = "E, MMM d"
+        f.dateFormat = "E, d MMM"
         return f
     }
 

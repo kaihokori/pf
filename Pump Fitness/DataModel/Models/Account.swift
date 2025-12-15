@@ -59,6 +59,34 @@ struct TrackedMacro: Codable, Hashable, Identifiable {
     }
 }
 
+struct Supplement: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var amountLabel: String?
+
+    init(id: String = UUID().uuidString, name: String, amountLabel: String? = nil) {
+        self.id = id
+        self.name = name
+        self.amountLabel = amountLabel
+    }
+
+    init?(dictionary: [String: Any]) {
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        guard let name = dictionary["name"] as? String else { return nil }
+        let amount = dictionary["amountLabel"] as? String
+        self.init(id: id, name: name, amountLabel: amount)
+    }
+
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "name": name
+        ]
+        if let amountLabel { dict["amountLabel"] = amountLabel }
+        return dict
+    }
+}
+
 enum MealType: String, Codable, CaseIterable, Identifiable {
     case breakfast
     case lunch
@@ -233,6 +261,8 @@ class Account: ObservableObject {
     var height: Double? = nil
     var weight: Double? = nil
     var maintenanceCalories: Int = 0
+    var calorieGoal: Int = 0
+    var macroFocusRaw: String? = nil
     var intermittentFastingMinutes: Int = 16 * 60
     var theme: String? = nil
     var unitSystem: String? = nil
@@ -240,6 +270,7 @@ class Account: ObservableObject {
     var startWeekOn: String? = nil
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
+    var supplements: [Supplement] = []
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
 
@@ -253,6 +284,8 @@ class Account: ObservableObject {
         height: Double? = nil,
         weight: Double? = nil,
         maintenanceCalories: Int = 0,
+        calorieGoal: Int = 0,
+        macroFocusRaw: String? = nil,
         intermittentFastingMinutes: Int = 16 * 60,
         theme: String? = nil,
         unitSystem: String? = nil,
@@ -262,6 +295,7 @@ class Account: ObservableObject {
         cravings: [CravingItem] = [],
         mealReminders: [MealReminder] = MealReminder.defaults,
         weeklyProgress: [WeeklyProgressRecord] = []
+        ,supplements: [Supplement] = []
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -272,6 +306,8 @@ class Account: ObservableObject {
         self.height = height
         self.weight = weight
         self.maintenanceCalories = maintenanceCalories
+        self.calorieGoal = calorieGoal
+        self.macroFocusRaw = macroFocusRaw
         self.intermittentFastingMinutes = intermittentFastingMinutes
         self.theme = theme
         self.unitSystem = unitSystem
@@ -281,6 +317,7 @@ class Account: ObservableObject {
         self.cravings = cravings
         self.mealReminders = mealReminders
         self.weeklyProgress = weeklyProgress
+        self.supplements = supplements
         
     }
 }

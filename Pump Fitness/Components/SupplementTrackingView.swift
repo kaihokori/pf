@@ -8,12 +8,30 @@ struct SupplementTrackingView: View {
     var accentColorOverride: Color?
     var tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight
 
-    @Binding var supplements: [SupplementItem]
+    // Supplements come from Account.supplements
+    var supplements: [Supplement]
 
-    init(accentColorOverride: Color? = nil, supplements: Binding<[SupplementItem]>, tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight) {
+    // IDs of supplements taken for the current day
+    @Binding var takenSupplementIDs: Set<String>
+
+    // Callbacks to let the parent persist changes
+    var onToggle: (Supplement) -> Void
+    var onRemove: (Supplement) -> Void
+
+    init(
+        accentColorOverride: Color? = nil,
+        supplements: [Supplement],
+        takenSupplementIDs: Binding<Set<String>>,
+        tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight,
+        onToggle: @escaping (Supplement) -> Void,
+        onRemove: @escaping (Supplement) -> Void
+    ) {
         self.accentColorOverride = accentColorOverride
-        self._supplements = supplements
+        self.supplements = supplements
+        self._takenSupplementIDs = takenSupplementIDs
         self.tileMinHeight = tileMinHeight
+        self.onToggle = onToggle
+        self.onRemove = onRemove
     }
 
     var body: some View {
@@ -45,16 +63,16 @@ struct SupplementTrackingView: View {
                         Spacer(minLength: 0)
                         ForEach(rows[rowIdx]) { item in
                             switch item {
-                            case let .supplement(index, supplement):
+                            case let .supplement(_, supplement):
                                 SupplementRing(
-                                    item: supplement,
+                                    itemName: supplement.name,
+                                    amountLabel: supplement.amountLabel,
+                                    isTaken: takenSupplementIDs.contains(supplement.id),
                                     tint: supplementTint,
-                                    minHeight: tileMinHeight
-                                ) {
-                                    toggleSupplement(at: index)
-                                } onRemove: {
-                                    removeSupplement(supplement)
-                                }
+                                    minHeight: tileMinHeight,
+                                    onToggle: { onToggle(supplement) },
+                                    onRemove: { onRemove(supplement) }
+                                )
                             }
                         }
                         Spacer(minLength: 0)
@@ -73,49 +91,24 @@ struct SupplementTrackingView: View {
         .padding(.top, 10)
     }
 
-    private func toggleSupplement(at index: Int) {
-        guard supplements.indices.contains(index) else { return }
-        supplements[index].isTaken.toggle()
-    }
-
-    private func removeSupplement(_ supplement: SupplementItem) {
-        supplements.removeAll { $0.id == supplement.id }
-    }
-
-    private func addSupplement() {
-        let unit = SupplementMeasurementUnit.allCases[supplements.count % SupplementMeasurementUnit.allCases.count]
-        let label: String
-        switch unit {
-        case .gram:
-            label = "1 g"
-        case .milligram:
-            label = "50 mg"
-        case .microgram:
-            label = "100 μg"
-        case .scoop:
-            label = "1 scoop"
-        }
-        let newSupplement = SupplementItem(
-            name: "Supplement #\(supplements.count + 1)",
-            amountLabel: label
-        )
-        supplements.append(newSupplement)
-    }
+    // Parent is responsible for persistence when toggling/removing
 }
 
 private enum SupplementSummaryItem: Identifiable {
-    case supplement(index: Int, item: SupplementItem)
+    case supplement(index: Int, item: Supplement)
 
     var id: String {
         switch self {
         case let .supplement(_, item):
-            return item.id.uuidString
+            return item.id
         }
     }
 }
 
 private struct SupplementRing: View {
-    var item: SupplementItem
+    var itemName: String
+    var amountLabel: String?
+    var isTaken: Bool
     var tint: Color
     var minHeight: CGFloat
     var onToggle: () -> Void
@@ -129,21 +122,23 @@ private struct SupplementRing: View {
                         .stroke(tint.opacity(0.18), lineWidth: 6)
                         .frame(width: 54, height: 54)
                     Circle()
-                        .trim(from: 0, to: item.isTaken ? 1 : 0)
+                        .trim(from: 0, to: isTaken ? 1 : 0)
                         .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: 54, height: 54)
-                    Image(systemName: item.isTaken ? "checkmark" : "plus")
+                    Image(systemName: isTaken ? "checkmark" : "plus")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(tint)
                 }
                 .padding(.bottom, 10)
                 VStack(spacing: 2) {
-                    Text(item.measurementDescription)
-                          .font(.caption)
-                          .foregroundStyle(.tertiary)
-                          .padding(.top, 0)
-                    Text(item.name)
+                    if let amountLabel {
+                        Text(amountLabel)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 0)
+                    }
+                    Text(itemName)
                         .font(.caption)
                         .fontWeight(.semibold)
                         .multilineTextAlignment(.center)
@@ -169,40 +164,7 @@ private struct SupplementRing: View {
 
 // Edit/Add button removed — supplements are display-only in this view
 
-struct SupplementItem: Identifiable, Equatable {
-    let id: UUID
-    var name: String
-    // Freeform amount/label like "50 mg" or "3 scoops"
-    var amountLabel: String
-    var isTaken: Bool
-    // Optional override label (user-entered), e.g. "5 g or 3 scoops"
-    var customLabel: String?
-
-    init(id: UUID = UUID(), name: String, amountLabel: String, isTaken: Bool = false, customLabel: String? = nil) {
-        self.id = id
-        self.name = name
-        self.amountLabel = amountLabel
-        self.isTaken = isTaken
-        self.customLabel = customLabel
-    }
-
-    var measurementDescription: String {
-        if let label = customLabel, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return label
-        }
-        return amountLabel
-    }
-
-    static let defaultSupplements: [SupplementItem] = [
-        SupplementItem(name: "Vitamin C", amountLabel: "1000 mg"),
-        SupplementItem(name: "Vitamin D", amountLabel: "50 μg"),
-        SupplementItem(name: "Zinc", amountLabel: "30 mg"),
-        SupplementItem(name: "Iron", amountLabel: "18 mg"),
-        SupplementItem(name: "Magnesium", amountLabel: "400 mg"),
-        SupplementItem(name: "Magnesium Glycinate", amountLabel: "2.5 g"),
-        SupplementItem(name: "Melatonin", amountLabel: "5 mg")
-    ]
-}
+// SupplementItem view model removed; use `Supplement` from Account model
 
 enum SupplementMeasurementUnit: CaseIterable {
     case gram

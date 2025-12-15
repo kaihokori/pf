@@ -8,6 +8,23 @@ private struct FoodItem: Identifiable, Hashable {
     let protein: Int
     let carbs: Int
     let fat: Int
+    let sugar: Int
+    let sodium: Int
+    let potassium: Int
+
+    func scaled(to grams: Double) -> FoodItem {
+        let factor = grams / 100.0
+        return FoodItem(
+            name: name,
+            calories: Int(round(Double(calories) * factor)),
+            protein: Int(round(Double(protein) * factor)),
+            carbs: Int(round(Double(carbs) * factor)),
+            fat: Int(round(Double(fat) * factor)),
+            sugar: Int(round(Double(sugar) * factor)),
+            sodium: Int(round(Double(sodium) * factor)),
+            potassium: Int(round(Double(potassium) * factor))
+        )
+    }
 }
 
 struct LookupTabView: View {
@@ -89,8 +106,6 @@ struct LookupTabView: View {
 
                     }
                     .padding(.horizontal)
-                    .padding(.top, 48)
-                        // .onAppear removed: no automatic focus on search field
 
                     // Full-width search button on its own line (thinner, with icon)
                     Button(action: { performSearch() }) {
@@ -129,12 +144,9 @@ struct LookupTabView: View {
                     // Results
                     LazyVStack(spacing: 10, pinnedViews: []) {
                         ForEach(foundItems) { item in
-                        // compute scaled macros for the selected portion size (visible to entire row)
+                        // compute scaled macros/micros for the selected portion size (visible to entire row)
                         let grams = Double(portionSizeGrams) ?? 100.0
-                        let scaledCalories = Int(round(Double(item.calories) * grams / 100.0))
-                        let scaledProtein = Int(round(Double(item.protein) * grams / 100.0))
-                        let scaledCarbs = Int(round(Double(item.carbs) * grams / 100.0))
-                        let scaledFat = Int(round(Double(item.fat) * grams / 100.0))
+                        let scaled = item.scaled(to: grams)
 
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
@@ -164,7 +176,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(Color.primary.opacity(0.8))
                                             .frame(width: 8, height: 8)
-                                        Text("\(scaledCalories) cal")
+                                        Text("\(scaled.calories) cal")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -173,7 +185,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(.red)
                                             .frame(width: 8, height: 8)
-                                        Text("\(scaledProtein)g")
+                                        Text("\(scaled.protein)g")
                                             .font(.caption2)
                                     }
 
@@ -181,7 +193,7 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(Color(.systemTeal))
                                             .frame(width: 8, height: 8)
-                                        Text("\(scaledCarbs)g")
+                                        Text("\(scaled.carbs)g")
                                             .font(.caption2)
                                     }
 
@@ -189,8 +201,38 @@ struct LookupTabView: View {
                                         Circle()
                                             .fill(.orange)
                                             .frame(width: 8, height: 8)
-                                        Text("\(scaledFat)g")
+                                        Text("\(scaled.fat)g")
                                             .font(.caption2)
+                                    }
+
+                                    if scaled.sugar > 0 {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(Color.pink)
+                                                .frame(width: 8, height: 8)
+                                            Text("Sugar \(scaled.sugar)g")
+                                                .font(.caption2)
+                                        }
+                                    }
+
+                                    if scaled.sodium > 0 {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(Color.blue.opacity(0.7))
+                                                .frame(width: 8, height: 8)
+                                            Text("Sodium \(scaled.sodium)mg")
+                                                .font(.caption2)
+                                        }
+                                    }
+
+                                    if scaled.potassium > 0 {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(Color.green.opacity(0.7))
+                                                .frame(width: 8, height: 8)
+                                            Text("Potassium \(scaled.potassium)mg")
+                                                .font(.caption2)
+                                        }
                                     }
 
                                     Spacer()
@@ -355,6 +397,9 @@ private extension LookupTabView {
             var protein = 0
             var carbs = 0
             var fat = 0
+            var sugar = 0
+            var sodium = 0
+            var potassium = 0
 
             if let nutrients = f.foodNutrients {
                 for n in nutrients {
@@ -365,20 +410,26 @@ private extension LookupTabView {
                         protein = Int(round(val))
                     } else if nName.contains("carbohydrate") || nName.contains("carb") {
                         carbs = Int(round(val))
+                    } else if nName.contains("sugar") {
+                        sugar = Int(round(val))
+                    } else if nName.contains("sodium") {
+                        sodium = Int(round(val))
+                    } else if nName.contains("potassium") {
+                        potassium = Int(round(val))
                     } else if nName.contains("fat") || nName.contains("lipid") {
                         fat = Int(round(val))
                     }
                 }
             }
 
-            return FoodItem(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat)
+            return FoodItem(name: name, calories: calories, protein: protein, carbs: carbs, fat: fat, sugar: sugar, sodium: sodium, potassium: potassium)
         }
 
         // Deduplicate by normalized description (case-insensitive). When duplicates occur, prefer the item
         // with the larger sum of nutrient values (more complete data).
         var deduped: [String: FoodItem] = [:]
         func score(_ item: FoodItem) -> Int {
-            return item.calories + item.protein + item.carbs + item.fat
+            return item.calories + item.protein + item.carbs + item.fat + item.sugar + item.sodium + item.potassium
         }
 
         for item in rawMapped {

@@ -4,18 +4,19 @@ import FirebaseAuth
 import SwiftData
 
 /// Firestore sync service for `Day` objects.
-/// Documents are stored in the `days` collection and keyed by `yyyy-MM-dd` (UTC-normalized) document IDs.
+/// Documents are stored in the `days` collection and keyed by `dd-MM-yyyy` (UTC-normalized) document IDs.
 class DayFirestoreService {
     private let db = Firestore.firestore()
     private let userCollection = "accounts"
     private let daysSubcollection = "days"
-    /// Pending day keys (yyyy-MM-dd) that were created locally while unauthenticated and should be uploaded when a user signs in.
+    /// Pending day keys (dd-MM-yyyy) that were created locally while unauthenticated and should be uploaded when a user signs in.
     private var pendingDayKeys = Set<String>()
 
     private func dateKey(for date: Date) -> String {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        let dayStart = Calendar.current.startOfDay(for: date)
+        // Use the UTC calendar to compute the start-of-day so keys are UTC-normalized
+        let dayStart = cal.startOfDay(for: date)
         let fmt = DateFormatter()
         fmt.calendar = cal
         fmt.timeZone = cal.timeZone
@@ -35,6 +36,18 @@ class DayFirestoreService {
         }
     }
 
+    private func encodeMealIntakes(_ intakes: [MealIntakeEntry]) -> [[String: Any]] {
+        intakes.map { intake in intake.asDictionary }
+    }
+
+    private func encodeTakenSupplements(_ ids: [String]) -> [String] {
+        return ids
+    }
+
+    private func encodeTakenWorkoutSupplements(_ ids: [String]) -> [String] {
+        return ids
+    }
+
 
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
@@ -43,6 +56,24 @@ class DayFirestoreService {
         let unit = raw["unit"] as? String ?? "g"
         let consumed = (raw["consumed"] as? NSNumber)?.doubleValue ?? 0
         return MacroConsumption(id: id, trackedMacroId: trackedMacroId, name: name, unit: unit, consumed: consumed)
+    }
+
+    private func decodeMealIntake(_ raw: [String: Any]) -> MealIntakeEntry? {
+        MealIntakeEntry(dictionary: raw)
+    }
+
+    // Determine whether a Day instance contains any non-default data that should be uploaded.
+    private func dayHasMeaningfulData(_ day: Day) -> Bool {
+        if day.caloriesConsumed != 0 { return true }
+        if !day.completedMeals.isEmpty { return true }
+        if !day.takenSupplements.isEmpty { return true }
+        if !day.takenWorkoutSupplements.isEmpty { return true }
+        if day.caloriesBurned != 0 { return true }
+        if day.stepsTaken != 0 { return true }
+        if day.distanceTravelled != 0 { return true }
+        if day.macroConsumptions.contains(where: { $0.consumed != 0 }) { return true }
+        if !day.mealIntakes.isEmpty { return true }
+        return false
     }
 
 
@@ -82,25 +113,18 @@ class DayFirestoreService {
                 let ts = data["date"] as? Timestamp
                 let remoteDate = ts?.dateValue() ?? date
                 let caloriesOpt = data["caloriesConsumed"] as? Int
-                let calorieGoalOpt = data["calorieGoal"] as? Int
-                let maintenanceOpt = data["maintenanceCalories"] as? Int
-                let macroFocusOpt = data["macroFocus"] as? String
+                let caloriesBurnedRemote = (data["caloriesBurned"] as? NSNumber)?.doubleValue
+                let stepsTakenRemote = (data["stepsTaken"] as? NSNumber)?.doubleValue
+                let distanceRemote = (data["distanceTravelled"] as? NSNumber)?.doubleValue
                 let macroConsumptionsRemote = (data["macroConsumptions"] as? [[String: Any]] ?? []).compactMap { self.decodeMacroConsumption($0) }
+                let takenSupplementsRemote = data["takenSupplements"] as? [String]
                 let completedMealsRemote = data["completedMeals"] as? [String]
+                let mealIntakesRemote = (data["mealIntakes"] as? [[String: Any]] ?? []).compactMap { self.decodeMealIntake($0) }
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
                     // Only overwrite fields if the remote document actually contains them.
                     if let calories = caloriesOpt {
                         day.caloriesConsumed = calories
-                    }
-                    if let maintenance = maintenanceOpt {
-                        day.maintenanceCalories = maintenance
-                    }
-                    if let calorieGoal = calorieGoalOpt {
-                        day.calorieGoal = calorieGoal
-                    }
-                    if let macroFocus = macroFocusOpt {
-                        day.macroFocusRaw = macroFocus
                     }
                     if !macroConsumptionsRemote.isEmpty {
                         day.macroConsumptions = macroConsumptionsRemote
@@ -110,22 +134,39 @@ class DayFirestoreService {
                     if let completedMealsRemote = completedMealsRemote {
                         day.completedMeals = completedMealsRemote
                     }
+                    if let takenSupplementsRemote = takenSupplementsRemote {
+                        day.takenSupplements = takenSupplementsRemote
+                    }
+                    if let caloriesBurnedRemote = caloriesBurnedRemote {
+                        day.caloriesBurned = caloriesBurnedRemote
+                    }
+                    if let stepsTakenRemote = stepsTakenRemote {
+                        day.stepsTaken = stepsTakenRemote
+                    }
+                    if let distanceRemote = distanceRemote {
+                        day.distanceTravelled = distanceRemote
+                    }
+                    if let takenWorkoutRemote = data["takenWorkoutSupplements"] as? [String] {
+                        day.takenWorkoutSupplements = takenWorkoutRemote
+                    }
+                    day.mealIntakes = mealIntakesRemote
                     print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(day.caloriesConsumed)")
                     completion(day)
                     return
                 } else {
                     // If no context is provided return an ephemeral Day using whatever remote values exist
                     let calories = caloriesOpt ?? 0
-                    let calorieGoal = calorieGoalOpt ?? 0
-                    let maintenance = maintenanceOpt ?? 0
                     let day = Day(
                         date: remoteDate,
                         caloriesConsumed: calories,
-                        calorieGoal: calorieGoal,
-                        maintenanceCalories: maintenance,
-                        macroFocusRaw: macroFocusOpt,
                         macroConsumptions: macroConsumptionsRemote,
-                        completedMeals: completedMealsRemote ?? []
+                        completedMeals: completedMealsRemote ?? [],
+                        takenSupplements: takenSupplementsRemote ?? [],
+                        takenWorkoutSupplements: data["takenWorkoutSupplements"] as? [String] ?? [],
+                        mealIntakes: mealIntakesRemote,
+                        caloriesBurned: caloriesBurnedRemote ?? 0,
+                        stepsTaken: stepsTakenRemote ?? 0,
+                        distanceTravelled: distanceRemote ?? 0
                     )
                     print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
@@ -140,11 +181,20 @@ class DayFirestoreService {
                     // If user is signed in, attempt immediate upload; otherwise mark for later
                     if Auth.auth().currentUser != nil {
                         print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key)")
-                        self.saveDay(day) { _ in completion(day) }
+                        if self.dayHasMeaningfulData(day) {
+                            self.saveDay(day) { _ in completion(day) }
+                        } else {
+                            print("DayFirestoreService: local day for key=\(key) has no meaningful data — skipping upload")
+                            completion(day)
+                        }
                     } else {
                         print("DayFirestoreService: user NOT signed in — queuing pending key=\(key)")
-                        // schedule for upload when user signs in
-                        self.pendingDayKeys.insert(key)
+                        // schedule for upload when user signs in only if there is something to upload
+                        if self.dayHasMeaningfulData(day) {
+                            self.pendingDayKeys.insert(key)
+                        } else {
+                            print("DayFirestoreService: local day for key=\(key) has no meaningful data — not queued")
+                        }
                         completion(day)
                     }
                     return
@@ -155,10 +205,19 @@ class DayFirestoreService {
                     )
                     if Auth.auth().currentUser != nil {
                         print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key) (no context)")
-                        self.saveDay(day) { _ in completion(day) }
+                        if self.dayHasMeaningfulData(day) {
+                            self.saveDay(day) { _ in completion(day) }
+                        } else {
+                            print("DayFirestoreService: ephemeral day for key=\(key) has no meaningful data — skipping upload")
+                            completion(day)
+                        }
                     } else {
                         print("DayFirestoreService: user NOT signed in — queuing pending key=\(key) (no context)")
-                        self.pendingDayKeys.insert(key)
+                        if self.dayHasMeaningfulData(day) {
+                            self.pendingDayKeys.insert(key)
+                        } else {
+                            print("DayFirestoreService: ephemeral day for key=\(key) has no meaningful data — not queued")
+                        }
                         completion(day)
                     }
                     return
@@ -167,9 +226,20 @@ class DayFirestoreService {
         }
     }
 
-    /// Save a Day to Firestore. Document ID will be `yyyy-MM-dd` for the `day.date`.
+    /// Save a Day to Firestore. Document ID will be `dd-MM-yyyy` for the `day.date`.
     func saveDay(_ day: Day, completion: @escaping (Bool) -> Void) {
-        let dayStart = Calendar.current.startOfDay(for: day.date)
+        // If the day only contains default/zero values then avoid uploading it —
+        // this prevents accidental overwrites of non-zero remote/core-data values with zeros.
+        if !dayHasMeaningfulData(day) {
+            print("DayFirestoreService: skipping save for day with no meaningful data (key will not be written)")
+            completion(true)
+            return
+        }
+
+        // Normalize start-of-day to UTC to match `dateKey(for:)` behavior
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = cal.startOfDay(for: day.date)
         let key = dateKey(for: dayStart)
         // Build a payload only containing the fields we intend to write.
         // Do not write `macroFocus` when it's nil (avoid setting it to null),
@@ -178,15 +248,33 @@ class DayFirestoreService {
         var data: [String: Any] = [
             "date": Timestamp(date: dayStart)
         ]
-        data["caloriesConsumed"] = day.caloriesConsumed
-        data["calorieGoal"] = day.calorieGoal
-        data["maintenanceCalories"] = day.maintenanceCalories
-        data["completedMeals"] = day.completedMeals
-        if let macro = day.macroFocusRaw {
-            data["macroFocus"] = macro
+
+        if day.caloriesConsumed != 0 {
+            data["caloriesConsumed"] = day.caloriesConsumed
         }
-        if !day.macroConsumptions.isEmpty {
+        if !day.completedMeals.isEmpty {
+            data["completedMeals"] = day.completedMeals
+        }
+        if !day.takenSupplements.isEmpty {
+            data["takenSupplements"] = encodeTakenSupplements(day.takenSupplements)
+        }
+        if !day.takenWorkoutSupplements.isEmpty {
+            data["takenWorkoutSupplements"] = encodeTakenWorkoutSupplements(day.takenWorkoutSupplements)
+        }
+        if day.caloriesBurned > 0 {
+            data["caloriesBurned"] = day.caloriesBurned
+        }
+        if day.stepsTaken > 0 {
+            data["stepsTaken"] = day.stepsTaken
+        }
+        if day.distanceTravelled > 0 {
+            data["distanceTravelled"] = day.distanceTravelled
+        }
+        if day.macroConsumptions.contains(where: { $0.consumed != 0 }) {
             data["macroConsumptions"] = encodeMacroConsumptions(day.macroConsumptions)
+        }
+        if !day.mealIntakes.isEmpty {
+            data["mealIntakes"] = encodeMealIntakes(day.mealIntakes)
         }
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
@@ -223,17 +311,43 @@ class DayFirestoreService {
     /// Update only specific fields of a Day document in Firestore. This avoids
     /// accidentally overwriting other fields when only a single property changed.
     func updateDayFields(_ fields: [String: Any], for day: Day, completion: @escaping (Bool) -> Void) {
-        let dayStart = Calendar.current.startOfDay(for: day.date)
+        // Avoid writing defaults back to Firestore; filter out empty/zero values.
+        var filtered: [String: Any] = [:]
+        for (key, value) in fields {
+            switch value {
+            case let int as Int where int == 0:
+                continue
+            case let double as Double where double == 0:
+                continue
+            case let array as [Any] where array.isEmpty:
+                continue
+            case let string as String where string.isEmpty:
+                continue
+            default:
+                filtered[key] = value
+            }
+        }
+
+        guard !filtered.isEmpty else {
+            completion(true)
+            return
+        }
+        let fieldsToWrite = filtered
+
+        // Use UTC-normalized start-of-day so the key matches document IDs
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = cal.startOfDay(for: day.date)
         let key = dateKey(for: dayStart)
 
         if let uid = Auth.auth().currentUser?.uid {
             let path = "accounts/\(uid)/days/\(key)"
-            print("DayFirestoreService: updating fields for \(path): \(fields)")
+            print("DayFirestoreService: updating fields for \(path): \(fieldsToWrite)")
             db.collection(userCollection)
                 .document(uid)
                 .collection(daysSubcollection)
                 .document(key)
-                .setData(fields, merge: true) { err in
+                .setData(fieldsToWrite, merge: true) { err in
                     if let err = err {
                         print("DayFirestoreService: failed to update fields for \(path): \(err)")
                     } else {
@@ -246,8 +360,8 @@ class DayFirestoreService {
 
         // Legacy path
         let path = "\(daysSubcollection)/\(key)"
-        print("DayFirestoreService: updating fields for legacy path \(path): \(fields)")
-        db.collection(daysSubcollection).document(key).setData(fields, merge: true) { err in
+        print("DayFirestoreService: updating fields for legacy path \(path): \(fieldsToWrite)")
+        db.collection(daysSubcollection).document(key).setData(fieldsToWrite, merge: true) { err in
             if let err = err {
                 print("DayFirestoreService: failed to update fields for legacy path \(path): \(err)")
             } else {
@@ -279,11 +393,11 @@ class DayFirestoreService {
             let fmt = DateFormatter()
             fmt.calendar = Calendar(identifier: .gregorian)
             fmt.timeZone = TimeZone(secondsFromGMT: 0)!
-            fmt.dateFormat = "yyyy-MM-dd"
+            fmt.dateFormat = "dd-MM-yyyy"
             if let date = fmt.date(from: key) {
                 print("DayFirestoreService: attempting upload for pending key=\(key)")
-                // find local Day for this date
-                let dayStart = Calendar.current.startOfDay(for: date)
+                // find local Day for this date using the same UTC calendar as the formatter
+                let dayStart = fmt.calendar.startOfDay(for: date)
                 let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == dayStart })
                 do {
                     let results = try context.fetch(request)

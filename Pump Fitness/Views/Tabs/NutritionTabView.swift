@@ -3668,7 +3668,8 @@ struct DailyMealLogSection: View {
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
         let today = Date()
         let weekday = cal.component(.weekday, from: today) // 1 = Sunday
-        let startIndex = weekStartsOnMonday ? 2 : 1
+        // Force weeks to run Monday through Sunday for the Weekly Intake view
+        let startIndex = 2
         let offsetToStart = (weekday - startIndex + 7) % 7
         let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
 
@@ -3977,8 +3978,7 @@ private struct DynamicMacroDayColumn: View {
             }
         }
         .padding(EdgeInsets(top: 28, leading: 12, bottom: 12, trailing: 12))
-        .frame(width: 160)
-        .frame(maxHeight: 240)
+        .frame(width: 160, minHeight: 240)
         .liquidGlass(cornerRadius: 14)
     }
 }

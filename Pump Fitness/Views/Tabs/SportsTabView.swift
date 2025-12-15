@@ -314,11 +314,11 @@ struct SportsTabView: View {
                             .buttonStyle(.plain)
                             .padding(.top, 8)
                             .padding(.horizontal, 18)
-                            
-                            ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 24)
                         }
+
+                        ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 24)
                     }
 
                     Spacer()

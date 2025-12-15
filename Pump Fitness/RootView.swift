@@ -428,8 +428,13 @@ private extension RootView {
         }
 
         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: macros)
-        day.ensureMacroConsumptions(for: macros)
-        macroConsumptions = day.macroConsumptions
+
+        // Preserve any existing macro intake amounts when the tracked list changes.
+        let baselineConsumptions = macroConsumptions.isEmpty ? day.macroConsumptions : macroConsumptions
+        let alignedConsumptions = alignMacroConsumptions(baselineConsumptions, with: macros)
+
+        day.macroConsumptions = alignedConsumptions
+        macroConsumptions = alignedConsumptions
 
         do {
             try modelContext.save()
@@ -443,6 +448,33 @@ private extension RootView {
             } else {
                 print("RootView: failed to sync day macros after tracked macro change")
             }
+        }
+    }
+
+    private func alignMacroConsumptions(_ current: [MacroConsumption], with trackedMacros: [TrackedMacro]) -> [MacroConsumption] {
+        let existingById = Dictionary(uniqueKeysWithValues: current.map { ($0.trackedMacroId, $0) })
+        let existingByName = Dictionary(uniqueKeysWithValues: current.map { ($0.name.lowercased(), $0) })
+
+        return trackedMacros.map { macro in
+            if var match = existingById[macro.id] {
+                match.name = macro.name
+                match.unit = macro.unit
+                return match
+            }
+
+            if var match = existingByName[macro.name.lowercased()] {
+                match.trackedMacroId = macro.id
+                match.name = macro.name
+                match.unit = macro.unit
+                return match
+            }
+
+            return MacroConsumption(
+                trackedMacroId: macro.id,
+                name: macro.name,
+                unit: macro.unit,
+                consumed: 0
+            )
         }
     }
 

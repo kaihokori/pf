@@ -2236,7 +2236,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .fats: return .orange
         case .fibre: return .green
         case .water: return .cyan
-        case .sodium: return Color(.systemGray3)
+        case .sodium: return .white
         case .potassium: return Color(.systemPurple)
         case .sugar: return .yellow
         }
@@ -3628,7 +3628,7 @@ struct DailyMealLogSection: View {
         }
         let quantity = entry.quantityPerServing.trimmingCharacters(in: .whitespacesAndNewlines)
         if !quantity.isEmpty {
-            parts.append(quantity)
+            parts.append("\(quantity) g")
         }
         if entry.calories > 0 {
             parts.append("\(entry.calories) cal")
@@ -3978,7 +3978,8 @@ private struct DynamicMacroDayColumn: View {
             }
         }
         .padding(EdgeInsets(top: 28, leading: 12, bottom: 12, trailing: 12))
-        .frame(width: 160, minHeight: 240)
+        .frame(width: 160)
+        .frame(minHeight: 240)
         .liquidGlass(cornerRadius: 14)
     }
 }
@@ -4110,13 +4111,6 @@ private struct MealLogEntry: Identifiable {
     var itemsSummary: String {
         items.joined(separator: ", ")
     }
-
-    static let sampleEntries: [MealLogEntry] = [
-        MealLogEntry(id: MealType.breakfast.rawValue, title: "Breakfast", items: ["Overnight oats", "Blueberries", "Cold brew"], iconName: "sunrise.fill"),
-        MealLogEntry(id: MealType.lunch.rawValue, title: "Lunch", items: ["Chicken power bowl", "Roasted veggies"], iconName: "fork.knife"),
-        MealLogEntry(id: MealType.dinner.rawValue, title: "Dinner", items: ["Salmon + quinoa", "Side salad", "Sparkling water"], iconName: "moon.stars.fill"),
-        MealLogEntry(id: MealType.snack.rawValue, title: "Snack", items: ["Greek yogurt", "Almonds"], iconName: "cup.and.saucer.fill")
-    ]
 }
 
 struct FastingTimerCard: View {

@@ -229,6 +229,22 @@ class Day {
             print("Failed to fetch Day from context: \(error)")
         }
 
+        // If no exact match was found, attempt a range match for the same calendar day to
+        // avoid creating duplicates when the stored date isn't perfectly normalized.
+        do {
+            let nextDay = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            let rangeRequest = FetchDescriptor<Day>(predicate: #Predicate { $0.date >= dayStart && $0.date < nextDay })
+            let rangeResults = try context.fetch(rangeRequest)
+            if let existing = rangeResults.first {
+                // Normalize the stored date so subsequent lookups hit the exact match path
+                existing.date = dayStart
+                try? context.save()
+                return existing
+            }
+        } catch {
+            print("Failed range fetch for Day: \(error)")
+        }
+
         // If creating a new Day, prefer pulling goal/focus/maintenance from Account so
         // those values are Account-scoped rather than day-scoped.
         var inheritedCalorieGoal: Int = 0
@@ -316,29 +332,36 @@ class Day {
     /// Align this day's macro consumptions with the provided tracked macros.
     /// Adds missing macros with zero consumption and removes any stale ones.
     func ensureMacroConsumptions(for trackedMacros: [TrackedMacro]) {
-        var updated = macroConsumptions
+        // Preserve consumed values when IDs change by matching on normalized names as a fallback.
+        let existingById = Dictionary(uniqueKeysWithValues: macroConsumptions.map { ($0.trackedMacroId, $0) })
+        let existingByName = Dictionary(uniqueKeysWithValues: macroConsumptions.map { ($0.name.lowercased(), $0) })
 
-        // Add or refresh existing macros
+        var updated: [MacroConsumption] = []
+
         for macro in trackedMacros {
-            if let idx = updated.firstIndex(where: { $0.trackedMacroId == macro.id }) {
-                // keep existing consumed value but update name/unit in case they changed
-                updated[idx].name = macro.name
-                updated[idx].unit = macro.unit
-            } else {
-                updated.append(
-                    MacroConsumption(
-                        trackedMacroId: macro.id,
-                        name: macro.name,
-                        unit: macro.unit,
-                        consumed: 0
-                    )
-                )
+            if var existing = existingById[macro.id] {
+                existing.name = macro.name
+                existing.unit = macro.unit
+                updated.append(existing)
+                continue
             }
-        }
 
-        // Remove consumptions for macros no longer tracked
-        updated.removeAll { consumption in
-            !trackedMacros.contains(where: { $0.id == consumption.trackedMacroId })
+            if var existingByLabel = existingByName[macro.name.lowercased()] {
+                existingByLabel.trackedMacroId = macro.id
+                existingByLabel.name = macro.name
+                existingByLabel.unit = macro.unit
+                updated.append(existingByLabel)
+                continue
+            }
+
+            updated.append(
+                MacroConsumption(
+                    trackedMacroId: macro.id,
+                    name: macro.name,
+                    unit: macro.unit,
+                    consumed: 0
+                )
+            )
         }
 
         macroConsumptions = updated

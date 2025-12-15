@@ -171,71 +171,13 @@ struct LookupTabView: View {
                                     .buttonStyle(.plain)
                                 }
 
-                                HStack(spacing: 12) {
-                                    HStack(spacing: 6) {
-                                        Circle()
-                                            .fill(Color.primary.opacity(0.8))
-                                            .frame(width: 8, height: 8)
-                                        Text("\(scaled.calories) cal")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    HStack(spacing: 6) {
-                                        Circle()
-                                            .fill(.red)
-                                            .frame(width: 8, height: 8)
-                                        Text("\(scaled.protein)g")
-                                            .font(.caption2)
-                                    }
-
-                                    HStack(spacing: 6) {
-                                        Circle()
-                                            .fill(Color(.systemTeal))
-                                            .frame(width: 8, height: 8)
-                                        Text("\(scaled.carbs)g")
-                                            .font(.caption2)
-                                    }
-
-                                    HStack(spacing: 6) {
-                                        Circle()
-                                            .fill(.orange)
-                                            .frame(width: 8, height: 8)
-                                        Text("\(scaled.fat)g")
-                                            .font(.caption2)
-                                    }
-
-                                    if scaled.sugar > 0 {
-                                        HStack(spacing: 6) {
-                                            Circle()
-                                                .fill(Color.pink)
-                                                .frame(width: 8, height: 8)
-                                            Text("Sugar \(scaled.sugar)g")
-                                                .font(.caption2)
-                                        }
-                                    }
-
-                                    if scaled.sodium > 0 {
-                                        HStack(spacing: 6) {
-                                            Circle()
-                                                .fill(Color.blue.opacity(0.7))
-                                                .frame(width: 8, height: 8)
-                                            Text("Sodium \(scaled.sodium)mg")
-                                                .font(.caption2)
-                                        }
-                                    }
-
-                                    if scaled.potassium > 0 {
-                                        HStack(spacing: 6) {
-                                            Circle()
-                                                .fill(Color.green.opacity(0.7))
-                                                .frame(width: 8, height: 8)
-                                            Text("Potassium \(scaled.potassium)mg")
-                                                .font(.caption2)
-                                        }
-                                    }
-
-                                    Spacer()
+                                let macroLine = macroSummary(for: scaled)
+                                if !macroLine.isEmpty {
+                                    Text(macroLine)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                             .padding()
@@ -445,6 +387,45 @@ private extension LookupTabView {
 
         let mapped = deduped.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         return mapped
+    }
+
+    /// Build a single summary line showing only the macros the user tracks.
+    /// This keeps the row readable by letting text wrap to multiple lines when needed.
+    func macroSummary(for item: FoodItem) -> String {
+        let tracked = account.trackedMacros
+        guard !tracked.isEmpty else { return "" }
+
+        var parts: [String] = []
+
+        for macro in tracked {
+            let name = macro.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = name.lowercased()
+
+            func append(_ value: Double, unit: String, label: String? = nil) {
+                guard value > 0 else { return }
+                let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
+                let formatted = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
+                parts.append("\(label ?? name) \(formatted)\(unit)")
+            }
+
+            if lower.contains("protein") {
+                append(Double(item.protein), unit: "g")
+            } else if lower.contains("carb") {
+                append(Double(item.carbs), unit: "g")
+            } else if lower.contains("fat") && !lower.contains("satur") {
+                append(Double(item.fat), unit: "g")
+            } else if lower.contains("sugar") {
+                append(Double(item.sugar), unit: "g")
+            } else if lower.contains("sodium") || lower.contains("salt") {
+                append(Double(item.sodium), unit: "mg")
+            } else if lower.contains("potassium") {
+                append(Double(item.potassium), unit: "mg")
+            } else if lower.contains("cal") || lower.contains("energy") {
+                append(Double(item.calories), unit: "cal", label: "Calories")
+            }
+        }
+
+        return parts.joined(separator: " • ")
     }
 }
 

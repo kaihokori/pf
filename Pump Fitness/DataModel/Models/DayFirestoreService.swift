@@ -122,34 +122,85 @@ class DayFirestoreService {
                 let mealIntakesRemote = (data["mealIntakes"] as? [[String: Any]] ?? []).compactMap { self.decodeMealIntake($0) }
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
-                    // Only overwrite fields if the remote document actually contains them.
+                    // Merge remote values into local without wiping newer local data.
                     if let calories = caloriesOpt {
-                        day.caloriesConsumed = calories
+                        day.caloriesConsumed = max(day.caloriesConsumed, calories)
                     }
-                    if !macroConsumptionsRemote.isEmpty {
-                        day.macroConsumptions = macroConsumptionsRemote
+
+                    let mergedMacros = self.mergeMacroConsumptions(local: day.macroConsumptions, remote: macroConsumptionsRemote)
+                    if !mergedMacros.isEmpty {
+                        day.macroConsumptions = mergedMacros
                     } else if let tracked = trackedMacros {
                         day.ensureMacroConsumptions(for: tracked)
                     }
+
                     if let completedMealsRemote = completedMealsRemote {
-                        day.completedMeals = completedMealsRemote
+                        let merged = Array(Set(day.completedMeals).union(Set(completedMealsRemote)))
+                        day.completedMeals = merged
                     }
+
                     if let takenSupplementsRemote = takenSupplementsRemote {
-                        day.takenSupplements = takenSupplementsRemote
+                        let merged = Array(Set(day.takenSupplements).union(Set(takenSupplementsRemote)))
+                        day.takenSupplements = merged
                     }
+
                     if let caloriesBurnedRemote = caloriesBurnedRemote {
-                        day.caloriesBurned = caloriesBurnedRemote
+                        day.caloriesBurned = max(day.caloriesBurned, caloriesBurnedRemote)
                     }
                     if let stepsTakenRemote = stepsTakenRemote {
-                        day.stepsTaken = stepsTakenRemote
+                        day.stepsTaken = max(day.stepsTaken, stepsTakenRemote)
                     }
                     if let distanceRemote = distanceRemote {
-                        day.distanceTravelled = distanceRemote
+                        day.distanceTravelled = max(day.distanceTravelled, distanceRemote)
                     }
                     if let takenWorkoutRemote = data["takenWorkoutSupplements"] as? [String] {
-                        day.takenWorkoutSupplements = takenWorkoutRemote
+                        let merged = Array(Set(day.takenWorkoutSupplements).union(Set(takenWorkoutRemote)))
+                        day.takenWorkoutSupplements = merged
                     }
-                    day.mealIntakes = mealIntakesRemote
+
+                    let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
+                    day.mealIntakes = mergedIntakes
+
+                    // Recalculate aggregates from merged meal intakes so we don't lose entries when syncing.
+                    let aggregatedCalories = mergedIntakes.reduce(0) { $0 + $1.calories }
+
+                    var aggregatedMacroById: [String: Double] = [:]
+                    for intake in mergedIntakes {
+                        for macro in intake.macros {
+                            aggregatedMacroById[macro.trackedMacroId, default: 0] += macro.amount
+                        }
+                    }
+
+                    day.caloriesConsumed = max(day.caloriesConsumed, caloriesOpt ?? 0, aggregatedCalories)
+
+                    // Align macro consumptions with aggregated meal data while preserving manual adjustments.
+                    var updatedMacros = day.macroConsumptions
+                    var existingIds = Set(updatedMacros.map { $0.trackedMacroId })
+                    for idx in updatedMacros.indices {
+                        let id = updatedMacros[idx].trackedMacroId
+                        if let aggregated = aggregatedMacroById[id] {
+                            updatedMacros[idx].consumed = max(updatedMacros[idx].consumed, aggregated)
+                        }
+                    }
+
+                    // Add any macros present in meal entries but missing from the day store.
+                    if let tracked = trackedMacros {
+                        for trackedMacro in tracked {
+                            if let aggregated = aggregatedMacroById[trackedMacro.id], !existingIds.contains(trackedMacro.id) {
+                                updatedMacros.append(
+                                    MacroConsumption(
+                                        trackedMacroId: trackedMacro.id,
+                                        name: trackedMacro.name,
+                                        unit: trackedMacro.unit,
+                                        consumed: aggregated
+                                    )
+                                )
+                                existingIds.insert(trackedMacro.id)
+                            }
+                        }
+                    }
+
+                    day.macroConsumptions = updatedMacros
                     print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(day.caloriesConsumed)")
                     completion(day)
                     return
@@ -306,6 +357,58 @@ class DayFirestoreService {
             }
             completion(err == nil)
         }
+    }
+
+    // Merge helpers to prevent remote reads from clobbering newer local edits.
+    private func mergeMacroConsumptions(local: [MacroConsumption], remote: [MacroConsumption]) -> [MacroConsumption] {
+        if remote.isEmpty { return local }
+
+        var mergedById: [String: MacroConsumption] = Dictionary(uniqueKeysWithValues: local.map { ($0.trackedMacroId, $0) })
+        let localByName: [String: MacroConsumption] = Dictionary(uniqueKeysWithValues: local.map { ($0.name.lowercased(), $0) })
+
+        for remoteMacro in remote {
+            if var existing = mergedById[remoteMacro.trackedMacroId] {
+                existing.consumed = max(existing.consumed, remoteMacro.consumed)
+                if !remoteMacro.name.isEmpty { existing.name = remoteMacro.name }
+                if !remoteMacro.unit.isEmpty { existing.unit = remoteMacro.unit }
+                mergedById[remoteMacro.trackedMacroId] = existing
+                continue
+            }
+
+            if var existingByName = localByName[remoteMacro.name.lowercased()] {
+                existingByName.trackedMacroId = remoteMacro.trackedMacroId
+                existingByName.consumed = max(existingByName.consumed, remoteMacro.consumed)
+                if !remoteMacro.unit.isEmpty { existingByName.unit = remoteMacro.unit }
+                mergedById[remoteMacro.trackedMacroId] = existingByName
+                continue
+            }
+
+            mergedById[remoteMacro.trackedMacroId] = remoteMacro
+        }
+
+        return Array(mergedById.values)
+    }
+
+    private func mergeMealIntakes(local: [MealIntakeEntry], remote: [MealIntakeEntry]) -> [MealIntakeEntry] {
+        if remote.isEmpty { return local }
+
+        var merged = local
+
+        func score(_ entry: MealIntakeEntry) -> Double {
+            let macroSum = entry.macros.reduce(0.0) { $0 + $1.amount }
+            return Double(entry.calories) + macroSum
+        }
+
+        for remoteEntry in remote {
+            if let idx = merged.firstIndex(where: { $0.id == remoteEntry.id }) {
+                let existing = merged[idx]
+                merged[idx] = score(remoteEntry) > score(existing) ? remoteEntry : existing
+            } else {
+                merged.append(remoteEntry)
+            }
+        }
+
+        return merged
     }
 
     /// Update only specific fields of a Day document in Firestore. This avoids

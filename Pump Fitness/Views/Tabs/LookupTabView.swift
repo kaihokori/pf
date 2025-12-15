@@ -177,6 +177,8 @@ struct LookupTabView: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
+                                        .multilineTextAlignment(.leading)
+                                        .lineLimit(nil)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                             }

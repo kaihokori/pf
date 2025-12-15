@@ -256,7 +256,10 @@ struct NutritionTabView: View {
                             selectedDate: selectedDate,
                             currentConsumedCalories: consumedCalories,
                             currentCalorieGoal: calorieGoal,
-                            currentMacroConsumptions: macroConsumptions
+                            currentMacroConsumptions: macroConsumptions,
+                            onDeleteMealType: { mealType in
+                                deleteMealType(mealType)
+                            }
                         )
                         
                         HStack {
@@ -1036,12 +1039,64 @@ private extension NutritionTabView {
     }
 
     func handleMealIntakeSave(_ entry: MealIntakeEntry) {
-        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        // First merge the latest remote day into the local cache to avoid clobbering
+        // previously logged meals when the user adds a new intake before sync completes.
+        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { fetchedDay in
+            DispatchQueue.main.async {
+                let day = fetchedDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+                applyMealIntake(entry, to: day)
+            }
+        }
+    }
 
-        // Store the detailed entry
+    private func deleteMealType(_ mealType: MealType) {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        let removedEntries = day.mealIntakes.filter { $0.mealType == mealType }
+        guard !removedEntries.isEmpty else { return }
+
+        // Remove the grouped meal entries
+        day.mealIntakes.removeAll { $0.mealType == mealType }
+
+        // Subtract calories that were contributed by this meal group
+        let removedCalories = removedEntries.reduce(0) { $0 + $1.calories }
+        day.caloriesConsumed = max(0, day.caloriesConsumed - removedCalories)
+        consumedCalories = day.caloriesConsumed
+
+        // Subtract macro amounts contributed by this meal group
+        var macroDeltas: [String: Double] = [:]
+        for entry in removedEntries {
+            for macro in entry.macros {
+                macroDeltas[macro.trackedMacroId, default: 0] += macro.amount
+            }
+        }
+
+        for idx in day.macroConsumptions.indices {
+            let id = day.macroConsumptions[idx].trackedMacroId
+            if let delta = macroDeltas[id], delta != 0 {
+                day.macroConsumptions[idx].consumed = max(0, day.macroConsumptions[idx].consumed - delta)
+            }
+        }
+        macroConsumptions = day.macroConsumptions
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save Day after deleting meal group: \(error)")
+        }
+
+        dayFirestoreService.saveDay(day) { success in
+            if !success {
+                print("NutritionTabView: failed to sync meal group deletion to Firestore")
+            }
+            NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
+        }
+    }
+
+    private func applyMealIntake(_ entry: MealIntakeEntry, to day: Day) {
+        // Store the detailed entry on the already-merged Day instance
         day.mealIntakes.append(entry)
 
-        // Update calorie aggregate
+        // Update calorie aggregate using existing total so we add rather than replace
         if entry.calories != 0 {
             day.caloriesConsumed = max(0, day.caloriesConsumed + entry.calories)
             consumedCalories = day.caloriesConsumed
@@ -2236,7 +2291,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .fats: return .orange
         case .fibre: return .green
         case .water: return .cyan
-        case .sodium: return .white
+        case .sodium: return .pink
         case .potassium: return Color(.systemPurple)
         case .sugar: return .yellow
         }
@@ -3451,6 +3506,7 @@ struct DailyMealLogSection: View {
     var currentConsumedCalories: Int
     var currentCalorieGoal: Int
     var currentMacroConsumptions: [MacroConsumption]
+    var onDeleteMealType: (MealType) -> Void
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
     @State private var isLoadingMeals = false
@@ -3490,35 +3546,48 @@ struct DailyMealLogSection: View {
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        ForEach(displayedMeals) { meal in
-                            HStack(alignment: .top, spacing: 14) {
-                                ZStack {
-                                    Circle()
-                                        .fill(tint.opacity(0.12))
-                                        .frame(width: 42, height: 42)
-                                    Image(systemName: meal.iconName)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(tint)
-                                }
+                        // Use a non-scrolling List so swipe actions are available on iOS 16+.
+                        let rowHeight: CGFloat = 76
+                        let listHeight = CGFloat(displayedMeals.count) * rowHeight
 
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack(alignment: .firstTextBaseline) {
-                                        Text(meal.title)
-                                            .font(.subheadline.weight(.semibold))
-                                        Spacer()
+                        List {
+                            ForEach(displayedMeals) { meal in
+                                HStack(alignment: .top, spacing: 14) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(tint.opacity(0.12))
+                                            .frame(width: 42, height: 42)
+                                        Image(systemName: meal.iconName)
+                                            .font(.body.weight(.semibold))
+                                            .foregroundStyle(tint)
                                     }
-                                    Text(meal.itemsSummary)
-                                        .font(.footnote)
-                                        .foregroundStyle(Color.primary.opacity(0.85))
-                                }
-                            }
-                            .padding(.vertical, 4)
 
-                            if meal.id != displayedMeals.last?.id {
-                                Divider()
-                                    .overlay(Color.white.opacity(0.12))
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(alignment: .firstTextBaseline) {
+                                            Text(meal.title)
+                                                .font(.subheadline.weight(.semibold))
+                                            Spacer()
+                                        }
+                                        Text(meal.itemsSummary)
+                                            .font(.footnote)
+                                            .foregroundStyle(Color.primary.opacity(0.85))
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        onDeleteMealType(meal.mealType)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollDisabled(true)
+                        .frame(height: max(listHeight, rowHeight))
                     }
                 }
             }
@@ -3598,7 +3667,8 @@ struct DailyMealLogSection: View {
                 id: mealType.rawValue,
                 title: mealType.displayName,
                 items: items,
-                iconName: iconName(for: mealType)
+                iconName: iconName(for: mealType),
+                mealType: mealType
             )
         }
     }
@@ -4100,12 +4170,14 @@ private struct MealLogEntry: Identifiable {
     let title: String
     let items: [String]
     let iconName: String
+    let mealType: MealType
 
-    init(id: String = UUID().uuidString, title: String, items: [String], iconName: String) {
+    init(id: String = UUID().uuidString, title: String, items: [String], iconName: String, mealType: MealType) {
         self.id = id
         self.title = title
         self.items = items
         self.iconName = iconName
+        self.mealType = mealType
     }
 
     var itemsSummary: String {

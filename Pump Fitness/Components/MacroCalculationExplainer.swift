@@ -5,7 +5,7 @@ struct MacroCalculationExplainer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("How Pump Calculates Macros")
+            Text("How This Works")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
 

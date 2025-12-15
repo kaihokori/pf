@@ -97,7 +97,7 @@ class AccountFirestoreService {
             data["mealReminders"] = account.mealReminders.map { $0.asDictionary }
         }
         if !account.weeklyProgress.isEmpty {
-            data["weeklyProgress"] = account.weeklyProgress.map { $0.asDictionary }
+            data["weeklyProgress"] = account.weeklyProgress.map { $0.asFirestoreDictionary() }
         }
         if !account.supplements.isEmpty {
             data["supplements"] = account.supplements.map { $0.asDictionary }

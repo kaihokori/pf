@@ -201,27 +201,31 @@ struct WeeklyProgressRecord: Codable, Hashable, Identifiable {
         let bodyFatPercent = (dictionary["bodyFatPercent"] as? NSNumber)?.doubleValue ?? dictionary["bodyFatPercent"] as? Double
 
         var decodedPhoto: Data? = nil
-        if let rawData = dictionary["photoData"] as? Data {
-            decodedPhoto = rawData
+        if let base64 = dictionary["photoDataBase64"] as? String {
+            decodedPhoto = Data(base64Encoded: base64)
         } else if let base64 = dictionary["photoData"] as? String {
             decodedPhoto = Data(base64Encoded: base64)
+        } else if let rawData = dictionary["photoData"] as? Data {
+            decodedPhoto = rawData
         }
 
         self.init(id: id, date: timestamp, weight: weight, waterPercent: waterPercent, bodyFatPercent: bodyFatPercent, photoData: decodedPhoto)
     }
 
-    var asDictionary: [String: Any] {
+    var asDictionary: [String: Any] { asFirestoreDictionary() }
+
+    func asFirestoreDictionary() -> [String: Any] {
         var dict: [String: Any] = [
             "id": id,
-            "date": date,
+            // Explicit Timestamp avoids nested entity errors when mixing Date types.
+            "date": Timestamp(date: date),
             "weight": weight
         ]
 
         if let waterPercent { dict["waterPercent"] = waterPercent }
         if let bodyFatPercent { dict["bodyFatPercent"] = bodyFatPercent }
         if let photoData {
-            // Firestore can store Data directly; this keeps the image as inline bytes.
-            dict["photoData"] = photoData
+            dict["photoDataBase64"] = photoData.base64EncodedString()
         }
         return dict
     }

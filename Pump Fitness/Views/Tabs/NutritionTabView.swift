@@ -1107,16 +1107,39 @@ private extension NutritionTabView {
             entry.weight != 0 || entry.waterPercent != nil || entry.bodyFatPercent != nil || entry.photoData != nil
         }
 
-        weeklyEntries = filteredEntries
+        var mergedById: [UUID: WeeklyProgressEntry] = [:]
 
-        account.weeklyProgress = filteredEntries.map {
+        // Start with locally edited entries.
+        for entry in filteredEntries {
+            mergedById[entry.id] = entry
+        }
+
+        // Preserve any existing account entries that aren't currently in memory to avoid accidental overwrites.
+        for record in account.weeklyProgress {
+            let uuid = UUID(uuidString: record.id) ?? UUID()
+            if mergedById[uuid] == nil {
+                mergedById[uuid] = WeeklyProgressEntry(
+                    id: uuid,
+                    date: record.date,
+                    weight: record.weight,
+                    waterPercent: record.waterPercent,
+                    bodyFatPercent: record.bodyFatPercent,
+                    photoData: record.photoData
+                )
+            }
+        }
+
+        let mergedEntries = mergedById.values.sorted { $0.date < $1.date }
+        weeklyEntries = mergedEntries
+
+        account.weeklyProgress = mergedEntries.map {
             WeeklyProgressRecord(
                 id: $0.id.uuidString,
                 date: $0.date,
                 weight: $0.weight,
                 waterPercent: $0.waterPercent,
                 bodyFatPercent: $0.bodyFatPercent,
-                photoData: $0.photoData
+                photoData: compressImageDataIfNeeded($0.photoData)
             )
         }
 
@@ -1127,7 +1150,7 @@ private extension NutritionTabView {
             print("NutritionTabView: failed to save weekly progress locally: \(error)")
         }
 
-        guard !filteredEntries.isEmpty else { return }
+        guard !mergedEntries.isEmpty else { return }
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
@@ -1143,9 +1166,21 @@ private extension NutritionTabView {
         accountFirestoreService.fetchAccount(withId: id) { fetched in
             guard let fetched else { return }
             DispatchQueue.main.async {
-                account.weeklyProgress = fetched.weeklyProgress
-                reloadWeeklyProgressFromAccount()
-                ensurePlaceholderIfNeeded(persist: true)
+                let remoteProgress = fetched.weeklyProgress
+                let localProgress = account.weeklyProgress
+
+                if !remoteProgress.isEmpty {
+                    // Prefer remote when it actually has data.
+                    account.weeklyProgress = remoteProgress
+                    reloadWeeklyProgressFromAccount()
+                    ensurePlaceholderIfNeeded(persist: false)
+                } else if !localProgress.isEmpty {
+                    // Preserve local entries instead of wiping them with an empty payload.
+                    reloadWeeklyProgressFromAccount()
+                    persistWeeklyProgressEntries()
+                } else {
+                    weeklyEntries.removeAll()
+                }
                 do {
                     try modelContext.save()
                 } catch {
@@ -1166,6 +1201,38 @@ private extension NutritionTabView {
         if !weeklyEntries.isEmpty {
             scheduleProgressReminder()
         }
+    }
+
+    // Downsample + recompress photos to keep Firestore documents within limits and avoid invalid nested entity errors.
+    private func compressImageDataIfNeeded(_ data: Data?, maxBytes: Int = 450_000) -> Data? {
+        guard let data, !data.isEmpty else { return data }
+
+        // If already under the limit, keep as-is.
+        if data.count <= maxBytes { return data }
+
+        guard let image = UIImage(data: data) else { return data }
+
+        // Downscale to a reasonable portrait size to shrink payloads.
+        let targetWidth: CGFloat = 900
+        let scale = targetWidth / image.size.width
+        let targetHeight = image.size.height * scale
+        let targetSize = CGSize(width: targetWidth, height: targetHeight)
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let scaledImage = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        // Try a few quality levels to stay under the byte cap.
+        let qualities: [CGFloat] = [0.6, 0.5, 0.4, 0.3]
+        for quality in qualities {
+            if let compressed = scaledImage.jpegData(compressionQuality: quality), compressed.count <= maxBytes {
+                return compressed
+            }
+        }
+
+        // Fallback: return the smallest attempt even if still large.
+        return scaledImage.jpegData(compressionQuality: 0.25) ?? data
     }
 
     func scheduleProgressReminder() {
@@ -3387,7 +3454,7 @@ struct DailyMealLogSection: View {
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
     @State private var isLoadingMeals = false
-    @State private var day: Day?
+    @State private var mealEntries: [MealIntakeEntry] = []
     private let dayFirestoreService = DayFirestoreService()
     @Environment(\.modelContext) private var modelContext
 
@@ -3540,16 +3607,14 @@ struct DailyMealLogSection: View {
         [.breakfast, .lunch, .dinner, .snack]
     }
 
-    private var mealEntries: [MealIntakeEntry] {
-        day?.mealIntakes ?? []
-    }
-
     private func refreshMeals() {
-        day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        let localDay = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        mealEntries = localDay.mealIntakes
         isLoadingMeals = true
-        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { _ in
+        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { fetchedDay in
             DispatchQueue.main.async {
-                day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+                let refreshed = fetchedDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+                mealEntries = refreshed.mealIntakes
                 isLoadingMeals = false
             }
         }
@@ -3912,7 +3977,8 @@ private struct DynamicMacroDayColumn: View {
             }
         }
         .padding(EdgeInsets(top: 28, leading: 12, bottom: 12, trailing: 12))
-        .frame(width: 160, height: 240)
+        .frame(width: 160)
+        .frame(maxHeight: 240)
         .liquidGlass(cornerRadius: 14)
     }
 }

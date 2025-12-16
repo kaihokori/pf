@@ -260,38 +260,7 @@ private extension LookupTabView {
 
     // Fetch USDA FoodData Central search results (requires API key in Info.plist under `USDA_API_KEY` or env `USDA_API_KEY`)
     func fetchUSDA(query: String) async throws -> [FoodItem] {
-        // read API key from multiple sources: Info.plist, environment variables, UserDefaults
-        let candidates = [
-            "USDA_API_KEY",
-            "INFOPLIST_KEY_USDA_API_KEY"
-        ]
-
-        var apiKey: String? = nil
-        for key in candidates {
-            if let val = Bundle.main.object(forInfoDictionaryKey: key) as? String, !val.isEmpty {
-                apiKey = val
-                break
-            }
-            if let val = ProcessInfo.processInfo.environment[key], !val.isEmpty {
-                apiKey = val
-                break
-            }
-            if let val = Bundle.main.infoDictionary?[key] as? String, !val.isEmpty {
-                apiKey = val
-                break
-            }
-            if let val = UserDefaults.standard.string(forKey: key), !val.isEmpty {
-                apiKey = val
-                break
-            }
-        }
-
-        // treat placeholder values as missing
-        if let k = apiKey, k == "REPLACE_ME_USDA_API_KEY" {
-            apiKey = nil
-        }
-
-        guard let apiKey = apiKey, !apiKey.isEmpty else {
+        guard let apiKey = USDAKeyProvider.apiKey() else {
             let guidance = "USDA API key not found. Add `USDA_API_KEY` as an environment variable in your Xcode scheme (Edit Scheme → Run → Environment Variables) or add a build setting `INFOPLIST_KEY_USDA_API_KEY` (set value in target Build Settings)."
             throw NSError(domain: "USDA", code: 0, userInfo: [NSLocalizedDescriptionKey: guidance])
         }

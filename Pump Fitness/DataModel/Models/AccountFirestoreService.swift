@@ -11,6 +11,16 @@ class AccountFirestoreService {
                 completion(nil)
                 return
             }
+
+            // Debug: print raw weeklyProgress payload returned by Firestore
+            let weeklyRaw = data["weeklyProgress"] as? [[String: Any]] ?? []
+            print("AccountFirestoreService: raw weeklyProgress count=\(weeklyRaw.count) for accountId=\(id)")
+            for (i, entry) in weeklyRaw.enumerated() {
+                print("  raw[")
+                print("    index=\(i) entry=\(entry)")
+                print("]")
+            }
+
             let account = Account(
                 id: id,
                 profileImage: nil, // Handle image separately
@@ -34,6 +44,15 @@ class AccountFirestoreService {
                 weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
                 supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
             )
+
+            // Debug: print parsed weeklyProgress records
+            print("AccountFirestoreService: parsed weeklyProgress count=\(account.weeklyProgress.count) for accountId=\(id)")
+            let dateFmt = DateFormatter()
+            dateFmt.dateStyle = .short
+            dateFmt.timeStyle = .none
+            for rec in account.weeklyProgress {
+                print("  id=\(rec.id) date=\(dateFmt.string(from: rec.date)) weight=\(rec.weight) hasPhoto=\(rec.photoData != nil)")
+            }
             completion(account)
         }
     }

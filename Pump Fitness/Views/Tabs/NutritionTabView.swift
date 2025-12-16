@@ -511,11 +511,19 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
+            print("NutritionTabView.onAppear: loading weekly progress from local account, count=\(account.weeklyProgress.count)")
+            for (i, r) in account.weeklyProgress.enumerated() {
+                print("  onAppear account.weeklyProgress[\(i)]: id=\(r.id) date=\(r.date) weight=\(r.weight) hasPhoto=\(r.photoData != nil)")
+            }
             reloadWeeklyProgressFromAccount()
             ensurePlaceholderIfNeeded(persist: true)
             refreshProgressFromRemote()
         }
         .onChange(of: account.weeklyProgress) { _, _ in
+            print("NutritionTabView.onChange: account.weeklyProgress changed, raw count=\(account.weeklyProgress.count)")
+            for (i, r) in account.weeklyProgress.enumerated() {
+                print("  onChange account.weeklyProgress[\(i)]: id=\(r.id) date=\(r.date) weight=\(r.weight) hasPhoto=\(r.photoData != nil)")
+            }
             reloadWeeklyProgressFromAccount()
             ensurePlaceholderIfNeeded(persist: false)
             scheduleProgressReminder()
@@ -1155,6 +1163,10 @@ private extension NutritionTabView {
                 )
             }
             .sorted { $0.date < $1.date }
+        print("NutritionTabView.reloadWeeklyProgressFromAccount: weeklyEntries count=\(weeklyEntries.count)")
+        for (i, e) in weeklyEntries.enumerated() {
+            print("  weeklyEntries[\(i)]: id=\(e.id) date=\(e.date) weight=\(e.weight) hasPhoto=\(e.photoData != nil)")
+        }
     }
 
     func persistWeeklyProgressEntries() {
@@ -3208,36 +3220,7 @@ private struct QuickLookupSheet: View {
     }
 
     private func fetchUSDA(query: String) async throws -> [LookupFoodItem] {
-        let candidates = [
-            "USDA_API_KEY",
-            "INFOPLIST_KEY_USDA_API_KEY"
-        ]
-
-        var apiKey: String? = nil
-        for key in candidates {
-            if let val = Bundle.main.object(forInfoDictionaryKey: key) as? String, !val.isEmpty {
-                apiKey = val
-                break
-            }
-            if let val = ProcessInfo.processInfo.environment[key], !val.isEmpty {
-                apiKey = val
-                break
-            }
-            if let val = Bundle.main.infoDictionary?[key] as? String, !val.isEmpty {
-                apiKey = val
-                break
-            }
-            if let val = UserDefaults.standard.string(forKey: key), !val.isEmpty {
-                apiKey = val
-                break
-            }
-        }
-
-        if let k = apiKey, k == "REPLACE_ME_USDA_API_KEY" {
-            apiKey = nil
-        }
-
-        guard let apiKey = apiKey, !apiKey.isEmpty else {
+        guard let apiKey = USDAKeyProvider.apiKey() else {
             let guidance = "USDA API key not found. Add `USDA_API_KEY` in your scheme environment or build setting `INFOPLIST_KEY_USDA_API_KEY`."
             throw NSError(domain: "USDA", code: 0, userInfo: [NSLocalizedDescriptionKey: guidance])
         }

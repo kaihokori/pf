@@ -651,6 +651,9 @@ private extension RootView {
             let request = FetchDescriptor<Account>()
             let existing = try modelContext.fetch(request)
             if let local = existing.first {
+                // Debug: show counts before applying fetched values
+                print("RootView.upsertLocalAccount: existing local.weeklyProgress count=\(local.weeklyProgress.count)")
+                print("RootView.upsertLocalAccount: fetched.weeklyProgress count=\(fetched.weeklyProgress.count)")
                 local.profileImage = fetched.profileImage
                 local.profileAvatar = fetched.profileAvatar
                 local.name = fetched.name
@@ -667,9 +670,13 @@ private extension RootView {
                 local.startWeekOn = fetched.startWeekOn
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings
+                    // Persist weekly progress and supplements from server into local Account
+                    local.weeklyProgress = fetched.weeklyProgress
+                    local.supplements = fetched.supplements
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 try modelContext.save()
+                    print("RootView.upsertLocalAccount: after save local.weeklyProgress count=\(local.weeklyProgress.count)")
             } else {
                 let newAccount = Account(
                     id: fetched.id,
@@ -688,12 +695,15 @@ private extension RootView {
                     unitSystem: fetched.unitSystem,
                     activityLevel: fetched.activityLevel,
                     startWeekOn: fetched.startWeekOn,
-                    trackedMacros: fetched.trackedMacros,
-                    cravings: fetched.cravings,
-                    mealReminders: fetched.mealReminders
+                        trackedMacros: fetched.trackedMacros,
+                        cravings: fetched.cravings,
+                        mealReminders: fetched.mealReminders,
+                        weeklyProgress: fetched.weeklyProgress,
+                        supplements: fetched.supplements
                 )
                 modelContext.insert(newAccount)
                 try modelContext.save()
+                print("RootView.upsertLocalAccount: inserted newAccount.weeklyProgress count=\(newAccount.weeklyProgress.count)")
             }
         } catch {
             print("Failed to upsert local Account: \(error)")

@@ -12,6 +12,228 @@ fileprivate struct HabitItem: Identifiable {
     let id = UUID()
     var name: String
     var weeklyProgress: [HabitDayStatus]
+    var colorHex: String = ""
+}
+
+private struct HabitsEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var habits: [HabitItem]
+    var onSave: ([HabitItem]) -> Void
+
+    @State private var working: [HabitItem] = []
+    @State private var newName: String = ""
+    @State private var hasLoaded: Bool = false
+
+    @State private var showColorPickerSheet: Bool = false
+    @State private var colorPickerTargetId: UUID?
+
+    private let maxHabits = 3
+    private var canAddMore: Bool { working.count < maxHabits }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private let palette: [Color] = [.purple, .orange, .pink, .teal, .mint, .yellow, .green]
+    private var presets: [HabitItem] {
+        [
+            HabitItem(name: "Morning Stretch", weeklyProgress: Array(repeating: .notTracked, count: 7), colorHex: "#7A5FD1"),
+            HabitItem(name: "Meditation", weeklyProgress: Array(repeating: .notTracked, count: 7), colorHex: "#4FB6C6"),
+            HabitItem(name: "Read", weeklyProgress: Array(repeating: .notTracked, count: 7), colorHex: "#E39A3B")
+        ]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Habits")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Button {
+                                            colorPickerTargetId = working[idx].id
+                                            showColorPickerSheet = true
+                                        } label: {
+                                            Circle()
+                                                .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor)))
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        TextField("Name", text: binding.name)
+                                            .font(.subheadline.weight(.semibold))
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeHabit(working[idx].id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Add
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill((Color(hex: preset.colorHex) ?? Color.accentColor).opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: preset.colorHex) ?? Color.accentColor)))
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.name)
+                                                .font(.subheadline.weight(.semibold))
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                                }
+                            }
+                        }
+                    }
+
+                    // Custom composer
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("New Habit")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            TextField("Habit name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                            HStack(spacing: 12) {
+                                Spacer()
+                                Button(action: addCustomHabit) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("You can track up to \(maxHabits) habits.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Habits")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        donePressed()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = habits
+        hasLoaded = true
+    }
+
+    private func removeHabit(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func addCustomHabit() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let idx = working.count
+        let colorHex = palette[idx % palette.count].toHexString()
+        let new = HabitItem(name: trimmed, weeklyProgress: Array(repeating: .notTracked, count: 7), colorHex: colorHex)
+        working.append(new)
+        newName = ""
+    }
+
+    private func togglePreset(_ preset: HabitItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.name == preset.name }
+        } else if canAddMore {
+            var new = preset
+            // ensure color is set
+            if new.colorHex.isEmpty {
+                let idx = working.count
+                new.colorHex = palette[idx % palette.count].toHexString()
+            }
+            working.append(new)
+        }
+    }
+
+    private func isPresetSelected(_ preset: HabitItem) -> Bool {
+        return working.contains { $0.name == preset.name }
+    }
+
+    private func applyColor(hex: String) {
+        guard let targetId = colorPickerTargetId, let idx = working.firstIndex(where: { $0.id == targetId }) else { return }
+        working[idx].colorHex = hex
+    }
+
+    private func donePressed() {
+        // Ensure any habits without an explicit color get a palette color so main list matches editor
+        for i in working.indices {
+            if working[i].colorHex.isEmpty {
+                working[i].colorHex = palette[i % palette.count].toHexString()
+            }
+        }
+        onSave(working)
+        dismiss()
+    }
 }
 
 // MARK: - Weekly Sleep Helpers
@@ -147,6 +369,8 @@ struct RoutineTabView: View {
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
     @State private var dailyTaskItems: [DailyTaskItem] = []
+    @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
+    @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
     @State private var currentDay: Day?
 
     @State private var habitItems: [HabitItem] = [
@@ -159,6 +383,9 @@ struct RoutineTabView: View {
     @State private var weekStartsOnMonday: Bool = true
     @State private var weeklySleepEntries: [SleepDayEntry] = SleepDayEntry.sampleEntries()
     @State private var showDailyTasksEditor: Bool = false
+    @State private var showActivityTimersEditor: Bool = false
+    @State private var showGoalsEditor: Bool = false
+    @State private var showHabitsEditor: Bool = false
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -217,7 +444,7 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                showActivityTimersEditor = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -231,7 +458,7 @@ struct RoutineTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
-                        ActivityTimersSection(accentColorOverride: accentOverride)
+                        ActivityTimersSection(accentColorOverride: accentOverride, timers: activityTimers)
 
                         HStack {
                             Text("Goals")
@@ -242,7 +469,7 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                showGoalsEditor = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -257,7 +484,7 @@ struct RoutineTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
 
-                        GoalsSection(accentColorOverride: accentOverride)
+                        GoalsSection(accentColorOverride: accentOverride, goals: $goals)
 
                         HStack {
                             Text("Habits")
@@ -268,7 +495,7 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                showHabitsEditor = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -429,6 +656,7 @@ struct RoutineTabView: View {
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
                             .padding(.bottom, 24)
+                            .padding(.top, 48)
                     }
                 }
                 if showCalendar {
@@ -440,6 +668,15 @@ struct RoutineTabView: View {
             }
             .sheet(isPresented: $showDailyTasksEditor) {
                 DailyTasksEditorView(tasks: $dailyTaskItems, onSave: applyTaskEditorChanges)
+            }
+            .sheet(isPresented: $showActivityTimersEditor) {
+                ActivityTimersEditorView(timers: $activityTimers, onSave: applyActivityTimerChanges)
+            }
+            .sheet(isPresented: $showGoalsEditor) {
+                GoalsEditorView(goals: $goals, onSave: applyGoalsEditorChanges)
+            }
+            .sheet(isPresented: $showHabitsEditor) {
+                HabitsEditorView(habits: $habitItems, onSave: applyHabitsEditorChanges)
             }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
@@ -467,6 +704,8 @@ private struct DailyTasksEditorView: View {
     @State private var newName: String = ""
     @State private var newTimeDate: Date = Date()
     @State private var hasLoaded: Bool = false
+    
+    
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: String?
 
@@ -586,7 +825,7 @@ private struct DailyTasksEditorView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding(12)
-                        .glassEffect(in: .rect(cornerRadius: 12.0))
+                        .surfaceCard(16)
                     }
                     .buttonStyle(.plain)
 
@@ -659,7 +898,7 @@ private struct DailyTasksEditorView: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("Give it a name and time, then tap plus to add it to your dashboard. You can track up to \(maxTracked) tasks.")
+                            Text("You can track up to \(maxTracked) tasks.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -759,8 +998,601 @@ private struct DailyTasksEditorView: View {
     }
 }
 
+private struct ActivityTimersEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var timers: [ActivityTimerItem]
+    var onSave: ([ActivityTimerItem]) -> Void
+    @State private var working: [ActivityTimerItem] = []
+    @State private var newName: String = ""
+    @State private var customHours: String = ""
+    @State private var customMinutes: String = ""
+    @State private var hasLoaded: Bool = false
+    @State private var showColorPickerSheet: Bool = false
+    @State private var colorPickerTargetId: String?
+
+    static let maxFreeTimers = 2
+
+    private let minDuration = 10
+    private let maxDuration = 180
+
+    private var canAddMore: Bool { working.count < Self.maxFreeTimers }
+    private var customDurationMinutes: Int? {
+        let hours = Int(customHours) ?? 0
+        let minutes = Int(customMinutes) ?? 0
+        guard hours >= 0, minutes >= 0 else { return nil }
+        let total = hours * 60 + minutes
+        guard total > 0 else { return nil }
+        return clampDuration(total)
+    }
+    private var canAddCustom: Bool {
+        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (customDurationMinutes ?? 0) >= minDuration
+    }
+
+    private var presets: [ActivityTimerItem] {
+        [
+            ActivityTimerItem(name: "Workout", startTime: Date(), durationMinutes: 60, colorHex: "#E39A3B"),
+            ActivityTimerItem(name: "Evening Walk", startTime: Date(), durationMinutes: 45, colorHex: "#4FB6C6"),
+            ActivityTimerItem(name: "Stretch Break", startTime: Date(), durationMinutes: 20, colorHex: "#7A5FD1")
+        ]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Timers")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Button {
+                                            colorPickerTargetId = working[idx].id
+                                            showColorPickerSheet = true
+                                        } label: {
+                                            Circle()
+                                                .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(Image(systemName: "clock") .foregroundStyle((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor)))
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            TextField("Name", text: binding.name)
+                                                .font(.subheadline.weight(.semibold))
+
+                                            HStack(spacing: 12) {
+                                                HStack {
+                                                    TextField("Hours", text: hourBinding(for: binding))
+                                                        .keyboardType(.numberPad)
+                                                        .textFieldStyle(.plain)
+                                                    Text("hrs")
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .padding()
+                                                .surfaceCard(16)
+                                                .frame(maxWidth: .infinity)
+
+                                                HStack {
+                                                    TextField("Minutes", text: minuteBinding(for: binding))
+                                                        .keyboardType(.numberPad)
+                                                        .textFieldStyle(.plain)
+                                                    Text("min")
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .padding()
+                                                .surfaceCard(16)
+                                                .frame(maxWidth: .infinity)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeTimer(working[idx].id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                    }
+
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock unlimited timers + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .surfaceCard(16)
+                    }
+                    .buttonStyle(.plain)
+
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill((Color(hex: preset.colorHex) ?? Color.accentColor).opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "clock") .foregroundStyle((Color(hex: preset.colorHex) ?? Color.accentColor)))
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.name)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text("Duration \(preset.durationMinutes) min")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Custom Timer")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            TextField("Timer name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                            HStack(spacing: 12) {
+                                HStack {
+                                    TextField("Hours", text: $customHours)
+                                        .keyboardType(.numberPad)
+                                        .textFieldStyle(.plain)
+                                    Text("hrs")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .surfaceCard(16)
+                                .frame(maxWidth: .infinity)
+
+                                HStack {
+                                    TextField("Minutes", text: $customMinutes)
+                                        .keyboardType(.numberPad)
+                                        .textFieldStyle(.plain)
+                                    Text("min")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .surfaceCard(16)
+                                .frame(maxWidth: .infinity)
+
+                                Button(action: addCustomTimer) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("You can create up to \(Self.maxFreeTimers) timers.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Activity Timers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        donePressed()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = timers.isEmpty ? Array(ActivityTimerItem.defaultTimers.prefix(Self.maxFreeTimers)) : Array(timers.prefix(Self.maxFreeTimers))
+        hasLoaded = true
+    }
+
+    private func splitDuration(_ minutes: Int) -> (hours: Int, minutes: Int) {
+        let clamped = max(0, minutes)
+        return (clamped / 60, clamped % 60)
+    }
+
+    private func clampDuration(_ minutes: Int) -> Int {
+        min(max(minutes, minDuration), maxDuration)
+    }
+
+    private func hourBinding(for binding: Binding<ActivityTimerItem>) -> Binding<String> {
+        Binding {
+            let parts = splitDuration(binding.durationMinutes.wrappedValue)
+            return String(parts.hours)
+        } set: { newValue in
+            let hours = max(0, Int(newValue) ?? 0)
+            let currentParts = splitDuration(binding.durationMinutes.wrappedValue)
+            binding.durationMinutes.wrappedValue = clampDuration(hours * 60 + currentParts.minutes)
+        }
+    }
+
+    private func minuteBinding(for binding: Binding<ActivityTimerItem>) -> Binding<String> {
+        Binding {
+            let parts = splitDuration(binding.durationMinutes.wrappedValue)
+            return String(parts.minutes)
+        } set: { newValue in
+            let minutes = max(0, min(59, Int(newValue) ?? 0))
+            let currentParts = splitDuration(binding.durationMinutes.wrappedValue)
+            binding.durationMinutes.wrappedValue = clampDuration(currentParts.hours * 60 + minutes)
+        }
+    }
+
+    private func togglePreset(_ preset: ActivityTimerItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.name == preset.name }
+        } else if canAddMore {
+            working.append(preset)
+        }
+    }
+
+    private func isPresetSelected(_ preset: ActivityTimerItem) -> Bool {
+        working.contains { $0.name == preset.name }
+    }
+
+    private func removeTimer(_ id: String) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func addCustomTimer() {
+        guard canAddCustom, let duration = customDurationMinutes else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let newTimer = ActivityTimerItem(name: trimmed, startTime: Date(), durationMinutes: duration, colorHex: "#4CAF6A")
+        working.append(newTimer)
+        newName = ""
+    }
+
+    private func applyColor(hex: String) {
+        guard let targetId = colorPickerTargetId, let idx = working.firstIndex(where: { $0.id == targetId }) else { return }
+        working[idx].colorHex = hex
+    }
+
+    private func donePressed() {
+        onSave(Array(working.prefix(Self.maxFreeTimers)))
+        dismiss()
+    }
+}
+
+private struct GoalsEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var goals: [GoalItem]
+    var onSave: ([GoalItem]) -> Void
+    @State private var working: [GoalItem] = []
+    @State private var newName: String = ""
+    @State private var newNote: String = ""
+    @State private var newDate: Date = Date()
+    @State private var hasLoaded: Bool = false
+    private let maxGoals: Int = 8
+
+    private var presets: [GoalItem] {
+        let cal = Calendar.current
+        let today = Date()
+        let in3 = cal.date(byAdding: .day, value: 3, to: today) ?? today
+        let in14 = cal.date(byAdding: .day, value: 14, to: today) ?? today
+        return [
+            GoalItem(title: "10 min Walk", note: "Quick cardio", dueDate: today),
+            GoalItem(title: "Read 10 pages", note: "Evening habit", dueDate: in3),
+            GoalItem(title: "Prep healthy lunch", note: "Meal prep", dueDate: in14)
+        ]
+    }
+
+    private var canAddCustom: Bool {
+        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canAddMore: Bool { working.count < maxGoals }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Goals")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, goal in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "target") .foregroundStyle(Color.accentColor))
+
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            TextField("Name", text: binding.title)
+                                                .font(.subheadline.weight(.semibold))
+
+                                            TextField("Note (optional)", text: binding.note)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+
+                                            DatePicker("Due", selection: binding.dueDate, displayedComponents: .date)
+                                                .labelsHidden()
+                                                // .datePickerStyle(.compact)
+                                                // .frame(maxWidth: .infinity, alignment: .leading)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeGoal(goal.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                    }
+
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock more goal slots + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .surfaceCard(16)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Quick Add
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "target") .foregroundStyle(Color.accentColor))
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.title)
+                                                .font(.subheadline.weight(.semibold))
+                                            if !preset.note.isEmpty {
+                                                Text(preset.note)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("New Goal")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            HStack {
+                                TextField("Goal name", text: $newName)
+                                    .textInputAutocapitalization(.sentences)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                                DatePicker("Due Date", selection: $newDate, displayedComponents: .date)
+                                    .labelsHidden()
+                                    .datePickerStyle(.compact)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal)
+                                    .padding(.vertical, 10)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            }
+
+                            HStack {
+                                TextField("Note (optional)", text: $newNote)
+                                    .textInputAutocapitalization(.sentences)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                                Button(action: addGoal) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+                        }
+                        Text("You can create up to \(maxGoals) goals.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Goals")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        donePressed()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = goals
+        hasLoaded = true
+    }
+
+    private func addGoal() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let goal = GoalItem(title: trimmed, note: newNote, isCompleted: false, dueDate: newDate)
+        working.append(goal)
+        newName = ""
+        newNote = ""
+    }
+
+    private func togglePreset(_ preset: GoalItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.title == preset.title }
+        } else if canAddMore {
+            var new = preset
+            // ensure a fresh id
+            new = GoalItem(title: new.title, note: new.note, isCompleted: false, dueDate: new.dueDate)
+            working.append(new)
+        }
+    }
+
+    private func isPresetSelected(_ preset: GoalItem) -> Bool {
+        return working.contains { $0.title == preset.title }
+    }
+
+    private func removeGoal(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func donePressed() {
+        onSave(working)
+        dismiss()
+    }
+}
+
 // MARK: - Daily task persistence
 extension RoutineTabView {
+    private func applyGoalsEditorChanges(_ items: [GoalItem]) {
+        goals = items
+    }
+
+    private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {
+        activityTimers = Array(items.prefix(ActivityTimersEditorView.maxFreeTimers))
+    }
+
+    private func applyHabitsEditorChanges(_ items: [HabitItem]) {
+        habitItems = Array(items.prefix(3))
+    }
+
     private func loadDailyTasks() {
         dayService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros) { day in
             DispatchQueue.main.async {
@@ -994,7 +1826,12 @@ private struct HabitTrackingSection: View {
             let palette: [Color] = [.purple, .orange, .pink, .teal, .mint, .yellow, .green]
             ForEach(habits.indices, id: \.self) { idx in
                 let habit = habits[idx]
-                let rowColor = palette[idx % palette.count]
+                let rowColor: Color = {
+                    if !habit.colorHex.isEmpty, let c = Color(hex: habit.colorHex) {
+                        return c
+                    }
+                    return palette[idx % palette.count]
+                }()
 
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -1017,35 +1854,6 @@ private struct HabitTrackingSection: View {
                 .padding(.top, 6)
                 .background(Color.clear)
             }
-
-            Button(action: { /* TODO: present upgrade flow */ }) {
-                HStack(alignment: .center) {
-                    Image(systemName: "sparkles")
-                        .font(.title3)
-                        .foregroundStyle(accentColor)
-                        .padding(.trailing, 8)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Upgrade to Pro")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-
-                        Text("Unlock 3 more habits + other benefits")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(12)
-                .glassEffect(in: .rect(cornerRadius: 12.0))
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 8)
         }
         .padding(16)
         .glassEffect(in: .rect(cornerRadius: 16.0))

@@ -1364,7 +1364,7 @@ struct CalorieSummary: View {
                             .symbolVariant(.none)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                            .offset(x: -2)
+                            .offset(x: -6)
                         }
                         Text("\(caloriesConsumed)")
                             .font(.largeTitle)
@@ -1799,7 +1799,7 @@ struct SupplementEditorSheet: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("Give it a name and amount, then tap plus to add it to your dashboard. You can track up to \(maxTrackedSupplements) supplements.")
+                            Text("You can track up to \(maxTrackedSupplements) supplements.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -2428,7 +2428,7 @@ struct MacroEditorSheet: View {
                                 onAdd: addCustomMetric
                             )
 
-                            Text("Give it a name and target, then tap plus to add it to your dashboard. You can track up to \(NutritionMacroLimits.maxTrackedMacros) macros.")
+                            Text("You can track up to \(NutritionMacroLimits.maxTrackedMacros) macros.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }

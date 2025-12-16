@@ -29,6 +29,7 @@ struct RootView: View {
     @State private var cravings: [CravingItem] = []
     @State private var checkedMeals: Set<String> = []
     @State private var mealReminders: [MealReminder] = MealReminder.defaults
+    @State private var isHydratingTrackedMacros: Bool = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @Query private var accounts: [Account]
@@ -180,7 +181,7 @@ struct RootView: View {
             }
         }
         .onChange(of: trackedMacros) { _, newValue in
-            persistTrackedMacros(newValue)
+            persistTrackedMacros(newValue, syncWithRemote: !isHydratingTrackedMacros)
         }
         .onChange(of: macroConsumptions) { _, newValue in
             persistMacroConsumptions(newValue)
@@ -219,14 +220,21 @@ struct RootView: View {
                     hasCompletedOnboarding = true
                     selectedTab = .nutrition
                     if let fetched = account {
-                        if fetched.trackedMacros.isEmpty {
-                            fetched.trackedMacros = TrackedMacro.defaults
-                            accountFirestoreService.saveAccount(fetched) { success in
-                                if !success {
-                                    print("RootView: failed to seed default tracked macros to Firestore")
-                                }
-                            }
+                        var resolvedTrackedMacros = fetched.trackedMacros
+
+                        // Prefer server macros; if missing, fall back to any cached local value before defaulting.
+                        if resolvedTrackedMacros.isEmpty, let local = fetchAccount(), !local.trackedMacros.isEmpty {
+                            resolvedTrackedMacros = local.trackedMacros
+                            print("RootView: using cached local tracked macros because server returned none")
                         }
+
+                        if resolvedTrackedMacros.isEmpty {
+                            resolvedTrackedMacros = TrackedMacro.defaults
+                            print("RootView: seeding in-memory tracked macros with defaults; not syncing to Firestore")
+                        }
+
+                        fetched.trackedMacros = resolvedTrackedMacros
+
                         upsertLocalAccount(with: fetched)
                         // Use the fetched maintenance calories from the account on app load
                         maintenanceCalories = fetched.maintenanceCalories
@@ -234,7 +242,7 @@ struct RootView: View {
                         if let rawMF = fetched.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
                             selectedMacroFocus = mf
                         }
-                        trackedMacros = fetched.trackedMacros
+                        hydrateTrackedMacros(fetched.trackedMacros)
                         cravings = fetched.cravings
                         if fetched.mealReminders.isEmpty {
                             mealReminders = MealReminder.defaults
@@ -292,7 +300,7 @@ private extension RootView {
                 )
                 modelContext.insert(defaultAccount)
                 try modelContext.save()
-                trackedMacros = defaultAccount.trackedMacros
+                hydrateTrackedMacros(defaultAccount.trackedMacros)
                 cravings = defaultAccount.cravings
                 mealReminders = defaultAccount.mealReminders
             }
@@ -314,7 +322,7 @@ private extension RootView {
 
     func initializeTrackedMacrosFromLocal() {
         guard let account = fetchAccount() else {
-            trackedMacros = TrackedMacro.defaults
+            hydrateTrackedMacros(TrackedMacro.defaults)
             cravings = []
             maintenanceCalories = 0
             calorieGoal = 0
@@ -323,14 +331,14 @@ private extension RootView {
 
         if account.trackedMacros.isEmpty {
             account.trackedMacros = TrackedMacro.defaults
-            trackedMacros = account.trackedMacros
+            hydrateTrackedMacros(account.trackedMacros)
             do {
                 try modelContext.save()
             } catch {
                 print("RootView: failed to save default tracked macros locally: \(error)")
             }
         } else {
-            trackedMacros = account.trackedMacros
+            hydrateTrackedMacros(account.trackedMacros)
         }
 
         cravings = account.cravings
@@ -409,7 +417,7 @@ private extension RootView {
         }
     }
 
-    func persistTrackedMacros(_ macros: [TrackedMacro]) {
+    func persistTrackedMacros(_ macros: [TrackedMacro], syncWithRemote: Bool = true) {
         guard let account = fetchAccount() else { return }
 
         account.trackedMacros = macros
@@ -419,11 +427,13 @@ private extension RootView {
             print("RootView: failed to save tracked macros locally: \(error)")
         }
 
-        accountFirestoreService.saveAccount(account) { success in
-            if success {
-                print("RootView: synced tracked macros to Firestore")
-            } else {
-                print("RootView: failed to sync tracked macros to Firestore")
+        if syncWithRemote {
+            accountFirestoreService.saveAccount(account) { success in
+                if success {
+                    print("RootView: synced tracked macros to Firestore")
+                } else {
+                    print("RootView: failed to sync tracked macros to Firestore")
+                }
             }
         }
 
@@ -442,12 +452,23 @@ private extension RootView {
             print("RootView: failed to save day macro alignments: \(error)")
         }
 
-        dayFirestoreService.saveDay(day) { success in
-            if success {
-                print("RootView: synced day macros after tracked macro change")
-            } else {
-                print("RootView: failed to sync day macros after tracked macro change")
+        if syncWithRemote {
+            dayFirestoreService.saveDay(day) { success in
+                if success {
+                    print("RootView: synced day macros after tracked macro change")
+                } else {
+                    print("RootView: failed to sync day macros after tracked macro change")
+                }
             }
+        }
+    }
+
+    /// Update tracked macros state without triggering a Firestore sync during hydration.
+    func hydrateTrackedMacros(_ macros: [TrackedMacro]) {
+        isHydratingTrackedMacros = true
+        trackedMacros = macros
+        DispatchQueue.main.async {
+            self.isHydratingTrackedMacros = false
         }
     }
 

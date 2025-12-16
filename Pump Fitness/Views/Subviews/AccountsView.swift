@@ -989,9 +989,6 @@ private struct AppearanceSection: View {
     private func themePreview(for theme: AppTheme) -> some View {
         HStack {
             ThickThemePreviewRow(theme: theme, colorScheme: colorScheme)
-            Text("Preview")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
             Spacer()
         }
     }
@@ -1044,10 +1041,10 @@ private struct AppearanceSection: View {
                     .overlay {
                         if isMultiColour {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(subtleRainbowGradient, lineWidth: 1.5)
+                                .stroke(subtleRainbowGradient, lineWidth: 2.5)
                         } else {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(theme.accent(for: colorScheme), lineWidth: 1.5)
+                                .stroke(theme.accent(for: colorScheme), lineWidth: 2.5)
                         }
                     }
                     .frame(width: 64, height: 40)

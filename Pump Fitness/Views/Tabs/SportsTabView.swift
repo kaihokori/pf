@@ -309,7 +309,7 @@ struct SportsTabView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(12)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .surfaceCard(16)
                             }
                             .buttonStyle(.plain)
                             .padding(.top, 8)

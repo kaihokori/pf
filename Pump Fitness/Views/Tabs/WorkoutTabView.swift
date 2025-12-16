@@ -203,7 +203,7 @@ struct ExerciseSupplementEditorSheet: View {
                                     .opacity(!canAddCustom ? 0.4 : 1)
                                 }
 
-                                Text("Give it a name and amount, then tap plus to add it to your dashboard. You can track up to \(maxTrackedSupplements) supplements.")
+                                Text("You can track up to \(maxTrackedSupplements) supplements.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }

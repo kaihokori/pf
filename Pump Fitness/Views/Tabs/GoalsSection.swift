@@ -15,15 +15,45 @@ struct GoalsSection: View {
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 12) {
-                goalCard(title: "Today", systemImage: "sun.max.fill", bucket: .today)
-                goalCard(title: "This Week", systemImage: "calendar", bucket: .thisWeek)
-                goalCard(title: "This Month", systemImage: "calendar.badge.clock", bucket: .thisMonth)
-                goalCard(title: "Far Future", systemImage: "sparkles", bucket: .farFuture)
+        VStack(spacing: 12) {
+            Button(action: { /* TODO: present upgrade flow */ }) {
+                HStack(alignment: .center) {
+                    Image(systemName: "sparkles")
+                        .font(.title3)
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.trailing, 8)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Upgrade to Pro")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        Text("Unlock more goal slots + other benefits")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .surfaceCard(16)
             }
-            .padding(.vertical, 6)
-            .padding(.leading, 6)
+            .buttonStyle(.plain)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    goalCard(title: "Today", systemImage: "sun.max.fill", bucket: .today)
+                    goalCard(title: "This Week", systemImage: "calendar", bucket: .thisWeek)
+                    goalCard(title: "This Month", systemImage: "calendar.badge.clock", bucket: .thisMonth)
+                    goalCard(title: "Far Future", systemImage: "sparkles", bucket: .farFuture)
+                }
+                .padding(.vertical, 6)
+                .padding(.leading, 6)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.top, 12)

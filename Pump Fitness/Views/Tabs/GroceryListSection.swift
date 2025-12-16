@@ -2,15 +2,7 @@ import SwiftUI
 
 struct GroceryListSection: View {
     var accentColorOverride: Color?
-
-    @State private var items: [GroceryItem] = [
-        GroceryItem(title: "Apples", quantity: 6),
-        GroceryItem(title: "Bananas", quantity: 6),
-        GroceryItem(title: "Chicken Breast", quantity: 2),
-        GroceryItem(title: "Spinach", quantity: 1),
-        GroceryItem(title: "Oats", quantity: 1),
-        GroceryItem(title: "Almond Milk", quantity: 2)
-    ]
+    @Binding var items: [GroceryItem]
 
     private var tint: Color {
         accentColorOverride ?? .accentColor
@@ -20,7 +12,7 @@ struct GroceryListSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Horizontal scroll of columns, each column contains up to 4 items
+            // Horizontal scroll of columns, each column contains up to 5 items
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
                     let perColumn = 5
@@ -59,11 +51,7 @@ struct GroceryListSection: View {
                                                 .strikethrough(isChecked, color: .secondary)
                                                 .foregroundStyle(isChecked ? .secondary : .primary)
 
-                                            if let qty = item.quantity {
-                                                Text("Qty \(qty)")
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                            } else if !item.note.isEmpty {
+                                            if !item.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                                 Text(item.note)
                                                     .font(.caption2)
                                                     .foregroundStyle(.secondary)
@@ -110,22 +98,33 @@ struct GroceryItem: Identifiable, Equatable {
     let id: UUID
     var title: String
     var note: String
-    var quantity: Int?
     var isChecked: Bool
 
-    init(id: UUID = UUID(), title: String, note: String = "", quantity: Int? = nil, isChecked: Bool = false) {
+    init(id: UUID = UUID(), title: String, note: String = "", isChecked: Bool = false) {
         self.id = id
         self.title = title
         self.note = note
-        self.quantity = quantity
         self.isChecked = isChecked
+    }
+
+    static func sampleItems() -> [GroceryItem] {
+        [
+            GroceryItem(title: "Apples", note: "6 ct"),
+            GroceryItem(title: "Bananas", note: "6 ct"),
+            GroceryItem(title: "Chicken Breast", note: "2 lbs"),
+            GroceryItem(title: "Spinach", note: "1 bag"),
+            GroceryItem(title: "Oats", note: "1 canister"),
+            GroceryItem(title: "Almond Milk", note: "2 cartons")
+        ]
     }
 }
 
 #if DEBUG
 struct GroceryListSection_Previews: PreviewProvider {
+    @State static var items = GroceryItem.sampleItems()
+
     static var previews: some View {
-        GroceryListSection(accentColorOverride: .accentColor)
+        GroceryListSection(accentColorOverride: .accentColor, items: $items)
             .previewLayout(.sizeThatFits)
     }
 }

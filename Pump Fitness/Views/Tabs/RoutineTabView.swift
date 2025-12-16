@@ -45,7 +45,7 @@ private struct HabitsEditorView: View {
                 VStack(spacing: 24) {
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Habits")
+                            Text("Tracked Habits")
                                 .font(.subheadline.weight(.semibold))
 
                             VStack(spacing: 12) {
@@ -127,21 +127,20 @@ private struct HabitsEditorView: View {
                             .font(.subheadline.weight(.semibold))
 
                         VStack(spacing: 12) {
-                            TextField("Habit name", text: $newName)
-                                .textInputAutocapitalization(.words)
-                                .padding()
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            HStack {
+                                TextField("Habit name", text: $newName)
+                                    .textInputAutocapitalization(.words)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
 
-                            HStack(spacing: 12) {
-                                Spacer()
                                 Button(action: addCustomHabit) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!canAddCustom)
-                                .opacity(!canAddCustom ? 0.4 : 1)
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 28, weight: .semibold))
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canAddCustom)
+                                    .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
                             Text("You can track up to \(maxHabits) habits.")
@@ -371,6 +370,7 @@ struct RoutineTabView: View {
     @State private var dailyTaskItems: [DailyTaskItem] = []
     @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
+    @State private var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
     @State private var currentDay: Day?
 
     @State private var habitItems: [HabitItem] = [
@@ -386,6 +386,7 @@ struct RoutineTabView: View {
     @State private var showActivityTimersEditor: Bool = false
     @State private var showGoalsEditor: Bool = false
     @State private var showHabitsEditor: Bool = false
+    @State private var showGroceryListEditor: Bool = false
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -610,7 +611,7 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                showGroceryListEditor = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -625,7 +626,7 @@ struct RoutineTabView: View {
                         .padding(.top, 48)
                         .padding(.horizontal, 18)
 
-                        GroceryListSection(accentColorOverride: accentOverride)
+                        GroceryListSection(accentColorOverride: accentOverride, items: $groceryItems)
 
                         HStack {
                             Text("Expense Tracker")
@@ -674,6 +675,9 @@ struct RoutineTabView: View {
             }
             .sheet(isPresented: $showGoalsEditor) {
                 GoalsEditorView(goals: $goals, onSave: applyGoalsEditorChanges)
+            }
+            .sheet(isPresented: $showGroceryListEditor) {
+                GroceryListEditorView(items: $groceryItems, onSave: applyGroceryListChanges)
             }
             .sheet(isPresented: $showHabitsEditor) {
                 HabitsEditorView(habits: $habitItems, onSave: applyHabitsEditorChanges)
@@ -1579,10 +1583,243 @@ private struct GoalsEditorView: View {
     }
 }
 
+private struct GroceryListEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var items: [GroceryItem]
+    var onSave: ([GroceryItem]) -> Void
+
+    @State private var working: [GroceryItem] = []
+    @State private var newName: String = ""
+    @State private var newNote: String = ""
+    @State private var hasLoaded: Bool = false
+
+    private let maxItems: Int = 8
+
+    private var presets: [GroceryItem] {
+        [
+            GroceryItem(title: "Greek Yogurt", note: "32 oz tub"),
+            GroceryItem(title: "Blueberries", note: "1 pint"),
+            GroceryItem(title: "Brown Rice", note: "2 lb bag")
+        ]
+    }
+
+    private var canAddMore: Bool { working.count < maxItems }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Items")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, item in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "cart") .foregroundStyle(Color.accentColor))
+
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            TextField("Item name", text: binding.title)
+                                                .font(.subheadline.weight(.semibold))
+
+                                            TextField("Note (optional)", text: binding.note)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeItem(item.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                    }
+
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock more grocery slots + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .surfaceCard(16)
+                    }
+                    .buttonStyle(.plain)
+
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "cart") .foregroundStyle(Color.accentColor))
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.title)
+                                                .font(.subheadline.weight(.semibold))
+                                            if !preset.note.isEmpty {
+                                                Text(preset.note)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("New Item")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            TextField("Item name", text: $newName)
+                                .textInputAutocapitalization(.sentences)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                            HStack {
+                                TextField("Note (optional)", text: $newNote)
+                                    .textInputAutocapitalization(.sentences)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                                Button(action: addItem) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+                        }
+                        Text("You can create up to \(maxItems) items.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Grocery List")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        donePressed()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = items
+        hasLoaded = true
+    }
+
+    private func removeItem(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func addItem() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let item = GroceryItem(title: trimmed, note: newNote)
+        working.append(item)
+        newName = ""
+        newNote = ""
+    }
+
+    private func togglePreset(_ preset: GroceryItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.title == preset.title }
+        } else if canAddMore {
+            var new = preset
+            new = GroceryItem(title: new.title, note: new.note, isChecked: false)
+            working.append(new)
+        }
+    }
+
+    private func isPresetSelected(_ preset: GroceryItem) -> Bool {
+        return working.contains { $0.title == preset.title }
+    }
+
+    private func donePressed() {
+        onSave(Array(working.prefix(maxItems)))
+        dismiss()
+    }
+}
+
 // MARK: - Daily task persistence
 extension RoutineTabView {
     private func applyGoalsEditorChanges(_ items: [GoalItem]) {
         goals = items
+    }
+
+    private func applyGroceryListChanges(_ items: [GroceryItem]) {
+        groceryItems = Array(items.prefix(8))
     }
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {

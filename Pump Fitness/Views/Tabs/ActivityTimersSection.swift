@@ -78,11 +78,7 @@ private struct ActivityTimerCard: View {
             .frame(maxWidth: .infinity)
             .frame(height: 140)
 
-            VStack(alignment: .center, spacing: 6) {
-                Text("Next")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+            VStack(alignment: .center) {
                 Text(nextText)
                     .font(.headline)
                     .fontWeight(.medium)

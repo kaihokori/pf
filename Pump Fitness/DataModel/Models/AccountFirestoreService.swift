@@ -42,7 +42,8 @@ class AccountFirestoreService {
                 cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) },
                 mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) },
                 weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
-                supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
+                supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) },
+                dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) }
             )
 
             // Debug: print parsed weeklyProgress records
@@ -100,8 +101,43 @@ class AccountFirestoreService {
         if let unitSystem = account.unitSystem, !unitSystem.isEmpty {
             data["unitSystem"] = unitSystem
         }
+        // Handle activityLevel carefully: avoid writing a default 'sedentary'
+        // value into Firestore on initial saves (e.g. app launch). If the
+        // activity is 'sedentary' and the remote document doesn't already
+        // have an activityLevel, skip persisting it to avoid introducing
+        // an implicit default. Otherwise include it as usual.
+        var shouldIncludeActivity = false
         if let activity = account.activityLevel, !activity.isEmpty {
-            data["activityLevel"] = activity
+            if activity == ActivityLevelOption.sedentary.rawValue {
+                // Check remote doc to see if activityLevel already exists.
+                self.db.collection(self.collection).document(id).getDocument { snapshot, error in
+                    if let dataRemote = snapshot?.data(), let _ = dataRemote["activityLevel"] as? String {
+                        // remote already has a value; include ours to update
+                        shouldIncludeActivity = true
+                    } else {
+                        // remote has no activityLevel; do not write a default 'sedentary'
+                        shouldIncludeActivity = false
+                    }
+
+                    if shouldIncludeActivity {
+                        data["activityLevel"] = activity
+                    }
+
+                    // If there are no other fields to write and activity was skipped,
+                    // return success (nothing to do).
+                    if data.isEmpty {
+                        completion(true)
+                        return
+                    }
+
+                    self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
+                        completion(error == nil)
+                    }
+                }
+                return
+            } else {
+                data["activityLevel"] = activity
+            }
         }
         if let startWeekOn = account.startWeekOn, !startWeekOn.isEmpty {
             data["startWeekOn"] = startWeekOn
@@ -121,13 +157,16 @@ class AccountFirestoreService {
         if !account.supplements.isEmpty {
             data["supplements"] = account.supplements.map { $0.asDictionary }
         }
+        if !account.dailyTasks.isEmpty {
+            data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
+        }
 
         guard !data.isEmpty else {
             completion(true)
             return
         }
 
-        db.collection(collection).document(id).setData(data, merge: true) { error in
+        self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
             completion(error == nil)
         }
     }

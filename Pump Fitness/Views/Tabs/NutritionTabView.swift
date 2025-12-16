@@ -257,8 +257,8 @@ struct NutritionTabView: View {
                             currentConsumedCalories: consumedCalories,
                             currentCalorieGoal: calorieGoal,
                             currentMacroConsumptions: macroConsumptions,
-                            onDeleteMealType: { mealType in
-                                deleteMealType(mealType)
+                            onDeleteMealEntry: { entry in
+                                deleteMealEntry(entry)
                             }
                         )
                         
@@ -545,6 +545,7 @@ struct NutritionTabView: View {
                                 selectedMacroFocus: $selectedMacroFocus,
                                 calorieGoal: $calorieGoal,
                                 maintenanceCalories: maintenanceCalories,
+                                activityLevelName: ActivityLevelOption(rawValue: account.activityLevel ?? ActivityLevelOption.moderatelyActive.rawValue)?.displayName ?? ActivityLevelOption.moderatelyActive.displayName,
                                 tint: accentOverride ?? .accentColor,
                                 onDone: { showCalorieGoalSheet = false }
                             )
@@ -1057,31 +1058,28 @@ private extension NutritionTabView {
         }
     }
 
-    private func deleteMealType(_ mealType: MealType) {
+    private func deleteMealEntry(_ entry: MealIntakeEntry) {
         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-        let removedEntries = day.mealIntakes.filter { $0.mealType == mealType }
-        guard !removedEntries.isEmpty else { return }
+        guard let removed = day.mealIntakes.first(where: { $0.id == entry.id }) else { return }
 
-        // Remove the grouped meal entries
-        day.mealIntakes.removeAll { $0.mealType == mealType }
+        // Remove only the selected meal intake
+        day.mealIntakes.removeAll { $0.id == entry.id }
 
-        // Subtract calories that were contributed by this meal group
-        let removedCalories = removedEntries.reduce(0) { $0 + $1.calories }
-        day.caloriesConsumed = max(0, day.caloriesConsumed - removedCalories)
-        consumedCalories = day.caloriesConsumed
-
-        // Subtract macro amounts contributed by this meal group
-        var macroDeltas: [String: Double] = [:]
-        for entry in removedEntries {
-            for macro in entry.macros {
-                macroDeltas[macro.trackedMacroId, default: 0] += macro.amount
-            }
+        // Subtract calories contributed by this item
+        if removed.calories != 0 {
+            day.caloriesConsumed = max(0, day.caloriesConsumed - removed.calories)
+            consumedCalories = day.caloriesConsumed
         }
 
-        for idx in day.macroConsumptions.indices {
-            let id = day.macroConsumptions[idx].trackedMacroId
-            if let delta = macroDeltas[id], delta != 0 {
-                day.macroConsumptions[idx].consumed = max(0, day.macroConsumptions[idx].consumed - delta)
+        // Subtract macro amounts contributed by this item
+        if day.macroConsumptions.isEmpty {
+            day.ensureMacroConsumptions(for: trackedMacros)
+        }
+
+        for macro in removed.macros {
+            guard macro.amount != 0 else { continue }
+            if let idx = day.macroConsumptions.firstIndex(where: { $0.trackedMacroId == macro.trackedMacroId }) {
+                day.macroConsumptions[idx].consumed = max(0, day.macroConsumptions[idx].consumed - macro.amount)
             }
         }
         macroConsumptions = day.macroConsumptions
@@ -1089,12 +1087,12 @@ private extension NutritionTabView {
         do {
             try modelContext.save()
         } catch {
-            print("NutritionTabView: failed to save Day after deleting meal group: \(error)")
+            print("NutritionTabView: failed to save Day after deleting meal entry: \(error)")
         }
 
         dayFirestoreService.saveDay(day) { success in
             if !success {
-                print("NutritionTabView: failed to sync meal group deletion to Firestore")
+                print("NutritionTabView: failed to sync meal entry deletion to Firestore")
             }
             NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
         }
@@ -1358,9 +1356,16 @@ struct CalorieSummary: View {
                 Spacer()
                 Button(action: onAdjustConsumed) {
                     VStack(spacing: 2) {
-                        Text("Consumed")
+                        HStack {
+                          Text("Consumed")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                          Image(systemName: "plus.circle.dashed")
+                            .symbolVariant(.none)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .offset(x: -2)
+                        }
                         Text("\(caloriesConsumed)")
                             .font(.largeTitle)
                             .fontWeight(.semibold)
@@ -1973,6 +1978,7 @@ private struct CalorieGoalEditorSheet: View {
     @Binding var selectedMacroFocus: MacroFocusOption?
     @Binding var calorieGoal: Int
     var maintenanceCalories: Int
+    var activityLevelName: String
     var tint: Color
     var onDone: () -> Void
 
@@ -2029,11 +2035,11 @@ private struct CalorieGoalEditorSheet: View {
                             Text("Recommended for \(focus.displayName)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("\(maintenanceCalories) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentPercentText) = \(recommendation.value) cal")
+                            Text("\(maintenanceCalories) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentCaloriesText) = \(recommendation.value) cal")
                                 .font(.body)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(tint)
-                            Text("Based on your maintenance of \(maintenanceCalories) cal. Adjust manually if you need a custom target.")
+                            Text("Based on your maintenance of \(maintenanceCalories) cal and \(activityLevelName) activity level. Adjust manually if you need a custom target.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -2048,7 +2054,7 @@ private struct CalorieGoalEditorSheet: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier to reach this calorie target.")
+                        Text("Maintenance uses the Mifflin-St Jeor equation and your activity level, then applies the selected macro focus offset to reach this calorie target.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -2134,44 +2140,44 @@ private struct CalorieGoalEditorSheet: View {
 enum CalorieGoalPlanner {
     struct Recommendation {
         let value: Int
-        let adjustmentPercent: Double
+        let adjustmentCalories: Int
 
         var adjustmentSymbol: String {
-            adjustmentPercent >= 0 ? "+" : "-"
+            adjustmentCalories >= 0 ? "+" : "-"
         }
 
-        var adjustmentPercentText: String {
-            let absolutePercent = abs(adjustmentPercent * 100)
-            let formatted = absolutePercent.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", absolutePercent) : String(format: "%.1f", absolutePercent)
-            return "\(formatted)%"
+        var adjustmentCaloriesText: String {
+            "\(abs(adjustmentCalories)) cal"
         }
     }
 
     static func recommendation(for focus: MacroFocusOption, maintenanceCalories: Int) -> Recommendation {
         guard maintenanceCalories > 0 else {
-            return Recommendation(value: 0, adjustmentPercent: 0)
+            return Recommendation(value: 0, adjustmentCalories: 0)
         }
 
-        let adjustment = adjustmentPercent(for: focus)
         let baseline = Double(maintenanceCalories)
-        let adjusted = baseline * (1 + adjustment)
+        let adjustment = Double(adjustmentCalories(for: focus))
+        let adjusted = baseline + adjustment
         let clamped = min(max(adjusted, 1200), 4500)
         let rounded = Int(clamped.rounded())
-        return Recommendation(value: rounded, adjustmentPercent: adjustment)
+        return Recommendation(value: rounded, adjustmentCalories: Int(adjustment))
     }
 
     static func recommendedCalories(for focus: MacroFocusOption, maintenanceCalories: Int) -> Int {
         recommendation(for: focus, maintenanceCalories: maintenanceCalories).value
     }
 
-    private static func adjustmentPercent(for focus: MacroFocusOption) -> Double {
+    private static func adjustmentCalories(for focus: MacroFocusOption) -> Int {
         switch focus {
-        case .highProtein:
-            return 0.05
+        case .leanCutting:
+            return -500
+        case .lowCarb:
+            return -500
         case .balanced:
             return 0
-        case .lowCarb:
-            return -0.1
+        case .leanBulking:
+            return 350
         case .custom:
             return 0
         }
@@ -2241,6 +2247,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
     case sodium
     case potassium
     case sugar
+    case cholesterol
 
     var id: String { rawValue }
 
@@ -2254,6 +2261,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .sodium: return "Sodium"
         case .potassium: return "Potassium"
         case .sugar: return "Sugar"
+        case .cholesterol: return "Cholesterol"
         }
     }
 
@@ -2267,6 +2275,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .sodium: return "1.8g"
         case .potassium: return "3.1g"
         case .sugar: return "35g"
+        case .cholesterol: return "180mg"
         }
     }
 
@@ -2280,6 +2289,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .sodium: return "2.3g"
         case .potassium: return "4.7g"
         case .sugar: return "50g"
+        case .cholesterol: return "300mg"
         }
     }
 
@@ -2293,19 +2303,21 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .sodium: return 0.78
         case .potassium: return 0.66
         case .sugar: return 0.7
+        case .cholesterol: return 0.6
         }
     }
 
     var color: Color {
         switch self {
-        case .protein: return .red
-        case .carbs: return Color(.systemTeal)
-        case .fats: return .orange
-        case .fibre: return .green
-        case .water: return .cyan
-        case .sodium: return .pink
-        case .potassium: return Color(.systemPurple)
-        case .sugar: return .yellow
+            case .protein: return Color(hex: "#D84A4A") ?? .red
+            case .carbs: return Color(hex: "#E6C84F") ?? .yellow
+            case .fats: return Color(hex: "#E39A3B") ?? .orange
+            case .fibre: return Color(hex: "#4CAF6A") ?? .green
+            case .water: return Color(hex: "#4A7BD0") ?? .blue
+            case .sodium: return Color(hex: "#4FB6C6") ?? .cyan
+            case .potassium: return Color(hex: "#7A5FD1") ?? .purple
+            case .sugar: return Color(hex: "#C85FA8") ?? .pink
+            case .cholesterol: return Color(hex: "#2C2C2E") ?? .black
         }
     }
 }
@@ -3489,7 +3501,7 @@ struct DailyMealLogSection: View {
     var currentConsumedCalories: Int
     var currentCalorieGoal: Int
     var currentMacroConsumptions: [MacroConsumption]
-    var onDeleteMealType: (MealType) -> Void
+    var onDeleteMealEntry: (MealIntakeEntry) -> Void
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
     @State private var isLoadingMeals = false
@@ -3515,7 +3527,7 @@ struct DailyMealLogSection: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 16) {
-                    if isLoadingMeals && displayedMeals.isEmpty {
+                    if isLoadingMeals && mealGroups.isEmpty {
                         HStack(spacing: 10) {
                             ProgressView().tint(tint)
                             Text("Syncing meals for this day...")
@@ -3523,7 +3535,7 @@ struct DailyMealLogSection: View {
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if displayedMeals.isEmpty {
+                    } else if mealGroups.isEmpty {
                         Text("No meals logged yet. Tap \"Log Intake\" to add what you ate.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -3531,46 +3543,65 @@ struct DailyMealLogSection: View {
                     } else {
                         // Use a non-scrolling List so swipe actions are available on iOS 16+.
                         let rowHeight: CGFloat = 76
-                        let listHeight = CGFloat(displayedMeals.count) * rowHeight
+                        let headerHeight: CGFloat = 32
+                        let totalRows = mealGroups.reduce(0) { $0 + $1.entries.count }
+                        let listHeight = CGFloat(totalRows) * rowHeight + CGFloat(mealGroups.count) * headerHeight
 
                         List {
-                            ForEach(displayedMeals) { meal in
-                                HStack(alignment: .top, spacing: 14) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(tint.opacity(0.12))
-                                            .frame(width: 42, height: 42)
-                                        Image(systemName: meal.iconName)
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(tint)
-                                    }
+                            ForEach(mealGroups) { group in
+                                Section {
+                                    ForEach(group.entries) { entry in
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack(alignment: .firstTextBaseline) {
+                                                Text(itemTitle(for: entry))
+                                                    .font(.subheadline.weight(.semibold))
+                                                Spacer()
+                                                if !entry.quantityPerServing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                                    Text(entry.quantityPerServing)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
 
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack(alignment: .firstTextBaseline) {
-                                            Text(meal.title)
-                                                .font(.subheadline.weight(.semibold))
-                                            Spacer()
+                                                if entry.calories > 0 {
+                                                    Text("\(entry.calories) cal")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                            }
+                                            Text(itemDetail(for: entry))
+                                                .font(.footnote)
+                                                .foregroundStyle(Color.primary.opacity(0.85))
                                         }
-                                        Text(meal.itemsSummary)
-                                            .font(.footnote)
-                                            .foregroundStyle(Color.primary.opacity(0.85))
+                                        .padding(.vertical, 4)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button(role: .destructive) {
+                                                mealEntries.removeAll { $0.id == entry.id }
+                                                onDeleteMealEntry(entry)
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
                                     }
-                                }
-                                .padding(.vertical, 4)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        onDeleteMealType(meal.mealType)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
+                                } header: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: iconName(for: group.mealType))
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(tint)
+                                        Text(group.mealType.displayName)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
                                     }
+                                    .padding(.leading, 4)
                                 }
+                                .textCase(nil)
                             }
                         }
                         .listStyle(.plain)
                         .scrollDisabled(true)
                         .frame(height: max(listHeight, rowHeight))
+                        .padding(.top, -8)
                     }
                 }
             }
@@ -3639,20 +3670,22 @@ struct DailyMealLogSection: View {
         }
     }
 
-    private var displayedMeals: [MealLogEntry] {
+    private var mealGroups: [MealGroup] {
         let grouped = Dictionary(grouping: mealEntries) { $0.mealType }
         return orderedMealTypes.compactMap { mealType in
             guard let entries = grouped[mealType], !entries.isEmpty else { return nil }
-            let items = entries
-                .sorted { $0.itemName.localizedCaseInsensitiveCompare($1.itemName) == .orderedAscending }
-                .map { mealSummary(for: $0) }
-            return MealLogEntry(
-                id: mealType.rawValue,
-                title: mealType.displayName,
-                items: items,
-                iconName: iconName(for: mealType),
-                mealType: mealType
-            )
+
+            let sorted = entries.sorted { lhs, rhs in
+                let lhsName = lhs.itemName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rhsName = rhs.itemName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if lhsName == rhsName { return lhs.id < rhs.id }
+                if lhsName.isEmpty { return false }
+                if rhsName.isEmpty { return true }
+                return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
+            }
+
+            return MealGroup(mealType: mealType, entries: sorted)
         }
     }
 
@@ -3673,19 +3706,13 @@ struct DailyMealLogSection: View {
         }
     }
 
-    private func mealSummary(for entry: MealIntakeEntry) -> String {
+    private func itemTitle(for entry: MealIntakeEntry) -> String {
+        let trimmed = entry.itemName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? entry.mealType.displayName : trimmed
+    }
+
+    private func itemDetail(for entry: MealIntakeEntry) -> String {
         var parts: [String] = []
-        let name = entry.itemName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !name.isEmpty {
-            parts.append(name)
-        }
-        let quantity = entry.quantityPerServing.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !quantity.isEmpty {
-            parts.append("\(quantity) g")
-        }
-        if entry.calories > 0 {
-            parts.append("\(entry.calories) cal")
-        }
         let macroText = macroSummary(for: entry)
         if !macroText.isEmpty {
             parts.append(macroText)
@@ -4148,24 +4175,11 @@ extension View {
     }
 }
 
-private struct MealLogEntry: Identifiable {
-    let id: String
-    let title: String
-    let items: [String]
-    let iconName: String
+private struct MealGroup: Identifiable {
     let mealType: MealType
+    let entries: [MealIntakeEntry]
 
-    init(id: String = UUID().uuidString, title: String, items: [String], iconName: String, mealType: MealType) {
-        self.id = id
-        self.title = title
-        self.items = items
-        self.iconName = iconName
-        self.mealType = mealType
-    }
-
-    var itemsSummary: String {
-        items.joined(separator: ", ")
-    }
+    var id: String { mealType.rawValue }
 }
 
 struct FastingTimerCard: View {

@@ -32,6 +32,24 @@ struct MacroCalculator {
             default: return .athlete
             }
         }
+
+        static func fromAccountActivityLevel(_ raw: String?) -> ActivityLevel? {
+            guard let raw else { return nil }
+            switch raw {
+            case ActivityLevelOption.sedentary.rawValue:
+                return .sedentary
+            case ActivityLevelOption.lightlyActive.rawValue:
+                return .light
+            case ActivityLevelOption.moderatelyActive.rawValue:
+                return .moderate
+            case ActivityLevelOption.veryActive.rawValue:
+                return .high
+            case ActivityLevelOption.extraActive.rawValue:
+                return .athlete
+            default:
+                return nil
+            }
+        }
     }
 
     struct Input {
@@ -169,32 +187,36 @@ struct MacroCalculator {
     }
 
     private enum MacroSplitStrategy {
-        case highProtein
+        case leanCutting
         case balanced
         case lowCarb
+        case leanBulking
 
         var proteinPerKg: Double {
             switch self {
-            case .highProtein: return 2.0
+            case .leanCutting: return 2.0
             case .balanced: return 1.8
             case .lowCarb: return 2.2
+            case .leanBulking: return 1.9
             }
         }
 
         var fatPerKg: Double {
             switch self {
-            case .highProtein: return 0.8
+            case .leanCutting: return 0.8
             case .balanced: return 0.9
             case .lowCarb: return 1.0
+            case .leanBulking: return 1.0
             }
         }
     }
 
     private static func macroSplitStrategy(from focus: MacroFocusOption) -> MacroSplitStrategy? {
         switch focus {
-        case .highProtein: return .highProtein
-        case .balanced: return .balanced
+        case .leanCutting: return .leanCutting
         case .lowCarb: return .lowCarb
+        case .balanced: return .balanced
+        case .leanBulking: return .leanBulking
         case .custom: return nil
         }
     }
@@ -263,6 +285,7 @@ extension MacroCalculator {
         heightInches: String,
         weightValue: String,
         workoutDays: Int,
+        activityLevelRaw: String? = nil,
         referenceDate: Date = Date()
     ) -> Int? {
         guard let genderOption = genderOption,
@@ -286,7 +309,7 @@ extension MacroCalculator {
             bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears - 161
         }
 
-        let activityLevel = ActivityLevel.fromWorkoutDays(workoutDays)
+        let activityLevel = ActivityLevel.fromAccountActivityLevel(activityLevelRaw) ?? ActivityLevel.fromWorkoutDays(workoutDays)
         let tdee = bmr * activityLevel.multiplier
         guard tdee.isFinite else { return nil }
         return Int(round(tdee))

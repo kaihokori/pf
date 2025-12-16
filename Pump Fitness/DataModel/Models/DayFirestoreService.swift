@@ -48,6 +48,10 @@ class DayFirestoreService {
         return ids
     }
 
+    private func encodeDailyTaskCompletions(_ completions: [DailyTaskCompletion]) -> [[String: Any]] {
+        completions.map { $0.asDictionary }
+    }
+
 
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
@@ -62,6 +66,10 @@ class DayFirestoreService {
         MealIntakeEntry(dictionary: raw)
     }
 
+    private func decodeDailyTaskCompletion(_ raw: [String: Any]) -> DailyTaskCompletion? {
+        DailyTaskCompletion(dictionary: raw)
+    }
+
     // Determine whether a Day instance contains any non-default data that should be uploaded.
     private func dayHasMeaningfulData(_ day: Day) -> Bool {
         if day.caloriesConsumed != 0 { return true }
@@ -73,6 +81,7 @@ class DayFirestoreService {
         if day.distanceTravelled != 0 { return true }
         if day.macroConsumptions.contains(where: { $0.consumed != 0 }) { return true }
         if !day.mealIntakes.isEmpty { return true }
+        if !day.dailyTaskCompletions.isEmpty { return true }
         return false
     }
 
@@ -120,6 +129,7 @@ class DayFirestoreService {
                 let takenSupplementsRemote = data["takenSupplements"] as? [String]
                 let completedMealsRemote = data["completedMeals"] as? [String]
                 let mealIntakesRemote = (data["mealIntakes"] as? [[String: Any]] ?? []).compactMap { self.decodeMealIntake($0) }
+                let dailyTaskCompletionsRemote = (data["dailyTaskCompletions"] as? [[String: Any]] ?? []).compactMap { self.decodeDailyTaskCompletion($0) }
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
                     // Merge remote values into local without wiping newer local data.
@@ -160,6 +170,9 @@ class DayFirestoreService {
 
                     let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
                     day.mealIntakes = mergedIntakes
+
+                    let mergedCompletions = self.mergeDailyTaskCompletions(local: day.dailyTaskCompletions, remote: dailyTaskCompletionsRemote)
+                    day.dailyTaskCompletions = mergedCompletions
 
                     // Recalculate aggregates from merged meal intakes so we don't lose entries when syncing.
                     let aggregatedCalories = mergedIntakes.reduce(0) { $0 + $1.calories }
@@ -217,7 +230,8 @@ class DayFirestoreService {
                         mealIntakes: mealIntakesRemote,
                         caloriesBurned: caloriesBurnedRemote ?? 0,
                         stepsTaken: stepsTakenRemote ?? 0,
-                        distanceTravelled: distanceRemote ?? 0
+                        distanceTravelled: distanceRemote ?? 0,
+                        dailyTaskCompletions: dailyTaskCompletionsRemote
                     )
                     print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
@@ -327,6 +341,9 @@ class DayFirestoreService {
         if !day.mealIntakes.isEmpty {
             data["mealIntakes"] = encodeMealIntakes(day.mealIntakes)
         }
+        if !day.dailyTaskCompletions.isEmpty {
+            data["dailyTaskCompletions"] = encodeDailyTaskCompletions(day.dailyTaskCompletions)
+        }
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
             let path = "accounts/\(uid)/days/\(key)"
@@ -409,6 +426,22 @@ class DayFirestoreService {
         }
 
         return merged
+    }
+
+    private func mergeDailyTaskCompletions(local: [DailyTaskCompletion], remote: [DailyTaskCompletion]) -> [DailyTaskCompletion] {
+        if remote.isEmpty { return local }
+
+        var mergedById: [String: DailyTaskCompletion] = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
+
+        for remoteItem in remote {
+            if let existing = mergedById[remoteItem.id] {
+                mergedById[remoteItem.id] = DailyTaskCompletion(id: remoteItem.id, isCompleted: existing.isCompleted || remoteItem.isCompleted)
+            } else {
+                mergedById[remoteItem.id] = remoteItem
+            }
+        }
+
+        return Array(mergedById.values)
     }
 
     /// Update only specific fields of a Day document in Firestore. This avoids

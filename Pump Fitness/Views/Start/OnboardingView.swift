@@ -422,7 +422,7 @@ private struct CalorieTargetStepView: View {
                     Text("Recommended for \(focus.displayName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(maintenance) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentPercentText) = \(recommendation.value) cal")
+                    Text("\(maintenance) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentCaloriesText) = \(recommendation.value) cal")
                         .font(.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(Color.accentColor)
@@ -978,30 +978,37 @@ enum GoalOption: String, CaseIterable, Identifiable {
 }
 
 enum MacroFocusOption: String, CaseIterable, Identifiable {
-    case highProtein
-    case balanced
+    case leanCutting
     case lowCarb
+    case balanced
+    case leanBulking
     case custom
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .highProtein: return "High-Protein"
+        case .leanCutting: return "Lean Cutting"
+        case .lowCarb: return "Low Carb"
         case .balanced: return "Balanced"
-        case .lowCarb: return "Low-Carb"
+        case .leanBulking: return "Lean Bulking"
         case .custom: return "Custom"
         }
     }
 
     init?(rawValue: String) {
-        if rawValue == "other" {
+        let normalized = rawValue
+        switch normalized {
+        case "other":
             self = .custom
-            return
-        }
-        guard let match = MacroFocusOption.allCases.first(where: { $0.rawValue == rawValue }) else {
+        case "highProtein":
+            // Backwards compatibility for stored values prior to the Lean presets rollout
+            self = .leanBulking
+        case let value where MacroFocusOption.allCases.contains(where: { $0.rawValue == value }):
+            // Directly select the matching case without recursion
+            self = MacroFocusOption.allCases.first { $0.rawValue == value } ?? .custom
+        default:
             return nil
         }
-        self = match
     }
 }
 

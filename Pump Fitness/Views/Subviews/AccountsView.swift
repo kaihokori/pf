@@ -63,6 +63,7 @@ struct AccountsView: View {
             viewModel.draft.heightValue = acc.height != nil ? String(format: "%.0f", acc.height ?? 0) : ""
             viewModel.draft.weightValue = acc.weight != nil ? String(format: "%.0f", acc.weight ?? 0) : ""
             	viewModel.draft.maintenanceCalories = acc.maintenanceCalories > 0 ? String(acc.maintenanceCalories) : ""
+            	viewModel.draft.activityLevel = ActivityLevelOption(rawValue: acc.activityLevel ?? ActivityLevelOption.moderatelyActive.rawValue) ?? .moderatelyActive
             // Calculate imperial height if needed
             if viewModel.draft.unitSystem == .imperial, let cm = Double(viewModel.draft.heightValue), cm > 0 {
                 let totalInches = cm / 2.54
@@ -1115,7 +1116,8 @@ final class AccountsViewModel: ObservableObject {
             heightFeet: "5",
             heightInches: "7.7",
             weightValue: "67",
-            maintenanceCalories: ""
+            maintenanceCalories: "",
+            activityLevel: ActivityLevelOption.moderatelyActive
         )
         self.profile = initialProfile
         self.draft = initialProfile
@@ -1167,7 +1169,7 @@ final class AccountsViewModel: ObservableObject {
         }
         let uid = user.uid
         // Build an Account object for callers that may want to persist to Firestore.
-        _ = Account(
+            _ = Account(
             id: uid,
             profileImage: draft.avatarImageData,
             profileAvatar: String(describing: draft.avatarColor.rawValue),
@@ -1179,6 +1181,7 @@ final class AccountsViewModel: ObservableObject {
             maintenanceCalories: Int(draft.maintenanceCalories) ?? 0,
             theme: draft.appTheme.rawValue,
             unitSystem: draft.unitSystem.rawValue,
+            activityLevel: draft.activityLevel.rawValue,
             startWeekOn: draft.weekStart.rawValue
         )
     }
@@ -1208,6 +1211,7 @@ final class AccountsViewModel: ObservableObject {
             maintenanceCalories: Int(draft.maintenanceCalories) ?? 0,
             theme: draft.appTheme.rawValue,
             unitSystem: draft.unitSystem.rawValue,
+            activityLevel: draft.activityLevel.rawValue,
             startWeekOn: draft.weekStart.rawValue
         )
         return account
@@ -1351,7 +1355,8 @@ final class AccountsViewModel: ObservableObject {
             rmr = 10.0 * weightKg + 6.25 * heightCm - 5.0 * Double(age) - 161.0
         }
 
-        let tdee = rmr * 1.55
+        let multiplier = draft.activityLevel.tdeeMultiplier
+        let tdee = rmr * multiplier
         let newValue = String(Int(tdee.rounded()))
 
         if force {
@@ -1487,6 +1492,7 @@ struct AccountProfile: Equatable {
     var heightInches: String
     var weightValue: String
     var maintenanceCalories: String
+    var activityLevel: ActivityLevelOption
 }
 
 enum WeekStartOption: String, CaseIterable, Identifiable {

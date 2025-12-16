@@ -666,7 +666,34 @@ private extension RootView {
                 local.weight = fetched.weight
                 local.theme = fetched.theme
                 local.unitSystem = fetched.unitSystem
-                local.activityLevel = fetched.activityLevel
+                // Only overwrite activityLevel if the fetched value is present
+                if let fetchedActivity = fetched.activityLevel, !fetchedActivity.isEmpty {
+                    let previousActivity = local.activityLevel
+                    local.activityLevel = fetchedActivity
+                    // If the activity level changed on the server, attempt to recompute maintenance
+                    if previousActivity != fetchedActivity {
+                    if let genderRaw = fetched.gender,
+                       let genderOption = GenderOption(rawValue: genderRaw),
+                       genderOption != .preferNotSay,
+                       let dob = fetched.dateOfBirth,
+                       let height = fetched.height,
+                       let weight = fetched.weight {
+                        if let recomputed = MacroCalculator.estimateMaintenanceCalories(
+                            genderOption: genderOption,
+                            birthDate: dob,
+                            unitSystem: UnitSystem(rawValue: fetched.unitSystem ?? "metric") ?? .metric,
+                            heightValue: String(format: "%.0f", height),
+                            heightFeet: "",
+                            heightInches: "",
+                            weightValue: String(format: "%.0f", weight),
+                            workoutDays: 0,
+                                activityLevelRaw: fetched.activityLevel
+                        ) {
+                            local.maintenanceCalories = recomputed
+                        }
+                    }
+                    }
+                }
                 local.startWeekOn = fetched.startWeekOn
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings

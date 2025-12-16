@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 fileprivate struct HabitItem: Identifiable {
     let id = UUID()
@@ -141,9 +142,12 @@ struct RoutineTabView: View {
     @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
+    @State private var dailyTaskItems: [DailyTaskItem] = []
+    @State private var currentDay: Day?
 
     @State private var habitItems: [HabitItem] = [
         HabitItem(name: "Morning Stretch", weeklyProgress: [.tracked, .tracked, .notTracked, .tracked, .notTracked, .notTracked, .notTracked]),
@@ -154,6 +158,10 @@ struct RoutineTabView: View {
     @State private var showWeeklySleep: Bool = false
     @State private var weekStartsOnMonday: Bool = true
     @State private var weeklySleepEntries: [SleepDayEntry] = SleepDayEntry.sampleEntries()
+    @State private var showDailyTasksEditor: Bool = false
+
+    private let dayService = DayFirestoreService()
+    private let accountService = AccountFirestoreService()
 
     var body: some View {
         NavigationStack {
@@ -173,7 +181,7 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                    showDailyTasksEditor = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -188,7 +196,16 @@ struct RoutineTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
                         
-                        DailyTasksSection(accentColorOverride: accentOverride)
+                        DailyTasksSection(
+                            accentColorOverride: accentOverride,
+                            tasks: $dailyTaskItems,
+                            onToggle: { id, isCompleted in
+                                handleTaskToggle(id: id, isCompleted: isCompleted)
+                            },
+                            onRemove: { id in
+                                handleTaskRemove(id: id)
+                            }
+                        )
                         .padding(.bottom, -30)
                         
                         HStack {
@@ -421,16 +438,451 @@ struct RoutineTabView: View {
                     CalendarComponent(selectedDate: $selectedDate, showCalendar: $showCalendar)
                 }
             }
+            .sheet(isPresented: $showDailyTasksEditor) {
+                DailyTasksEditorView(tasks: $dailyTaskItems, onSave: applyTaskEditorChanges)
+            }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
             }
         }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
+        .onAppear(perform: loadDailyTasks)
+        .onChange(of: selectedDate) { _, _ in
+            loadDailyTasks()
+        }
+        .onChange(of: account.dailyTasks) { _, _ in
+            rebuildDailyTaskItems(using: currentDay)
+        }
     }
 }
 
 // MARK: - Habit Tracking Views
+
+private struct DailyTasksEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var tasks: [DailyTaskItem]
+    var onSave: ([DailyTaskItem]) -> Void
+    @State private var working: [DailyTaskItem] = []
+    @State private var newName: String = ""
+    @State private var newTimeDate: Date = Date()
+    @State private var hasLoaded: Bool = false
+    @State private var showColorPickerSheet: Bool = false
+    @State private var colorPickerTargetId: String?
+
+    private var presets: [DailyTaskItem] {
+        [
+            DailyTaskItem(name: "Wake Up", time: "07:00", colorHex: "#FF0000"),
+            DailyTaskItem(name: "Coffee", time: "08:00", colorHex: "#FF7F00"),
+            DailyTaskItem(name: "Stretch", time: "09:00", colorHex: "#7F00FF"),
+            DailyTaskItem(name: "Lunch", time: "12:30", colorHex: "#00FF00"),
+            DailyTaskItem(name: "Workout", time: "18:00", colorHex: "#FFFF00")
+        ]
+    }
+
+    private let maxTracked = 12
+    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Tracked tasks
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Tasks")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Button {
+                                            colorPickerTargetId = working[idx].id
+                                            showColorPickerSheet = true
+                                        } label: {
+                                            Circle()
+                                                .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor)))
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            TextField("Name", text: binding.name)
+                                                .font(.subheadline.weight(.semibold))
+
+                                            HStack(spacing: 8) {
+                                                // Time picker (hour and minute)
+                                                DatePicker("", selection: Binding<Date>(
+                                                    get: {
+                                                        parseTimeString(binding.time.wrappedValue)
+                                                    }, set: { newDate in
+                                                        binding.time.wrappedValue = formatTime(newDate)
+                                                    }
+                                                ), displayedComponents: .hourAndMinute)
+                                                .labelsHidden()
+                                                .datePickerStyle(.compact)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+
+                                                // Repeat toggle placed next to the time picker
+                                                Button(action: { binding.repeats.wrappedValue.toggle() }) {
+                                                    if binding.repeats.wrappedValue {
+                                                        Image(systemName: "lock")
+                                                            .foregroundStyle(Color.accentColor)
+                                                    } else {
+                                                        Image(systemName: "lock.open")
+                                                            .foregroundStyle(binding.repeats.wrappedValue ? Color.accentColor : .secondary)
+                                                    }
+                                                }
+                                                .buttonStyle(.plain)
+
+                                                Spacer()
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeTask(working[idx].id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                        }
+                    }
+
+                    // Upgrade CTA
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock unlimited tasks + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .glassEffect(in: .rect(cornerRadius: 12.0))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Quick Add
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill((Color(hex: preset.colorHex) ?? Color.accentColor).opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: preset.colorHex) ?? Color.accentColor)))
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.name)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text(preset.time)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                                }
+                            }
+                        }
+                    }
+
+                    // Custom composer
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Custom Task")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            TextField("Task name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            HStack(spacing: 12) {
+                                DatePicker("", selection: $newTimeDate, displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                                    .datePickerStyle(.compact)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                                Button(action: addCustomTask) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("Give it a name and time, then tap plus to add it to your dashboard. You can track up to \(maxTracked) tasks.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Daily Tasks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        donePressed()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = tasks.isEmpty ? DailyTaskItem.defaultTasks : tasks
+        hasLoaded = true
+    }
+
+    // MARK: - Time parsing/format helpers
+    private var timeFormatter: DateFormatter {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "HH:mm"
+        return df
+    }
+
+    private func parseTimeString(_ s: String) -> Date {
+        if let d = timeFormatter.date(from: s) {
+            return d
+        }
+        return Date()
+    }
+
+    private func formatTime(_ d: Date) -> String {
+        return timeFormatter.string(from: d)
+    }
+
+    private func togglePreset(_ preset: DailyTaskItem) {
+        if isPresetSelected(preset) {
+            working.removeAll { $0.name == preset.name }
+        } else if canAddMore {
+            var newTask = preset
+            newTask.colorHex = ""
+            working.append(newTask)
+        }
+    }
+
+    private func isPresetSelected(_ preset: DailyTaskItem) -> Bool {
+        return working.contains { $0.name == preset.name }
+    }
+
+    private func removeTask(_ id: String) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func addCustomTask() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let t = formatTime(newTimeDate)
+        let new = DailyTaskItem(name: trimmed, time: t, colorHex: "")
+        working.append(new)
+        newName = ""
+    }
+
+    private func applyColor(hex: String) {
+        guard let targetId = colorPickerTargetId, let idx = working.firstIndex(where: { $0.id == targetId }) else { return }
+        working[idx].colorHex = hex
+    }
+
+    private func donePressed() {
+        onSave(working)
+        dismiss()
+    }
+}
+
+// MARK: - Daily task persistence
+extension RoutineTabView {
+    private func loadDailyTasks() {
+        dayService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros) { day in
+            DispatchQueue.main.async {
+                let resolvedDay = day ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros)
+                currentDay = resolvedDay
+                pruneCompletions(for: resolvedDay)
+                rebuildDailyTaskItems(using: resolvedDay)
+            }
+        }
+    }
+
+    
+    private func rebuildDailyTaskItems(using day: Day?) {
+        let completions = day?.dailyTaskCompletions ?? []
+        let accent = accentOverride ?? .accentColor
+        let items = account.dailyTasks.compactMap { def -> DailyTaskItem? in
+            let completion = completions.first(where: { $0.id == def.id })
+            if !def.repeats && completion == nil {
+                return nil
+            }
+
+            let colorHex = def.colorHex.isEmpty ? accent.toHexString() : def.colorHex
+            return DailyTaskItem(
+                id: def.id,
+                name: def.name,
+                time: def.time,
+                colorHex: colorHex,
+                isCompleted: completion?.isCompleted ?? false,
+                repeats: def.repeats
+            )
+        }
+        .sorted { $0.time < $1.time }
+
+        dailyTaskItems = items
+    }
+
+    private func ensureCurrentDay() -> Day {
+        if let day = currentDay {
+            return day
+        }
+        let created = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros)
+        currentDay = created
+        return created
+    }
+
+    private func applyTaskEditorChanges(_ items: [DailyTaskItem]) {
+        let definitions = items.map { item in
+            DailyTaskDefinition(id: item.id, name: item.name, time: item.time, colorHex: item.colorHex, repeats: item.repeats)
+        }
+
+        account.dailyTasks = definitions
+        persistAccount()
+
+        let day = ensureCurrentDay()
+        let allowedIds = Set(definitions.map { $0.id })
+        var completions = day.dailyTaskCompletions.filter { allowedIds.contains($0.id) }
+
+        let nonRepeatingIds = definitions.filter { !$0.repeats }.map { $0.id }
+        for id in nonRepeatingIds where !completions.contains(where: { $0.id == id }) {
+            completions.append(DailyTaskCompletion(id: id, isCompleted: false))
+        }
+
+        day.dailyTaskCompletions = completions
+        persistDay(day)
+        rebuildDailyTaskItems(using: currentDay)
+    }
+
+    private func handleTaskToggle(id: String, isCompleted: Bool) {
+        let day = ensureCurrentDay()
+        if let idx = day.dailyTaskCompletions.firstIndex(where: { $0.id == id }) {
+            day.dailyTaskCompletions[idx].isCompleted = isCompleted
+        } else {
+            day.dailyTaskCompletions.append(DailyTaskCompletion(id: id, isCompleted: isCompleted))
+        }
+        persistDay(day)
+    }
+
+    private func handleTaskRemove(id: String) {
+        account.dailyTasks.removeAll { $0.id == id }
+        persistAccount()
+
+        if let day = currentDay {
+            day.dailyTaskCompletions.removeAll { $0.id == id }
+            persistDay(day)
+        }
+
+        dailyTaskItems.removeAll { $0.id == id }
+    }
+
+    private func pruneCompletions(for day: Day) {
+        let allowedIds = Set(account.dailyTasks.map { $0.id })
+        day.dailyTaskCompletions.removeAll { !allowedIds.contains($0.id) }
+    }
+
+    private func persistDay(_ day: Day) {
+        do {
+            try modelContext.save()
+        } catch {
+            print("RoutineTabView: failed to save Day locally: \(error)")
+        }
+
+        dayService.saveDay(day) { success in
+            if !success {
+                print("RoutineTabView: failed to sync Day to Firestore for date=\(day.date)")
+            }
+        }
+    }
+
+    private func persistAccount() {
+        do {
+            try modelContext.save()
+        } catch {
+            print("RoutineTabView: failed to save Account locally: \(error)")
+        }
+
+        accountService.saveAccount(account) { success in
+            if !success {
+                print("RoutineTabView: failed to sync Account daily tasks to Firestore")
+            }
+        }
+    }
+}
 
 private enum HabitDayStatus {
     case tracked

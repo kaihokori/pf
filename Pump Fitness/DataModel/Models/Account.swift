@@ -87,6 +87,41 @@ struct Supplement: Codable, Hashable, Identifiable {
     }
 }
 
+struct DailyTaskDefinition: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var time: String
+    var colorHex: String
+    var repeats: Bool
+
+    init(id: String = UUID().uuidString, name: String, time: String, colorHex: String = "#FF3B30", repeats: Bool = true) {
+        self.id = id
+        self.name = name
+        self.time = time
+        self.colorHex = colorHex
+        self.repeats = repeats
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let name = dictionary["name"] as? String else { return nil }
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let time = dictionary["time"] as? String ?? "00:00"
+        let colorHex = dictionary["colorHex"] as? String ?? "#FF3B30"
+        let repeats = dictionary["repeats"] as? Bool ?? true
+        self.init(id: id, name: name, time: time, colorHex: colorHex, repeats: repeats)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "name": name,
+            "time": time,
+            "colorHex": colorHex,
+            "repeats": repeats
+        ]
+    }
+}
+
 enum MealType: String, Codable, CaseIterable, Identifiable {
     case breakfast
     case lunch
@@ -275,6 +310,7 @@ class Account: ObservableObject {
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
     var supplements: [Supplement] = []
+    var dailyTasks: [DailyTaskDefinition] = []
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
 
@@ -300,6 +336,7 @@ class Account: ObservableObject {
         mealReminders: [MealReminder] = MealReminder.defaults,
         weeklyProgress: [WeeklyProgressRecord] = []
         ,supplements: [Supplement] = []
+        ,dailyTasks: [DailyTaskDefinition] = []
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -322,6 +359,7 @@ class Account: ObservableObject {
         self.mealReminders = mealReminders
         self.weeklyProgress = weeklyProgress
         self.supplements = supplements
+        self.dailyTasks = dailyTasks
         
     }
 }
@@ -359,5 +397,13 @@ extension Color {
         let gInt = Int(round(g * 255))
         let bInt = Int(round(b * 255))
         return String(format: "#%02X%02X%02X", rInt, gInt, bInt)
+    }
+
+    func toHexString(fallback: String = "#FF3B30") -> String {
+        return toHex() ?? fallback
+    }
+
+    func toHexString() -> String {
+        return toHexString(fallback: "#FF3B30")
     }
 }

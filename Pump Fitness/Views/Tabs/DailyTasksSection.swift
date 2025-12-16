@@ -6,19 +6,10 @@ private enum DailyTasksLayout {
 
 struct DailyTasksSection: View {
     var accentColorOverride: Color?
-    var initialTasks: [DailyTaskItem] = DailyTaskItem.defaultTasks
+    @Binding var tasks: [DailyTaskItem]
     var tileMinHeight: CGFloat = DailyTasksLayout.tileMinHeight
-
-    @State private var tasks: [DailyTaskItem]
-
-    
-
-    init(accentColorOverride: Color? = nil, initialTasks: [DailyTaskItem] = DailyTaskItem.defaultTasks, tileMinHeight: CGFloat = DailyTasksLayout.tileMinHeight) {
-        self.accentColorOverride = accentColorOverride
-        self.initialTasks = initialTasks
-        self.tileMinHeight = tileMinHeight
-        _tasks = State(initialValue: initialTasks)
-    }
+    var onToggle: (String, Bool) -> Void
+    var onRemove: (String) -> Void
 
     var body: some View {
 
@@ -47,8 +38,12 @@ struct DailyTasksSection: View {
                                     let scale = isCentered ? maxScale : minScale
 
                                     VStack(spacing: 4) {
-                                        DailyTaskCircle(item: task) {
+                                        DailyTaskCircle(item: task, isCentered: isCentered) {
                                             toggleTask(withId: task.id)
+                                        } onCenter: {
+                                            withAnimation(.spring()) {
+                                                proxy.scrollTo(task.id, anchor: .center)
+                                            }
                                         } onRemove: {
                                             removeTask(withId: task.id)
                                         }
@@ -96,13 +91,15 @@ struct DailyTasksSection: View {
         .padding(.top, 10)
     }
 
-    private func toggleTask(withId id: UUID) {
+    private func toggleTask(withId id: String) {
         guard let idx = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[idx].isCompleted.toggle()
+        onToggle(id, tasks[idx].isCompleted)
     }
 
-    private func removeTask(withId id: UUID) {
+    private func removeTask(withId id: String) {
         tasks.removeAll { $0.id == id }
+        onRemove(id)
     }
 
     
@@ -110,11 +107,19 @@ struct DailyTasksSection: View {
 
 private struct DailyTaskCircle: View {
     var item: DailyTaskItem
+    var isCentered: Bool
     var onToggle: () -> Void
+    var onCenter: () -> Void
     var onRemove: () -> Void
 
     var body: some View {
-        Button(action: onToggle) {
+        Button(action: {
+            if isCentered {
+                onToggle()
+            } else {
+                onCenter()
+            }
+        }) {
             VStack(spacing: 2) {
                 ZStack {
                     // base ring
@@ -154,27 +159,32 @@ private struct DailyTaskCircle: View {
     }
 }
 
-struct DailyTaskItem: Identifiable, Equatable {
-    let id: UUID
-    let name: String
-    let time: String
-    var color: Color
-    var isCompleted: Bool
 
-    init(id: UUID = UUID(), name: String, time: String, color: Color, isCompleted: Bool = false) {
+struct DailyTaskItem: Identifiable, Equatable {
+    let id: String
+    var name: String
+    var time: String
+    var colorHex: String
+    var isCompleted: Bool
+    var repeats: Bool
+
+    var color: Color { Color(hex: colorHex) ?? .accentColor }
+
+    init(id: String = UUID().uuidString, name: String, time: String, colorHex: String, isCompleted: Bool = false, repeats: Bool = true) {
         self.id = id
         self.name = name
         self.time = time
-        self.color = color
+        self.colorHex = colorHex
         self.isCompleted = isCompleted
+        self.repeats = repeats
     }
 
     static let defaultTasks: [DailyTaskItem] = [
-        DailyTaskItem(name: "Hookup", time: "2:00", color: .pink),
-        DailyTaskItem(name: "Morning Wood", time: "9:30", color: .green),
-        DailyTaskItem(name: "Jerk Off", time: "14:00", color: .purple),
-        DailyTaskItem(name: "Workout", time: "19:30", color: .orange),
-        DailyTaskItem(name: "Shower", time: "23:00", color: .blue)
+        DailyTaskItem(name: "Wake Up", time: "07:00", colorHex: "#D84A4A"),
+        DailyTaskItem(name: "Hydrate", time: "08:00", colorHex: "#4FB6C6"),
+        DailyTaskItem(name: "Stretch", time: "09:00", colorHex: "#7A5FD1"),
+        DailyTaskItem(name: "Workout", time: "18:00", colorHex: "#E39A3B"),
+        DailyTaskItem(name: "Wind Down", time: "22:00", colorHex: "#4CAF6A")
     ]
 }
 
@@ -182,8 +192,24 @@ struct DailyTaskItem: Identifiable, Equatable {
 #if DEBUG
 struct DailyTasksSection_Previews: PreviewProvider {
     static var previews: some View {
-        DailyTasksSection()
-            .previewLayout(.sizeThatFits)
+        StatefulPreviewWrapper(DailyTaskItem.defaultTasks) { binding in
+            DailyTasksSection(accentColorOverride: nil, tasks: binding, onToggle: { _, _ in }, onRemove: { _ in })
+                .previewLayout(.sizeThatFits)
+        }
+    }
+}
+
+struct StatefulPreviewWrapper<Value: MutableCollection & RandomAccessCollection & RangeReplaceableCollection>: View where Value: MutableCollection, Value: RangeReplaceableCollection {
+    @State var value: Value
+    var content: (Binding<Value>) -> any View
+
+    init(_ value: Value, content: @escaping (Binding<Value>) -> any View) {
+        _value = State(initialValue: value)
+        self.content = content
+    }
+
+    var body: some View {
+        AnyView(content($value))
     }
 }
 #endif

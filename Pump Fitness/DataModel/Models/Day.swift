@@ -124,6 +124,29 @@ struct MealIntakeEntry: Codable, Hashable, Identifiable {
     }
 }
 
+struct DailyTaskCompletion: Codable, Hashable, Identifiable {
+    var id: String
+    var isCompleted: Bool
+
+    init(id: String, isCompleted: Bool = false) {
+        self.id = id
+        self.isCompleted = isCompleted
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let id = dictionary["id"] as? String else { return nil }
+        let completed = dictionary["isCompleted"] as? Bool ?? false
+        self.init(id: id, isCompleted: completed)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "isCompleted": isCompleted
+        ]
+    }
+}
+
 @Model
 class Day {
     // normalized day id (optional string id like other models)
@@ -141,7 +164,7 @@ class Day {
     // the user's estimated maintenance calories for this day (RMR * activity)
     var maintenanceCalories: Int
 
-    // macro focus stored as rawValue (e.g. "highProtein", "balanced", "lowCarb", "custom")
+    // macro focus stored as rawValue (e.g. "leanCutting", "lowCarb", "balanced", "leanBulking", "custom")
     var macroFocusRaw: String?
 
     // per-macro consumption for this day (mirrors tracked macros from Account)
@@ -158,6 +181,9 @@ class Day {
 
     // logged meals/intakes for this day
     var mealIntakes: [MealIntakeEntry] = []
+
+    // per-task completion state for this day (by task id)
+    var dailyTaskCompletions: [DailyTaskCompletion] = []
 
     // activity metrics for this day
     var caloriesBurned: Double = 0
@@ -186,7 +212,8 @@ class Day {
         mealIntakes: [MealIntakeEntry] = [],
         caloriesBurned: Double = 0,
         stepsTaken: Double = 0,
-        distanceTravelled: Double = 0
+        distanceTravelled: Double = 0,
+        dailyTaskCompletions: [DailyTaskCompletion] = []
     ) {
         self.id = id
         // Normalize stored date to UTC start-of-day to match Firestore keys and syncing
@@ -205,6 +232,7 @@ class Day {
         self.caloriesBurned = caloriesBurned
         self.stepsTaken = stepsTaken
         self.distanceTravelled = distanceTravelled
+        self.dailyTaskCompletions = dailyTaskCompletions
     }
 
     /// Fetch an existing `Day` for the provided date or create/insert one if missing.
@@ -333,8 +361,14 @@ class Day {
     /// Adds missing macros with zero consumption and removes any stale ones.
     func ensureMacroConsumptions(for trackedMacros: [TrackedMacro]) {
         // Preserve consumed values when IDs change by matching on normalized names as a fallback.
-        let existingById = Dictionary(uniqueKeysWithValues: macroConsumptions.map { ($0.trackedMacroId, $0) })
-        let existingByName = Dictionary(uniqueKeysWithValues: macroConsumptions.map { ($0.name.lowercased(), $0) })
+        // Use reduce(into:) so duplicate keys won't crash; last-wins for duplicates.
+        let existingById: [String: MacroConsumption] = macroConsumptions.reduce(into: [:]) { acc, item in
+            acc[item.trackedMacroId] = item
+        }
+
+        let existingByName: [String: MacroConsumption] = macroConsumptions.reduce(into: [:]) { acc, item in
+            acc[item.name.lowercased()] = item
+        }
 
         var updated: [MacroConsumption] = []
 

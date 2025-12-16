@@ -16,34 +16,6 @@ struct GoalsSection: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Button(action: { /* TODO: present upgrade flow */ }) {
-                HStack(alignment: .center) {
-                    Image(systemName: "sparkles")
-                        .font(.title3)
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.trailing, 8)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Upgrade to Pro")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-
-                        Text("Unlock more goal slots + other benefits")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(12)
-                .surfaceCard(16)
-            }
-            .buttonStyle(.plain)
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
                     goalCard(title: "Today", systemImage: "sun.max.fill", bucket: .today)

@@ -371,6 +371,7 @@ struct RoutineTabView: View {
     @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
     @State private var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
+    @State private var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
     @State private var currentDay: Day?
 
     @State private var habitItems: [HabitItem] = [
@@ -387,6 +388,7 @@ struct RoutineTabView: View {
     @State private var showGoalsEditor: Bool = false
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
+    @State private var showExpenseCategoriesEditor: Bool = false
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -637,9 +639,9 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                
+                                showExpenseCategoriesEditor = true
                             } label: {
-                                Label("Add", systemImage: "plus")
+                                Label("Edit", systemImage: "pencil")
                                     .font(.callout)
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
@@ -652,7 +654,7 @@ struct RoutineTabView: View {
                         .padding(.top, 48)
                         .padding(.horizontal, 18)
 
-                        ExpenseTrackerSection(accentColorOverride: accentOverride)
+                        ExpenseTrackerSection(accentColorOverride: accentOverride, categories: expenseCategories)
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
@@ -681,6 +683,9 @@ struct RoutineTabView: View {
             }
             .sheet(isPresented: $showHabitsEditor) {
                 HabitsEditorView(habits: $habitItems, onSave: applyHabitsEditorChanges)
+            }
+            .sheet(isPresented: $showExpenseCategoriesEditor) {
+                ExpenseCategoriesEditorView(categories: $expenseCategories, onSave: applyExpenseCategoryChanges)
             }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
@@ -1812,6 +1817,105 @@ private struct GroceryListEditorView: View {
     }
 }
 
+private struct ExpenseCategoriesEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var categories: [ExpenseCategory]
+    var onSave: ([ExpenseCategory]) -> Void
+
+    @State private var working: [ExpenseCategory] = []
+    @State private var hasLoaded: Bool = false
+    @State private var showColorPickerSheet: Bool = false
+    @State private var colorPickerTargetId: Int?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Tracked Categories")
+                        .font(.subheadline.weight(.semibold))
+
+                    VStack(spacing: 12) {
+                        ForEach(Array(working.enumerated()), id: \.element.id) { idx, category in
+                            let binding = $working[idx]
+                            HStack(spacing: 12) {
+                                Button {
+                                    colorPickerTargetId = category.id
+                                    showColorPickerSheet = true
+                                } label: {
+                                    Circle()
+                                        .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.2))
+                                        .frame(width: 44, height: 44)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Category #\(category.id + 1)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+
+                                    TextField("Name", text: binding.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .textInputAutocapitalization(.words)
+                                }
+
+                                Spacer()
+                            }
+                            .padding()
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Categories")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        donePressed()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = categories.sorted { $0.id < $1.id }
+        hasLoaded = true
+    }
+
+    private func applyColor(hex: String) {
+        guard let targetId = colorPickerTargetId, let idx = working.firstIndex(where: { $0.id == targetId }) else { return }
+        working[idx].colorHex = hex
+    }
+
+    private func donePressed() {
+        onSave(working)
+        dismiss()
+    }
+}
+
 // MARK: - Daily task persistence
 extension RoutineTabView {
     private func applyGoalsEditorChanges(_ items: [GoalItem]) {
@@ -1820,6 +1924,24 @@ extension RoutineTabView {
 
     private func applyGroceryListChanges(_ items: [GroceryItem]) {
         groceryItems = Array(items.prefix(8))
+    }
+
+    private func applyExpenseCategoryChanges(_ items: [ExpenseCategory]) {
+        let defaults = ExpenseCategory.defaultCategories()
+        var normalized: [ExpenseCategory] = []
+
+        for idx in 0..<defaults.count {
+            if let incoming = items.first(where: { $0.id == idx }) {
+                let trimmedName = incoming.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedName = trimmedName.isEmpty ? defaults[idx].name : trimmedName
+                let resolvedColor = incoming.colorHex.isEmpty ? defaults[idx].colorHex : incoming.colorHex
+                normalized.append(ExpenseCategory(id: idx, name: resolvedName, colorHex: resolvedColor))
+            } else {
+                normalized.append(defaults[idx])
+            }
+        }
+
+        expenseCategories = normalized
     }
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {

@@ -976,7 +976,7 @@ private extension SportsTabView {
 
 // MARK: - Solo Play
 
-fileprivate struct SoloMetric: Identifiable, Equatable {
+fileprivate struct SoloMetric: Identifiable, Equatable, Hashable {
     let id = UUID()
     var name: String
 }
@@ -1249,7 +1249,7 @@ private struct SoloPlayMetricsEditorSheet: View {
 
 // MARK: - Team Play
 
-fileprivate struct TeamMetric: Identifiable, Equatable {
+fileprivate struct TeamMetric: Identifiable, Equatable, Hashable {
     let id = UUID()
     var name: String
 }

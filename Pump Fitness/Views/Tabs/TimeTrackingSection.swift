@@ -6,12 +6,16 @@ struct TimeTrackingConfig: Equatable, Codable {
     var stopwatchTargetMinutes: Int
     var timerName: String
     var timerDurationMinutes: Int
+    var stopwatchColorHex: String = "#E39A3B"
+    var timerColorHex: String = "#4FB6C6"
 
     static let defaultConfig = TimeTrackingConfig(
         stopwatchName: "Stopwatch",
         stopwatchTargetMinutes: 45,
         timerName: "Countdown",
-        timerDurationMinutes: 25
+        timerDurationMinutes: 25,
+        stopwatchColorHex: "#E39A3B",
+        timerColorHex: "#4FB6C6"
     )
 }
 
@@ -31,6 +35,8 @@ struct TimeTrackingSection: View {
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var tint: Color { accentColorOverride ?? .accentColor }
+    private var stopwatchTint: Color { Color(hex: config.stopwatchColorHex) ?? tint }
+    private var timerTint: Color { Color(hex: config.timerColorHex) ?? tint }
 
     private var stopwatchTargetSeconds: Double {
         max(1, Double(config.stopwatchTargetMinutes * 60))
@@ -71,7 +77,7 @@ struct TimeTrackingSection: View {
                     timeLabel: formatHMS(stopwatchElapsed),
                     nextLabel: stopwatchStart.map { "Started \(timeString(from: $0))" } ?? "Ready to start",
                     progress: stopwatchProgress,
-                    tint: tint,
+                    tint: stopwatchTint,
                     primaryButtonTitle: stopwatchStart == nil ? "Start" : "Pause",
                     primaryButtonAction: toggleStopwatch,
                     secondaryButtonTitle: "Reset",
@@ -86,7 +92,7 @@ struct TimeTrackingSection: View {
                     timeLabel: formatMMSS(timerRemaining),
                     nextLabel: timerIsRunning ? "Ends \(timeString(from: timerEndDate ?? now))" : "Duration \(config.timerDurationMinutes) min",
                     progress: timerProgress,
-                    tint: tint,
+                    tint: timerTint,
                     primaryButtonTitle: timerIsRunning ? "Stop" : "Start",
                     primaryButtonAction: toggleTimer,
                     secondaryButtonTitle: "Reset",
@@ -281,54 +287,51 @@ struct TimeTrackingEditorSheet: View {
 
     @State private var working = TimeTrackingConfig.defaultConfig
     @State private var hasLoaded = false
+    @State private var showColorPickerSheet = false
+    @State private var colorPickerTarget: ColorTarget?
 
     private let minMinutes = 1
     private let maxMinutes = 240
+
+    private enum ColorTarget { case stopwatch, timer }
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Stopwatch")
+                        Text("Tracked Timers")
                             .font(.subheadline.weight(.semibold))
 
-                        TextField("Name", text: $working.stopwatchName)
-                            .textInputAutocapitalization(.words)
-                            .padding()
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        VStack(spacing: 12) {
+                            TrackedTimerRow(
+                                title: "Stopwatch",
+                                name: $working.stopwatchName,
+                                hoursBinding: hourBinding(for: .stopwatch),
+                                minutesBinding: minuteBinding(for: .stopwatch),
+                                colorHex: working.stopwatchColorHex,
+                                onColorTap: {
+                                    colorPickerTarget = .stopwatch
+                                    showColorPickerSheet = true
+                                },
+                                minMinutes: minMinutes,
+                                maxMinutes: maxMinutes
+                            )
 
-                        Stepper(value: $working.stopwatchTargetMinutes, in: minMinutes...maxMinutes, step: 5) {
-                            HStack {
-                                Text("Target length")
-                                Spacer()
-                                Text("\(working.stopwatchTargetMinutes) min")
-                                    .foregroundStyle(.secondary)
-                            }
+                            TrackedTimerRow(
+                                title: "Timer",
+                                name: $working.timerName,
+                                hoursBinding: hourBinding(for: .timer),
+                                minutesBinding: minuteBinding(for: .timer),
+                                colorHex: working.timerColorHex,
+                                onColorTap: {
+                                    colorPickerTarget = .timer
+                                    showColorPickerSheet = true
+                                },
+                                minMinutes: minMinutes,
+                                maxMinutes: maxMinutes
+                            )
                         }
-                        .padding()
-                        .surfaceCard(16)
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Timer")
-                            .font(.subheadline.weight(.semibold))
-
-                        TextField("Name", text: $working.timerName)
-                            .textInputAutocapitalization(.words)
-                            .padding()
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-
-                        Stepper(value: $working.timerDurationMinutes, in: minMinutes...maxMinutes, step: 5) {
-                            HStack {
-                                Text("Duration")
-                                Spacer()
-                                Text("\(working.timerDurationMinutes) min")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding()
-                        .surfaceCard(16)
                     }
 
                     Text("Durations are clamped between \(minMinutes) and \(maxMinutes) minutes.")
@@ -357,6 +360,16 @@ struct TimeTrackingEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private func loadInitial() {
@@ -370,6 +383,123 @@ struct TimeTrackingEditorSheet: View {
         copy.stopwatchTargetMinutes = min(maxMinutes, max(minMinutes, copy.stopwatchTargetMinutes))
         copy.timerDurationMinutes = min(maxMinutes, max(minMinutes, copy.timerDurationMinutes))
         return copy
+    }
+
+    private func splitDuration(_ minutes: Int) -> (hours: Int, minutes: Int) {
+        let clamped = max(0, minutes)
+        return (clamped / 60, clamped % 60)
+    }
+
+    private func clampMinutes(_ minutes: Int) -> Int {
+        min(maxMinutes, max(minMinutes, minutes))
+    }
+
+    private func hourBinding(for target: ColorTarget) -> Binding<String> {
+        Binding {
+            let minutes = target == .stopwatch ? working.stopwatchTargetMinutes : working.timerDurationMinutes
+            let parts = splitDuration(minutes)
+            return String(parts.hours)
+        } set: { newValue in
+            let hours = max(0, Int(newValue) ?? 0)
+            let parts = target == .stopwatch ? splitDuration(working.stopwatchTargetMinutes) : splitDuration(working.timerDurationMinutes)
+            let total = clampMinutes(hours * 60 + parts.minutes)
+            if target == .stopwatch {
+                working.stopwatchTargetMinutes = total
+            } else {
+                working.timerDurationMinutes = total
+            }
+        }
+    }
+
+    private func minuteBinding(for target: ColorTarget) -> Binding<String> {
+        Binding {
+            let minutes = target == .stopwatch ? working.stopwatchTargetMinutes : working.timerDurationMinutes
+            let parts = splitDuration(minutes)
+            return String(parts.minutes)
+        } set: { newValue in
+            let minutes = max(0, min(59, Int(newValue) ?? 0))
+            let parts = target == .stopwatch ? splitDuration(working.stopwatchTargetMinutes) : splitDuration(working.timerDurationMinutes)
+            let total = clampMinutes(parts.hours * 60 + minutes)
+            if target == .stopwatch {
+                working.stopwatchTargetMinutes = total
+            } else {
+                working.timerDurationMinutes = total
+            }
+        }
+    }
+
+    private func applyColor(hex: String) {
+        switch colorPickerTarget {
+        case .stopwatch:
+            working.stopwatchColorHex = hex
+        case .timer:
+            working.timerColorHex = hex
+        case .none:
+            break
+        }
+    }
+}
+
+private struct TrackedTimerRow: View {
+    let title: String
+    @Binding var name: String
+    var hoursBinding: Binding<String>
+    var minutesBinding: Binding<String>
+    var colorHex: String
+    var onColorTap: () -> Void
+    let minMinutes: Int
+    let maxMinutes: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onColorTap) {
+                Circle()
+                    .fill((Color(hex: colorHex) ?? Color.accentColor).opacity(0.15))
+                    .frame(width: 44, height: 44)
+                    .overlay(Image(systemName: "clock").foregroundStyle((Color(hex: colorHex) ?? Color.accentColor)))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Name", text: $name)
+                    .font(.subheadline.weight(.semibold))
+                    .textInputAutocapitalization(.words)
+
+                HStack(spacing: 12) {
+                    HStack {
+                        TextField("Hours", text: hoursBinding)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.plain)
+                        Text("hrs")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .surfaceCard(16)
+                    .frame(maxWidth: .infinity)
+
+                    HStack {
+                        TextField("Minutes", text: minutesBinding)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.plain)
+                        Text("min")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .surfaceCard(16)
+                    .frame(maxWidth: .infinity)
+                }
+
+                Text("Clamped to \(minMinutes)-\(maxMinutes) minutes.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

@@ -365,6 +365,7 @@ struct RoutineTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("activityTimers.json") private var storedActivityTimersJSON: String = ""
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
@@ -390,6 +391,7 @@ struct RoutineTabView: View {
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
+    @State private var hasLoadedActivityTimers: Bool = false
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -462,6 +464,7 @@ struct RoutineTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
+                        
                         ActivityTimersSection(accentColorOverride: accentOverride, timers: activityTimers)
 
                         HStack {
@@ -694,7 +697,10 @@ struct RoutineTabView: View {
         }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
-        .onAppear(perform: loadDailyTasks)
+        .onAppear {
+            loadDailyTasks()
+            loadActivityTimersFromStorage()
+        }
         .onChange(of: selectedDate) { _, _ in
             loadDailyTasks()
         }
@@ -1946,7 +1952,9 @@ extension RoutineTabView {
     }
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {
-        activityTimers = Array(items.prefix(ActivityTimersEditorView.maxFreeTimers))
+        let trimmed = Array(items.prefix(ActivityTimersEditorView.maxFreeTimers))
+        activityTimers = trimmed
+        persistActivityTimers(trimmed)
     }
 
     private func applyHabitsEditorChanges(_ items: [HabitItem]) {
@@ -1961,6 +1969,24 @@ extension RoutineTabView {
                 pruneCompletions(for: resolvedDay)
                 rebuildDailyTaskItems(using: resolvedDay)
             }
+        }
+    }
+
+    private func loadActivityTimersFromStorage() {
+        guard !hasLoadedActivityTimers else { return }
+        defer { hasLoadedActivityTimers = true }
+        guard !storedActivityTimersJSON.isEmpty, let data = storedActivityTimersJSON.data(using: .utf8) else {
+            persistActivityTimers(activityTimers)
+            return
+        }
+        if let decoded = try? JSONDecoder().decode([ActivityTimerItem].self, from: data) {
+            activityTimers = decoded
+        }
+    }
+
+    private func persistActivityTimers(_ items: [ActivityTimerItem]) {
+        if let data = try? JSONEncoder().encode(items), let json = String(data: data, encoding: .utf8) {
+            storedActivityTimersJSON = json
         }
     }
 

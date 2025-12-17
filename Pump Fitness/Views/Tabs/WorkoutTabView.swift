@@ -1162,14 +1162,14 @@ private struct CoachingWorkoutProgressSection: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(CoachingWorkoutProgressButtonStyle(background: Color(.systemBackground)))
+                .buttonStyle(CoachingWorkoutProgressButtonStyle(background: .regularMaterial))
 
                 Button(action: { updateCurrentDay(with: .rest) }) {
                     Text("Rest")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(CoachingWorkoutProgressButtonStyle(background: Color(.systemBackground)))
+                .buttonStyle(CoachingWorkoutProgressButtonStyle(background: .regularMaterial))
             }
         }
         .padding(20)
@@ -1185,13 +1185,15 @@ private struct CoachingWorkoutProgressSection: View {
 }
 
 private struct CoachingWorkoutProgressButtonStyle: ButtonStyle {
-    let background: Color
+    let background: Material
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .glassEffect(in: .rect(cornerRadius: 12.0))
     }
 }
@@ -2114,21 +2116,21 @@ private struct WeightsTrackingSection: View {
                                     .textInputAutocapitalization(.words)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(minWidth: 0, maxWidth: .infinity)
 
                                 TextField("0", text: $exercise.weight)
                                     .keyboardType(.decimalPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 60)
 
                                 TextField("0", text: $exercise.sets)
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 40)
 
                                 Text("x")
@@ -2138,7 +2140,7 @@ private struct WeightsTrackingSection: View {
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 40)
 
                                 if part.isEditing {
@@ -2149,7 +2151,7 @@ private struct WeightsTrackingSection: View {
                                             .font(.callout)
                                             .padding(.horizontal, 12)
                                             .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
                                             .accessibilityLabel("Delete")
                                     }
                                     .buttonStyle(.plain)
@@ -2168,7 +2170,7 @@ private struct WeightsTrackingSection: View {
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity, alignment: .leading)

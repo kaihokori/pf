@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ActivityTimerItem: Identifiable, Equatable {
+struct ActivityTimerItem: Identifiable, Equatable, Codable {
     let id: String
     var name: String
     var startTime: Date

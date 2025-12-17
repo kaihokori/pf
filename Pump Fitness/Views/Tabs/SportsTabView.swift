@@ -15,10 +15,18 @@ struct SportsTabView: View {
     @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("timetracking.config") private var storedTimeTrackingConfigJSON: String = ""
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
+    @State private var showTimeTrackingEditor = false
+    @State private var timeTrackingConfig = TimeTrackingConfig.defaultConfig
     @StateObject private var weatherModel = WeatherViewModel()
+    @State private var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
+    @State private var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
+    @State private var showTeamMetricsEditor = false
+    @State private var showSoloMetricsEditor = false
+    @State private var hasLoadedTimeTrackingConfig = false
     // Track expanded state for each sport
     @State private var expandedSports: [Bool] = []
 
@@ -722,9 +730,9 @@ struct SportsTabView: View {
                                     .glassEffect(in: .rect(cornerRadius: 16.0))
                                     .padding(.horizontal, 18)
                             }
-                            
+
                             HStack {
-                                Text("Team Play Tracking")
+                                Text("Time Tracking")
                                     .font(.title3)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.primary)
@@ -732,7 +740,7 @@ struct SportsTabView: View {
                                 Spacer()
 
                                 Button {
-                                    //
+                                    showTimeTrackingEditor = true
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                         .font(.callout)
@@ -748,7 +756,38 @@ struct SportsTabView: View {
                             .padding(.top, 48)
                             .padding(.bottom, 8)
 
-                            TeamPlaySection(selectedDate: selectedDate)
+                            TimeTrackingSection(
+                                accentColorOverride: accentOverride,
+                                config: $timeTrackingConfig
+                            )
+                                .padding(.horizontal, 18)
+                            
+                            HStack {
+                                Text("Team Play Tracking")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                Button {
+                                    showTeamMetricsEditor = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 48)
+                            .padding(.bottom, 8)
+
+                            TeamPlaySection(selectedDate: selectedDate, metrics: $teamMetrics)
                                 .padding(.horizontal, 18)
 
                             HStack {
@@ -758,14 +797,26 @@ struct SportsTabView: View {
                                     .foregroundStyle(.primary)
 
                                 Spacer()
+
+                                Button {
+                                    showSoloMetricsEditor = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
                             .padding(.top, 48)
                             .padding(.bottom, 8)
 
-//                            SoloPlaySection(selectedDate: selectedDate)
-//                                .padding(.horizontal, 18)
+                           SoloPlaySection(selectedDate: selectedDate, metrics: $soloMetrics)
+                               .padding(.horizontal, 18)
 
                             HStack {
                                 Text("Sports Tracking")
@@ -793,7 +844,7 @@ struct SportsTabView: View {
                             .padding(.bottom, 8)
 
                             VStack(alignment: .leading, spacing: 0) {
-                                ForEach(Array(sports.enumerated()), id: \ .offset) { idx, sport in
+                                ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
                                     VStack(alignment: .leading, spacing: 10) {
                                         HStack {
                                             Spacer()
@@ -850,36 +901,6 @@ struct SportsTabView: View {
                                 }
                             }
                             .padding(.top, -12)
-
-                            Button(action: { /* TODO: present upgrade flow */ }) {
-                                HStack(alignment: .center) {
-                                    Image(systemName: "sparkles")
-                                            .font(.title3)
-                                            .foregroundStyle(accentOverride ?? .accentColor)
-                                        .padding(.trailing, 8)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Upgrade to Pro")
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-
-                                        Text("Unlock more sports trackers + other benefits")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.callout)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(12)
-                                .surfaceCard(16)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 8)
-                            .padding(.horizontal, 18)
                         }
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
@@ -900,11 +921,28 @@ struct SportsTabView: View {
                 AccountsView(account: $account)
             }
         }
+        .sheet(isPresented: $showTimeTrackingEditor) {
+            TimeTrackingEditorSheet(config: $timeTrackingConfig) { updated in
+                timeTrackingConfig = updated
+                persistTimeTrackingConfig(updated)
+            }
+        }
+        .sheet(isPresented: $showTeamMetricsEditor) {
+            TeamPlayMetricsEditorSheet(metrics: $teamMetrics) { updated in
+                teamMetrics = updated
+            }
+        }
+        .sheet(isPresented: $showSoloMetricsEditor) {
+            SoloPlayMetricsEditorSheet(metrics: $soloMetrics) { updated in
+                soloMetrics = updated
+            }
+        }
         .onAppear {
             // Ensure expandedSports matches the number of sports
             if expandedSports.count != sports.count {
                 expandedSports = Array(repeating: false, count: sports.count)
             }
+            loadTimeTrackingConfigFromStorage()
         }
         .task {
             await weatherModel.refresh(for: selectedDate)
@@ -915,22 +953,325 @@ struct SportsTabView: View {
     }
 }
 
+// MARK: - Time tracking persistence
+private extension SportsTabView {
+    func loadTimeTrackingConfigFromStorage() {
+        guard !hasLoadedTimeTrackingConfig else { return }
+        defer { hasLoadedTimeTrackingConfig = true }
+        guard !storedTimeTrackingConfigJSON.isEmpty, let data = storedTimeTrackingConfigJSON.data(using: .utf8) else {
+            persistTimeTrackingConfig(timeTrackingConfig)
+            return
+        }
+        if let decoded = try? JSONDecoder().decode(TimeTrackingConfig.self, from: data) {
+            timeTrackingConfig = decoded
+        }
+    }
+
+    func persistTimeTrackingConfig(_ config: TimeTrackingConfig) {
+        if let data = try? JSONEncoder().encode(config), let json = String(data: data, encoding: .utf8) {
+            storedTimeTrackingConfigJSON = json
+        }
+    }
+}
+
+// MARK: - Solo Play
+
+fileprivate struct SoloMetric: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+}
+
+fileprivate extension SoloMetric {
+    static var defaultMetrics: [SoloMetric] {
+        [
+            .init(name: "Distance"),
+            .init(name: "Laps"),
+            .init(name: "Speed"),
+            .init(name: "Rounds")
+        ]
+    }
+}
+
+fileprivate struct SoloPlaySection: View {
+    let selectedDate: Date
+
+    @Binding var metrics: [SoloMetric]
+
+    @State private var metricValues: [UUID: String] = [:]
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                ForEach(rows(for: metrics), id: \.self) { row in
+                    HStack(spacing: 12) {
+                        ForEach(row) { metric in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(metric.name)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+
+                                TextField(
+                                    metric.name,
+                                    text: valueBinding(for: metric),
+                                    prompt: Text("Enter value…").foregroundStyle(.secondary)
+                                )
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+
+                        if row.count == 1 {
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 18)
+        .padding(.horizontal, 18)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .onAppear(perform: syncValueStore)
+        .onChange(of: metrics) { _, _ in syncValueStore() }
+    }
+
+    private func valueBinding(for metric: SoloMetric) -> Binding<String> {
+        Binding(
+            get: { metricValues[metric.id] ?? "" },
+            set: { metricValues[metric.id] = $0 }
+        )
+    }
+
+    private func rows(for items: [SoloMetric]) -> [[SoloMetric]] {
+        stride(from: 0, to: items.count, by: 2).map { idx in
+            Array(items[idx..<min(idx + 2, items.count)])
+        }
+    }
+
+    private func syncValueStore() {
+        let validIds = Set(metrics.map { $0.id })
+        metricValues = metricValues.filter { validIds.contains($0.key) }
+        for metric in metrics where metricValues[metric.id] == nil {
+            metricValues[metric.id] = "0"
+        }
+    }
+}
+
+private struct SoloPlayMetricsEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var metrics: [SoloMetric]
+    var onSave: ([SoloMetric]) -> Void
+
+    @State private var working: [SoloMetric] = []
+    @State private var newName: String = ""
+    @State private var hasLoaded = false
+
+    private let presets: [String] = ["Distance", "Laps", "Speed", "Rounds"]
+    private let maxTracked = 6
+
+    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddCustom: Bool {
+        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Metrics")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "figure.climbing")
+                                                .foregroundStyle(Color.accentColor))
+
+                                        VStack {
+                                            TextField("Metric name", text: binding.name)
+                                                .font(.subheadline.weight(.semibold))
+
+                                            HStack {
+                                                Menu {
+                                                    Button("Top") { moveMetricToTop(idx) }
+                                                    Button("Up") { moveMetricUp(idx) }
+                                                    Button("Down") { moveMetricDown(idx) }
+                                                    Button("Bottom") { moveMetricToBottom(idx) }
+                                                } label: {
+                                                    Label("Reorder", systemImage: "arrow.up.arrow.down")
+                                                        .font(.footnote.weight(.semibold))
+                                                }
+
+                                                Spacer()
+
+                                                Button(role: .destructive) {
+                                                    removeMetric(binding.wrappedValue.id)
+                                                } label: {
+                                                    Image(systemName: "trash")
+                                                        .font(.footnote.weight(.semibold))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding()
+                                    .surfaceCard(16)
+                                }
+                            }
+                        }
+                    }
+
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Presets")
+                                .font(.subheadline.weight(.semibold))
+
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.self) { preset in
+                                    Button {
+                                        togglePreset(preset)
+                                    } label: {
+                                        Text(preset)
+                                            .font(.callout.weight(.semibold))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 12)
+                                            .glassEffect(in: .rect(cornerRadius: 12))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canAddMore)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Add Custom Metric")
+                            .font(.subheadline.weight(.semibold))
+
+                        HStack(spacing: 10) {
+                            TextField("Enter name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(14)
+
+                            Button(action: addCustomMetric) {
+                                Image(systemName: "plus")
+                                    .font(.callout.weight(.semibold))
+                                    .frame(width: 44, height: 44)
+                                    .glassEffect(in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!canAddCustom)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Solo Metrics")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { donePressed() }
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = metrics.isEmpty ? SoloMetric.defaultMetrics : metrics
+        hasLoaded = true
+    }
+
+    private func togglePreset(_ name: String) {
+        if isPresetSelected(name) {
+            working.removeAll { $0.name == name }
+        } else if canAddMore {
+            working.append(.init(name: name))
+        }
+    }
+
+    private func isPresetSelected(_ name: String) -> Bool {
+        working.contains { $0.name == name }
+    }
+
+    private func addCustomMetric() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        working.append(.init(name: trimmed))
+        newName = ""
+    }
+
+    private func removeMetric(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func moveMetricUp(_ index: Int) {
+        guard working.indices.contains(index), index > 0 else { return }
+        working.swapAt(index, index - 1)
+    }
+
+    private func moveMetricDown(_ index: Int) {
+        guard working.indices.contains(index), index < working.count - 1 else { return }
+        working.swapAt(index, index + 1)
+    }
+
+    private func moveMetricToTop(_ index: Int) {
+        guard working.indices.contains(index), index > 0 else { return }
+        let item = working.remove(at: index)
+        working.insert(item, at: 0)
+    }
+
+    private func moveMetricToBottom(_ index: Int) {
+        guard working.indices.contains(index), index < working.count - 1 else { return }
+        let item = working.remove(at: index)
+        working.append(item)
+    }
+
+    private func donePressed() {
+        metrics = working
+        onSave(working)
+        dismiss()
+    }
+}
+
 // MARK: - Team Play
 
-struct TeamPlaySection: View {
+fileprivate struct TeamMetric: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+}
+
+fileprivate extension TeamMetric {
+    static var defaultMetrics: [TeamMetric] {
+        [
+            .init(name: "Attempts Made"),
+            .init(name: "Attempts Missed"),
+            .init(name: "Assists")
+        ]
+    }
+}
+
+fileprivate struct TeamPlaySection: View {
     let selectedDate: Date
+
+    @Binding var metrics: [TeamMetric]
 
     @State private var homeScore: Int = 0
     @State private var awayScore: Int = 0
-    @State private var homeAttemptsMade: String = ""
-    @State private var homeAttemptsMissed: String = ""
-    @State private var homeCustom: String = ""
-    @State private var awayAttemptsMade: String = ""
-    @State private var awayAttemptsMissed: String = ""
-    @State private var awayCustom: String = ""
-    @State private var attemptsMade: String = ""
-    @State private var attemptsMissed: String = ""
-    @State private var custom: String = ""
+    @State private var metricValues: [UUID: String] = [:]
 
     var body: some View {
         VStack(alignment: .center, spacing: 18) {
@@ -940,29 +1281,56 @@ struct TeamPlaySection: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
-            let _twoColumnGrid = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVStack(alignment: .leading, spacing: 12) {
+                ForEach(rows(for: metrics), id: \.self) { row in
+                    HStack(spacing: 12) {
+                        ForEach(row) { metric in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(metric.name)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: _twoColumnGrid, spacing: 12) {
-                TextField("Attempts Made", text: $attemptsMade)
-                    .textInputAutocapitalization(.words)
-                    .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                TextField(metric.name, text: valueBinding(for: metric), prompt: Text("Enter value…").foregroundStyle(.secondary))
+                                    .textInputAutocapitalization(.words)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
 
-                TextField("Attempts Missed", text: $attemptsMissed)
-                    .textInputAutocapitalization(.words)
-                    .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-
-                TextField("Custom", text: $custom)
-                    .textInputAutocapitalization(.words)
-                    .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .gridCellColumns(2)
+                        if row.count == 1 {
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
             }
         }
         .padding(.vertical, 18)
         .padding(.horizontal, 18)
         .glassEffect(in: .rect(cornerRadius: 16.0))
+        .onAppear(perform: syncValueStore)
+        .onChange(of: metrics) { _, _ in syncValueStore() }
+    }
+
+    private func valueBinding(for metric: TeamMetric) -> Binding<String> {
+        Binding(
+            get: { metricValues[metric.id] ?? "" },
+            set: { metricValues[metric.id] = $0 }
+        )
+    }
+
+    private func syncValueStore() {
+        let validIds = Set(metrics.map { $0.id })
+        metricValues = metricValues.filter { validIds.contains($0.key) }
+        for metric in metrics where metricValues[metric.id] == nil {
+            metricValues[metric.id] = "0"
+        }
+    }
+
+    private func rows(for items: [TeamMetric]) -> [[TeamMetric]] {
+        stride(from: 0, to: items.count, by: 2).map { idx in
+            Array(items[idx..<min(idx + 2, items.count)])
+        }
     }
 
     private struct ScoreBox: View {
@@ -1009,6 +1377,225 @@ struct TeamPlaySection: View {
             .aspectRatio(1, contentMode: .fit)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
+    }
+}
+
+private struct TeamPlayMetricsEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var metrics: [TeamMetric]
+    var onSave: ([TeamMetric]) -> Void
+
+    @State private var working: [TeamMetric] = []
+    @State private var newName: String = ""
+    @State private var hasLoaded = false
+
+    private let presets: [String] = ["Attempts Made", "Attempts Missed", "Assists"]
+    private let maxTracked = 6
+
+    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddCustom: Bool {
+        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Metrics")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "sportscourt")
+                                                .foregroundStyle(Color.accentColor))
+
+                                        VStack {
+                                            TextField("Metric name", text: binding.name)
+                                                .font(.subheadline.weight(.semibold))
+
+                                            HStack {
+                                                Menu {
+                                                    Button("Top") { moveMetricToTop(idx) }
+                                                    Button("Up") { moveMetricUp(idx) }
+                                                    Button("Down") { moveMetricDown(idx) }
+                                                    Button("Bottom") { moveMetricToBottom(idx) }
+                                                } label: {
+                                                    HStack(spacing: 6) {
+                                                        Image(systemName: "arrow.up.arrow.down")
+                                                            .font(.system(size: 14, weight: .semibold))
+                                                        Text("Move")
+                                                            .font(.caption)
+                                                    }
+                                                    .foregroundStyle(.secondary)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .padding(.trailing, 4)
+
+                                                Spacer()
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeMetric(working[idx].id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .surfaceCard(16)
+                                }
+                            }
+                        }
+                    }
+
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.self) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "sportscourt")
+                                                .foregroundStyle(Color.accentColor))
+
+                                        Text(preset)
+                                            .font(.subheadline.weight(.semibold))
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(18)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Custom Metric")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                TextField("Metric name", text: $newName)
+                                    .textInputAutocapitalization(.words)
+                                    .padding()
+                                    .surfaceCard(16)
+
+                                Button(action: addCustomMetric) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("You can track up to \(maxTracked) metrics.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Team Metrics")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { donePressed() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = metrics.isEmpty ? TeamMetric.defaultMetrics : metrics
+        hasLoaded = true
+    }
+
+    private func togglePreset(_ name: String) {
+        if isPresetSelected(name) {
+            working.removeAll { $0.name == name }
+        } else if canAddMore {
+            working.append(.init(name: name))
+        }
+    }
+
+    private func isPresetSelected(_ name: String) -> Bool {
+        working.contains { $0.name == name }
+    }
+
+    private func addCustomMetric() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        working.append(.init(name: trimmed))
+        newName = ""
+    }
+
+    private func removeMetric(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func moveMetricUp(_ index: Int) {
+        guard working.indices.contains(index), index > 0 else { return }
+        working.swapAt(index, index - 1)
+    }
+
+    private func moveMetricDown(_ index: Int) {
+        guard working.indices.contains(index), index < working.count - 1 else { return }
+        working.swapAt(index, index + 1)
+    }
+
+    private func moveMetricToTop(_ index: Int) {
+        guard working.indices.contains(index), index > 0 else { return }
+        let item = working.remove(at: index)
+        working.insert(item, at: 0)
+    }
+
+    private func moveMetricToBottom(_ index: Int) {
+        guard working.indices.contains(index), index < working.count - 1 else { return }
+        let item = working.remove(at: index)
+        working.append(item)
+    }
+
+    private func donePressed() {
+        metrics = working
+        onSave(working)
+        dismiss()
     }
 }
 
@@ -1087,7 +1674,7 @@ struct SportMetricGraph: View {
             }
 
             Chart {
-                ForEach(dailyTotals, id: \ .date) { item in
+                ForEach(dailyTotals, id: \.date) { item in
                     BarMark(
                         x: .value("Day", DateFormatter.shortDate.string(from: item.date)),
                         y: .value(metric.label, item.total)

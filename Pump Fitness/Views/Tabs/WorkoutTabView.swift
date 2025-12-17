@@ -43,10 +43,10 @@ struct ExerciseSupplementEditorSheet: View {
         [
             Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
             Supplement(name: "Creatine", amountLabel: "5 g"),
-            Supplement(name: "BCAA", amountLabel: "10 g"),
             Supplement(name: "Whey Protein", amountLabel: "30 g"),
-            Supplement(name: "L-Carnitine", amountLabel: "500 mg"),
-            Supplement(name: "Electrolytes", amountLabel: "1 scoop")
+            Supplement(name: "BCAA", amountLabel: "10 g"),
+            Supplement(name: "Electrolytes", amountLabel: "1 scoop"),
+            Supplement(name: "L-Carnitine", amountLabel: "500 mg")
         ]
     }
 
@@ -996,16 +996,18 @@ private enum WorkoutDayStatus {
 private let coachingDefaultSupplements: [Supplement] = [
     Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
     Supplement(name: "Creatine", amountLabel: "5 g"),
-    Supplement(name: "BCAA", amountLabel: "10 g"),
     Supplement(name: "Whey Protein", amountLabel: "30 g"),
-    Supplement(name: "L-Carnitine", amountLabel: "500 mg"),
+    Supplement(name: "BCAA", amountLabel: "10 g"),
     Supplement(name: "Electrolytes", amountLabel: "1 scoop")
 ]
 
 // Sample weekly schedule for coaching tab
 private let coachingWeeklySchedule: [WorkoutScheduleItem] = [
     .init(day: "Mon", sessions: [.init(name: "Chest", colorHex: "#D84A4A")]),
-    .init(day: "Tue", sessions: [.init(name: "Back", colorHex: "#4FB6C6")]),
+    .init(day: "Tue", sessions: [
+        .init(name: "Back", colorHex: "#4FB6C6"),
+        .init(name: "Run")
+    ]),
     .init(day: "Wed", sessions: []),
     .init(day: "Thu", sessions: [.init(name: "Legs", colorHex: "#7A5FD1")]),
     .init(day: "Fri", sessions: [.init(name: "Shoulders", colorHex: "#E6C84F")]),
@@ -1373,7 +1375,6 @@ private struct WorkoutScheduleEditorSheet: View {
             WorkoutSession(name: "Pilates"),
             WorkoutSession(name: "Hyrox"),
             WorkoutSession(name: "Crossfit"),
-            WorkoutSession(name: "Calisthenic"),
             WorkoutSession(name: "Meditate"),
             WorkoutSession(name: "Cardio"),
             WorkoutSession(name: "Run")
@@ -1688,8 +1689,13 @@ private extension BodyPartWeights {
                     WeightExercise(name: "", weight: "", sets: "", reps: "")
                 ]
             ),
-            .init(name: "Back", exercises: []),
-            .init(name: "Legs", exercises: [])
+            .init(
+                name: "Back",
+                exercises: [
+                    WeightExercise(name: "Pull Down", weight: "", sets: "", reps: ""),
+                    WeightExercise(name: "", weight: "", sets: "", reps: "")
+                ]
+            )
         ]
     }
 }
@@ -1825,27 +1831,33 @@ private struct WeightsGroupEditorSheet: View {
                                             .overlay(Image(systemName: "dumbbell")
                                                 .foregroundStyle(Color.accentColor))
 
-                                        TextField("Body part", text: binding.name)
+                                        VStack {
+                                            TextField("Body part", text: binding.name)
                                             .font(.subheadline.weight(.semibold))
 
-                                        Spacer()
+                                            HStack {
+                                                  Menu {
+                                                    Button("Top") { moveGroupToTop(idx) }
+                                                    Button("Up") { moveGroupUp(idx) }
+                                                    Button("Down") { moveGroupDown(idx) }
+                                                    Button("Bottom") { moveGroupToBottom(idx) }
+                                                } label: {
+                                                    HStack(spacing: 6) {
+                                                        Image(systemName: "arrow.up.arrow.down")
+                                                            .font(.system(size: 14, weight: .semibold))
+                                                        Text("Move")
+                                                            .font(.caption)
+                                                    }
+                                                    .foregroundStyle(.secondary)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .padding(.trailing, 4)
 
-                                        VStack(spacing: 4) {
-                                            Button(action: { moveGroupUp(idx) }) {
-                                                Image(systemName: "chevron.up")
+                                                Spacer()
                                             }
-                                            .buttonStyle(.plain)
-                                            .disabled(idx == 0)
-                                            .opacity(idx == 0 ? 0.35 : 1)
-
-                                            Button(action: { moveGroupDown(idx) }) {
-                                                Image(systemName: "chevron.down")
-                                            }
-                                            .buttonStyle(.plain)
-                                            .disabled(idx == working.count - 1)
-                                            .opacity(idx == working.count - 1 ? 0.35 : 1)
                                         }
-                                        .padding(.trailing, 4)
+
+                                        Spacer()
 
                                         Button(role: .destructive) {
                                             removeGroup(working[idx].id)
@@ -1981,6 +1993,18 @@ private struct WeightsGroupEditorSheet: View {
     private func moveGroupDown(_ index: Int) {
         guard working.indices.contains(index), index < working.count - 1 else { return }
         working.swapAt(index, index + 1)
+    }
+
+    private func moveGroupToTop(_ index: Int) {
+        guard working.indices.contains(index), index > 0 else { return }
+        let item = working.remove(at: index)
+        working.insert(item, at: 0)
+    }
+
+    private func moveGroupToBottom(_ index: Int) {
+        guard working.indices.contains(index), index < working.count - 1 else { return }
+        let item = working.remove(at: index)
+        working.append(item)
     }
 
     private func donePressed() {

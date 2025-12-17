@@ -5,8 +5,10 @@
 //  Created by Kyle Graham on 8/12/2025.
 //
 
+import Combine
 import SwiftUI
-
+import CoreLocation
+import WeatherKit
 import Charts
 
 struct SportsTabView: View {
@@ -16,6 +18,7 @@ struct SportsTabView: View {
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
+    @StateObject private var weatherModel = WeatherViewModel()
     // Track expanded state for each sport
     @State private var expandedSports: [Bool] = []
 
@@ -195,6 +198,496 @@ struct SportsTabView: View {
 
     private let historyDays: Int = 7
 
+    // MARK: - Weather Section
+
+    struct WeatherSnapshot: Identifiable {
+        let id = UUID()
+        let time: Date
+        let label: String
+        let temperature: Int
+        let temperatureDelta: Int?
+        let precipitationChance: Int
+        let min: Int
+        let max: Int
+        let uvIndex: Int
+        let windSpeed: Int
+        let humidity: Int
+        let symbol: String
+        let description: String
+    }
+
+    struct WeatherSection: View {
+        @ObservedObject var viewModel: WeatherViewModel
+        let selectedDate: Date
+
+        private func symbolColors(for symbol: String) -> [Color] {
+            let s = symbol.lowercased()
+            if s.contains("sun") || s.contains("clear") { return [Color.yellow, Color.orange] }
+            if s.contains("cloud") { return [Color.gray.opacity(0.9), Color.gray.opacity(0.6)] }
+            if s.contains("rain") || s.contains("drizzle") { return [Color.blue.opacity(0.9), Color.cyan.opacity(0.7)] }
+            if s.contains("snow") { return [Color.white, Color.blue.opacity(0.6)] }
+            if s.contains("wind") { return [Color.gray, Color.cyan] }
+            return []
+        }
+
+        var body: some View {
+            ZStack(alignment: .topTrailing) {
+                VStack(alignment: .leading, spacing: 16) {
+                    switch viewModel.state {
+                    case .idle, .loading:
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                            Spacer()
+                        }
+                    case .failed(let message):
+                        VStack(alignment: .center, spacing: 8) {
+                            Text("Weather unavailable")
+                                .font(.headline)
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    case .loaded:
+                        if let current = viewModel.currentSnapshot {
+                            HStack {
+                                Spacer()
+
+                                HStack(spacing: 6) {
+                                    Image(systemName: "location.fill")
+                                        .font(.caption.weight(.bold))
+                                    Text("Current Location")
+                                        .font(.caption.weight(.semibold))
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.14), in: Capsule())
+                                .foregroundStyle(.white)
+                                .padding(.bottom, 12)
+                                .offset(x: 10, y: -8)
+                            }
+
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 8) {
+                                    let colors = symbolColors(for: current.symbol)
+                                    if colors.isEmpty {
+                                        Image(systemName: current.symbol)
+                                            .font(.system(size: 42, weight: .semibold))
+                                            .symbolRenderingMode(.multicolor)
+                                    } else {
+                                        Image(systemName: current.symbol)
+                                            .font(.system(size: 42, weight: .semibold))
+                                            .symbolRenderingMode(.palette)
+                                            .foregroundStyle(colors.count > 0 ? colors[0] : .primary,
+                                                             colors.count > 1 ? colors[1] : colors.first ?? .primary)
+                                    }
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Text("\(current.temperature)°")
+                                            .font(.system(size: 56, weight: .bold, design: .rounded))
+
+                                        if let delta = current.temperatureDelta, delta != 0 {
+                                            let isWarmer = delta > 0
+                                            let trendColor: Color = isWarmer ? .red : .blue
+
+                                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                                Image(systemName: isWarmer ? "chevron.up" : "chevron.down")
+                                                    .font(.headline.weight(.bold))
+                                                    .foregroundStyle(trendColor)
+                                                Text(String(format: "%+d°", delta))
+                                                    .font(.headline.weight(.bold))
+                                                    .foregroundStyle(trendColor)
+                                            }
+                                        }
+                                    }
+                                    Text(current.description)
+                                        .font(.headline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text("Min \(current.min)°   Max \(current.max)°")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    let pillColumns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
+                                    LazyVGrid(columns: pillColumns, alignment: .center, spacing: 12) {
+                                        WeatherMetricPill(title: "UV", value: "\(current.uvIndex)", tint: .purple)
+                                        WeatherMetricPill(title: "Wind", value: "\(current.windSpeed) km/h", tint: .white)
+                                        WeatherMetricPill(title: "Humidity", value: "\(current.humidity)%", tint: .green)
+                                        WeatherMetricPill(title: "Precipitation", value: "\(current.precipitationChance)%", tint: .cyan)
+                                    }
+                                    .frame(maxWidth: 280, alignment: .center)
+                                }
+                                Spacer()
+                            }
+                        }
+
+                        Divider()
+
+                        HStack {
+                            Text(label(for: selectedDate))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(viewModel.upcomingSnapshots.prefix(12)) { snapshot in
+                                    VStack(alignment: .center, spacing: 10) {
+                                        Text(snapshot.label)
+                                            .font(.footnote.weight(.semibold))
+                                            
+                                        let sColors = symbolColors(for: snapshot.symbol)
+                                        if sColors.isEmpty {
+                                            Image(systemName: snapshot.symbol)
+                                                .symbolRenderingMode(.multicolor)
+                                        } else {
+                                            Image(systemName: snapshot.symbol)
+                                                .symbolRenderingMode(.palette)
+                                                .foregroundStyle(sColors.count > 0 ? sColors[0] : .primary,
+                                                                  sColors.count > 1 ? sColors[1] : sColors.first ?? .primary)
+                                        }
+
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            Text("\(snapshot.temperature)°")
+                                                .font(.title3.weight(.semibold))
+
+                                            if let delta = snapshot.temperatureDelta, delta != 0 {
+                                                let isWarmer = delta > 0
+                                                Image(systemName: isWarmer ? "chevron.up" : "chevron.down")
+                                                    .font(.caption.weight(.bold))
+                                                    .foregroundStyle(isWarmer ? Color.red : Color.blue)
+                                            }
+                                        }
+                                    }
+                                    .padding(12)
+                                    .frame(width: 80)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                            }
+                            .padding(.horizontal, 2)
+                        }
+                    }
+                }
+            }
+        }
+
+        private func label(for date: Date) -> String {
+            let calendar = Calendar.current
+            if calendar.isDateInToday(date) { return "Next 12 Hours" }
+            if calendar.isDateInTomorrow(date) { return "Tomorrow" }
+            return DateFormatter.shortDay.string(from: date)
+        }
+    }
+
+    enum WeatherLoadState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed(String)
+    }
+
+    @MainActor
+    final class WeatherViewModel: ObservableObject {
+        @Published var currentSnapshot: WeatherSnapshot?
+        @Published var upcomingSnapshots: [WeatherSnapshot] = []
+        @Published var state: WeatherLoadState = .idle
+
+        private let calendar = Calendar.current
+        private let weatherService: WeatherService
+        private let locationProvider: LocationProvider
+
+        init(weatherService: WeatherService? = nil, locationProvider: LocationProvider? = nil) {
+            self.weatherService = weatherService ?? WeatherService()
+            self.locationProvider = locationProvider ?? LocationProvider()
+        }
+
+        func refresh(for date: Date) async {
+            state = .loading
+            do {
+                let location = try await locationProvider.currentLocation()
+                if calendar.isDateInFuture(date) || calendar.isDateInToday(date) {
+                    try await loadForecast(location: location, date: date)
+                } else {
+                    try await loadHistorical(location: location, date: date)
+                }
+                state = .loaded
+            } catch {
+                    let ns = error as NSError
+                    if ns.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && ns.code == 2 {
+                        state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
+                    } else if error.localizedDescription.contains("WDSJWTAuthenticatorServiceListener") {
+                        state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
+                    } else {
+                        state = .failed(error.localizedDescription)
+                    }
+                }
+        }
+
+        private func loadForecast(location: CLLocation, date: Date) async throws {
+            let weather = try await weatherService.weather(for: location)
+            let dayForecast = weather.dailyForecast
+            let hourly = weather.hourlyForecast
+            apply(hourly: hourly, daily: dayForecast, target: date)
+        }
+
+        private func loadHistorical(location: CLLocation, date: Date) async throws {
+            if #available(iOS 17.0, *) {
+                let weather = try await weatherService.weather(for: location)
+                apply(current: weather.currentWeather, hourly: weather.hourlyForecast, daily: weather.dailyForecast, target: date)
+            } else {
+                try await loadForecast(location: location, date: date)
+                state = .failed("Historical weather requires iOS 17. Showing forecast instead.")
+            }
+        }
+
+        private func apply(current: CurrentWeather, hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
+            let anchor = anchorHour(for: target, hourly: hourly)
+            if let anchor {
+                let anchorDay = dailyForecast(for: anchor.date, from: daily)
+                let anchorTemp = Int(anchor.temperature.value.rounded())
+                let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
+                currentSnapshot = makeSnapshot(from: anchor, day: anchorDay, delta: delta)
+            } else {
+                let currentTemp = Int(current.temperature.value.rounded())
+                let delta = deltaVsPreviousDay(for: target, currentTemp: currentTemp, daily: daily)
+                currentSnapshot = makeSnapshot(date: target, hourTemp: nil, current: current, day: dailyForecast(for: target, from: daily), delta: delta)
+            }
+
+            upcomingSnapshots = snapshotsWithDelta(hourly: hourly, daily: daily, anchor: anchor, count: 12)
+        }
+
+        private func apply(hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
+            let anchor = anchorHour(for: target, hourly: hourly)
+            if let anchor {
+                let anchorTemp = Int(anchor.temperature.value.rounded())
+                let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
+                currentSnapshot = makeSnapshot(from: anchor, day: dailyForecast(for: anchor.date, from: daily), delta: delta)
+            }
+            upcomingSnapshots = snapshotsWithDelta(hourly: hourly, daily: daily, anchor: anchor, count: 12)
+        }
+
+        private func dailyForecast(for date: Date, from forecast: Forecast<DayWeather>) -> DayWeather? {
+            forecast.first { calendar.isDate($0.date, inSameDayAs: date) }
+        }
+
+        private func sortedHours(_ hourly: Forecast<HourWeather>) -> [HourWeather] {
+            hourly.sorted { $0.date < $1.date }
+        }
+
+        private func anchorHour(for date: Date, hourly: Forecast<HourWeather>) -> HourWeather? {
+            let hours = sortedHours(hourly)
+            guard !hours.isEmpty else { return nil }
+            let referenceDate = calendar.isDateInToday(date) ? Date() : calendar.startOfDay(for: date)
+            if let match = hours.first(where: { $0.date >= referenceDate }) { return match }
+            return hours.first
+        }
+
+        private func nextHours(after anchor: HourWeather?, hourly: Forecast<HourWeather>, count: Int) -> [HourWeather] {
+            let hours = sortedHours(hourly)
+            guard let anchor else { return Array(hours.prefix(count)) }
+            guard let idx = hours.firstIndex(where: { $0.date == anchor.date }) else {
+                return Array(hours.prefix(count))
+            }
+            let slice = hours.dropFirst(idx + 1)
+            return Array(slice.prefix(count))
+        }
+
+        private func deltaVsPreviousDay(for date: Date, currentTemp: Int, daily: Forecast<DayWeather>) -> Int? {
+            guard let previousDate = calendar.date(byAdding: .day, value: -1, to: date),
+                  let previousDay = dailyForecast(for: previousDate, from: daily) else { return nil }
+            return currentTemp - Int(previousDay.highTemperature.value.rounded())
+        }
+
+        private func snapshotsWithDelta(hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, anchor: HourWeather?, count: Int) -> [WeatherSnapshot] {
+            let hours = sortedHours(hourly)
+            guard !hours.isEmpty else { return [] }
+
+            var startIndex = 0
+            if let anchor, let idx = hours.firstIndex(where: { $0.date == anchor.date }) {
+                startIndex = min(hours.count, idx + 1)
+            }
+
+            let endIndex = min(hours.count, startIndex + count)
+            var result: [WeatherSnapshot] = []
+
+            for i in startIndex..<endIndex {
+                let hour = hours[i]
+                let previous = i > 0 ? hours[i - 1] : nil
+                let delta = previous.map { Int(hour.temperature.value.rounded()) - Int($0.temperature.value.rounded()) }
+                let day = dailyForecast(for: hour.date, from: daily)
+                result.append(makeSnapshot(from: hour, day: day, delta: delta))
+            }
+
+            return result
+        }
+
+        private func makeSnapshot(date: Date, hourTemp: HourWeather?, current: CurrentWeather, day: DayWeather?, delta: Int?) -> WeatherSnapshot {
+            WeatherSnapshot(
+                time: date,
+                label: DateFormatter.shortHour.string(from: date),
+                temperature: Int(hourTemp?.temperature.value ?? current.temperature.value.rounded()),
+                temperatureDelta: delta,
+                precipitationChance: Int(((hourTemp?.precipitationChance ?? 0) * 100).rounded()),
+                min: Int((day?.lowTemperature.value ?? current.temperature.value).rounded()),
+                max: Int((day?.highTemperature.value ?? current.temperature.value).rounded()),
+                uvIndex: Int(Double(current.uvIndex.value)),
+                windSpeed: Int(current.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
+                humidity: Int((current.humidity * 100).rounded()),
+                symbol: current.symbolName,
+                description: (hourTemp?.condition.description ?? current.condition.description)
+            )
+        }
+
+        private func makeSnapshot(from hour: HourWeather, day: DayWeather?, delta: Int?) -> WeatherSnapshot {
+            WeatherSnapshot(
+                time: hour.date,
+                label: DateFormatter.shortHour.string(from: hour.date),
+                temperature: Int(hour.temperature.value.rounded()),
+                temperatureDelta: delta,
+                precipitationChance: Int((hour.precipitationChance * 100).rounded()),
+                min: Int((day?.lowTemperature.value ?? hour.temperature.value).rounded()),
+                max: Int((day?.highTemperature.value ?? hour.temperature.value).rounded()),
+                uvIndex: Int(Double(hour.uvIndex.value)),
+                windSpeed: Int(hour.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
+                humidity: Int((hour.humidity * 100).rounded()),
+                symbol: hour.symbolName,
+                description: hour.condition.description
+            )
+        }
+    }
+
+    enum LocationError: LocalizedError {
+        case denied
+        case unavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .denied: return "Location access denied. Enable it in Settings to load weather."
+            case .unavailable: return "Could not determine location."
+            }
+        }
+    }
+
+    final class LocationProvider: NSObject, CLLocationManagerDelegate {
+        static let shared = LocationProvider()
+
+        private let manager = CLLocationManager()
+        private var locationContinuation: CheckedContinuation<CLLocation, Error>?
+        private var authContinuation: CheckedContinuation<Void, Error>?
+
+        override init() {
+            super.init()
+            manager.delegate = self
+            manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+        }
+
+        func currentLocation() async throws -> CLLocation {
+            if let location = manager.location { return location }
+
+            switch manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
+                return try await requestFreshLocation()
+            case .notDetermined:
+                try await requestAuthorization()
+                return try await requestFreshLocation()
+            case .restricted, .denied:
+                throw LocationError.denied
+            @unknown default:
+                throw LocationError.unavailable
+            }
+        }
+
+        private func requestAuthorization() async throws {
+            manager.requestWhenInUseAuthorization()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                authContinuation = continuation
+            }
+        }
+
+        private func requestFreshLocation() async throws -> CLLocation {
+            manager.requestLocation()
+            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
+                locationContinuation = continuation
+            }
+        }
+
+        private var hasAuthorization: Bool {
+            switch manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse: return true
+            case .notDetermined, .restricted, .denied: return false
+            @unknown default: return false
+            }
+        }
+
+        func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+            switch manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse:
+                authContinuation?.resume()
+                authContinuation = nil
+            case .denied, .restricted:
+                authContinuation?.resume(throwing: LocationError.denied)
+                authContinuation = nil
+                locationContinuation?.resume(throwing: LocationError.denied)
+                locationContinuation = nil
+            case .notDetermined:
+                break
+            @unknown default:
+                authContinuation?.resume(throwing: LocationError.unavailable)
+                authContinuation = nil
+                locationContinuation?.resume(throwing: LocationError.unavailable)
+                locationContinuation = nil
+            }
+        }
+
+        func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+            locationContinuation?.resume(throwing: error)
+            locationContinuation = nil
+        }
+
+        func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+            guard let location = locations.first else {
+                locationContinuation?.resume(throwing: LocationError.unavailable)
+                locationContinuation = nil
+                return
+            }
+            locationContinuation?.resume(returning: location)
+            locationContinuation = nil
+        }
+    }
+
+    private struct WeatherMetricPill: View {
+        let title: String
+        let value: String
+        var tint: Color = .accentColor
+
+        var body: some View {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                Text(value)
+                    .font(.caption2)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.12), in: Capsule())
+            .foregroundStyle(tint)
+        }
+    }
+
+    private struct WeatherMetricRow: View {
+        let label: String
+        let value: String
+
+        var body: some View {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(value)
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -208,6 +701,71 @@ struct SportsTabView: View {
                                 onProfileTap: { showAccountsView = true }
                             )
                             .environmentObject(account)
+
+                            if Calendar.current.isDateInToday(selectedDate) && weatherModel.state == .loaded {
+                                HStack {
+                                    Text("Weather")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+
+                                    Spacer()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 18)
+                                .padding(.top, 48)
+                                .padding(.bottom, 8)
+
+                                WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 18)
+                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    .padding(.horizontal, 18)
+                            }
+                            
+                            HStack {
+                                Text("Team Play Tracking")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                Button {
+                                    //
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 48)
+                            .padding(.bottom, 8)
+
+                            TeamPlaySection(selectedDate: selectedDate)
+                                .padding(.horizontal, 18)
+
+                            HStack {
+                                Text("Solo Play Tracking")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 48)
+                            .padding(.bottom, 8)
+
+//                            SoloPlaySection(selectedDate: selectedDate)
+//                                .padding(.horizontal, 18)
 
                             HStack {
                                 Text("Sports Tracking")
@@ -239,8 +797,16 @@ struct SportsTabView: View {
                                     VStack(alignment: .leading, spacing: 10) {
                                         HStack {
                                             Spacer()
-                                            Label(sport.name, systemImage: (idx < expandedSports.count && expandedSports[idx]) ? "chevron.up" : "chevron.down")
-                                                .font(.callout.weight(.semibold))
+                                            VStack(spacing: 6) {
+                                                Text(sport.name)
+                                                    .font(.callout.weight(.semibold))
+                                                    .multilineTextAlignment(.center)
+
+                                                Image(systemName: (idx < expandedSports.count && expandedSports[idx]) ? "chevron.up" : "chevron.down")
+                                                    .font(.callout.weight(.semibold))
+                                                    .accessibilityHidden(true)
+                                            }
+                                            .frame(maxWidth: .infinity)
                                             Spacer()
                                         }
                                         .contentShape(Rectangle())
@@ -339,6 +905,109 @@ struct SportsTabView: View {
             if expandedSports.count != sports.count {
                 expandedSports = Array(repeating: false, count: sports.count)
             }
+        }
+        .task {
+            await weatherModel.refresh(for: selectedDate)
+        }
+        .onChange(of: selectedDate) { _, newValue in
+            Task { await weatherModel.refresh(for: newValue) }
+        }
+    }
+}
+
+// MARK: - Team Play
+
+struct TeamPlaySection: View {
+    let selectedDate: Date
+
+    @State private var homeScore: Int = 0
+    @State private var awayScore: Int = 0
+    @State private var homeAttemptsMade: String = ""
+    @State private var homeAttemptsMissed: String = ""
+    @State private var homeCustom: String = ""
+    @State private var awayAttemptsMade: String = ""
+    @State private var awayAttemptsMissed: String = ""
+    @State private var awayCustom: String = ""
+    @State private var attemptsMade: String = ""
+    @State private var attemptsMissed: String = ""
+    @State private var custom: String = ""
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 18) {
+            HStack(spacing: 12) {
+                ScoreBox(title: "Home", value: $homeScore)
+                ScoreBox(title: "Away", value: $awayScore)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            let _twoColumnGrid = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+            LazyVGrid(columns: _twoColumnGrid, spacing: 12) {
+                TextField("Attempts Made", text: $attemptsMade)
+                    .textInputAutocapitalization(.words)
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                TextField("Attempts Missed", text: $attemptsMissed)
+                    .textInputAutocapitalization(.words)
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+
+                TextField("Custom", text: $custom)
+                    .textInputAutocapitalization(.words)
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .gridCellColumns(2)
+            }
+        }
+        .padding(.vertical, 18)
+        .padding(.horizontal, 18)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
+    private struct ScoreBox: View {
+        let title: String
+        @Binding var value: Int
+
+        var body: some View {
+            VStack(spacing: 12) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Text("\(value)")
+                    .font(.system(size: 48, weight: .bold, design: .rounded))
+                    .frame(maxWidth: .infinity)
+
+                HStack(spacing: 10) {
+                    Button {
+                        if value > 0 { value -= 1 }
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 44, height: 44)
+                            .glassEffect(in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 52, height: 52)
+                    .contentShape(Rectangle())
+
+                    Button {
+                        value += 1
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 44, height: 44)
+                            .glassEffect(in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 52, height: 52)
+                    .contentShape(Rectangle())
+                }
+            }
+            .padding()
+            .aspectRatio(1, contentMode: .fit)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 }
@@ -471,4 +1140,23 @@ private extension DateFormatter {
         df.dateFormat = "EEE" // weekday short (Mon, Tue)
         return df
     }()
+
+    static var shortHour: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "ha"
+        return df
+    }()
+
+    static var shortDay: DateFormatter = {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .none
+        return df
+    }()
+}
+
+private extension Calendar {
+    func isDateInFuture(_ date: Date) -> Bool {
+        compare(date, to: Date(), toGranularity: .day) == .orderedDescending
+    }
 }

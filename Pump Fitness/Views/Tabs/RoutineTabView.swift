@@ -341,6 +341,7 @@ private struct SleepDayColumn: View {
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 

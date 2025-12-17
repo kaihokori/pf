@@ -2,30 +2,6 @@ import SwiftUI
 import SwiftData
 import HealthKit
 
-private struct MacroEditorSummaryChip: View {
-    let currentCount: Int
-    let maxCount: Int
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Tracked Macros")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text("\(currentCount) / \(maxCount)")
-                    .font(.title3.weight(.semibold))
-            }
-            Spacer()
-            ProgressView(value: Double(currentCount), total: Double(maxCount))
-                .tint(tint)
-                .frame(width: 120)
-        }
-        .padding()
-        .surfaceCard(18)
-    }
-}
-
 private extension WorkoutTabView {
     func fetchDayTakenWorkoutSupplements() {
         dayFirestoreService.fetchDay(for: selectedDate, in: modelContext) { day in
@@ -84,13 +60,6 @@ struct ExerciseSupplementEditorSheet: View {
             ZStack {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
-                        // Summary chip
-                        MacroEditorSummaryChip(
-                            currentCount: working.count,
-                            maxCount: maxTrackedSupplements,
-                            tint: tint
-                        )
-
                         // Tracked supplements
                         if !working.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
@@ -214,19 +183,19 @@ struct ExerciseSupplementEditorSheet: View {
                     .padding(.vertical, 24)
                 }
             }
-        }
-        .navigationTitle("Edit Supplements")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { onDone() }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") {
-                    supplements = working
-                    onDone()
+            .navigationTitle("Edit Supplements")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onDone() }
                 }
-                .fontWeight(.semibold)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        supplements = working
+                        onDone()
+                    }
+                    .fontWeight(.semibold)
+                }
             }
         }
         .onAppear(perform: loadInitialState)
@@ -280,8 +249,14 @@ struct WorkoutTabView: View {
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
-    @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.checkIn, .checkIn, .notLogged, .checkIn, .rest, .notLogged, .notLogged]
+    @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.notLogged, .notLogged, .notLogged, .notLogged, .rest, .notLogged, .notLogged]
     private let coachingCurrentDayIndex = 5
+    @State private var workoutSchedule: [WorkoutScheduleItem] = coachingWeeklySchedule
+    @State private var showRestDaySheet = false
+    @AppStorage("coaching.autoRestDayIndices") private var storedAutoRestDayIndices: String = ""
+    @AppStorage("coaching.restWeekKey") private var storedRestWeekKey: String = ""
+    @State private var autoRestDayIndices: Set<Int> = []
+    @State private var hasLoadedRestDays = false
     // Use Account.supplements as the canonical source of supplement definitions
     // no local supplement store — use `account.supplements`
     @State private var showSupplementEditor = false
@@ -299,13 +274,18 @@ struct WorkoutTabView: View {
     
     // Daily summary sample values (moved from Nutrition tab)
     @State private var caloriesBurnedToday: Double = 0
-    private let caloriesBurnGoal: Int = 800
+    @State private var caloriesBurnGoal: Int = 800
     @State private var stepsTakenToday: Double = 0
-    private let stepsGoalToday: Int = 10_000
+    @State private var stepsGoalToday: Int = 10_000
 
     // New: walking distance (in meters)
     @State private var walkingDistanceToday: Double = 0 // meters
-    private let walkingDistanceGoal: Double = 3_000 // meters
+    @State private var walkingDistanceGoal: Double = 3_000 // meters
+
+    @State private var showDailySummaryEditor = false
+
+    @State private var bodyParts: [BodyPartWeights] = BodyPartWeights.defaultGroups
+    @State private var showWeightsEditor = false
 
     private var stepsProgress: Double {
         guard stepsGoalToday > 0 else { return 0 }
@@ -352,11 +332,12 @@ struct WorkoutTabView: View {
                     CoachingWorkoutProgressSection(
                         weeklyProgress: $weeklyProgress,
                         accentColor: accentOverride ?? .accentColor,
-                        currentDayIndex: coachingCurrentDayIndex
+                        currentDayIndex: coachingCurrentDayIndex,
+                        onEditRestDays: { showRestDaySheet = true }
                     )
                     
                     WeeklyWorkoutScheduleCard(
-                        schedule: coachingWeeklySchedule,
+                        schedule: $workoutSchedule,
                         accentColor: accentOverride ?? .accentColor
                     )
                     
@@ -369,7 +350,7 @@ struct WorkoutTabView: View {
                         Spacer()
 
                         Button {
-                            // 
+                            showDailySummaryEditor = true
                         } label: {
                             Label("Edit", systemImage: "pencil")
                                 .font(.callout)
@@ -438,7 +419,7 @@ struct WorkoutTabView: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 18)
 
-                    if healthKitAuthorized {
+                    if healthKitAuthorized, let hkStepsValue, hkStepsValue > 0 {
                         HStack(spacing: 6) {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.caption)
@@ -556,7 +537,7 @@ struct WorkoutTabView: View {
                             .font(.headline)
                             .fontWeight(.semibold)
                         Spacer()
-                        Button(action: { /* TODO: hook up edit handling */ }) {
+                        Button(action: { showWeightsEditor = true }) {
                             Label("Edit", systemImage: "pencil")
                                 .font(.callout)
                                 .fontWeight(.medium)
@@ -571,7 +552,7 @@ struct WorkoutTabView: View {
                     .padding(.top, 48)
                     
                     // Weights tracking section
-                    WeightsTrackingSection()
+                    WeightsTrackingSection(bodyParts: $bodyParts)
 
                     // Coaching inquiry card
                     CoachingInquiryCTA()
@@ -594,6 +575,17 @@ struct WorkoutTabView: View {
         }
         .navigationTitle("Coaching")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showRestDaySheet) {
+            RestDayPickerSheet(
+                autoRestDayIndices: $autoRestDayIndices,
+                tint: accentOverride ?? .accentColor
+            ) {
+                persistAutoRestDays()
+                applyAutoRestDaysToWeek()
+                showRestDaySheet = false
+            }
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showingAdjustSheet) {
             let hkVal: Double? = {
                 switch adjustTarget {
@@ -614,7 +606,26 @@ struct WorkoutTabView: View {
                 showingAdjustSheet = false
             }
         }
+        .sheet(isPresented: $showDailySummaryEditor) {
+            DailySummaryGoalSheet(
+                calorieGoal: $caloriesBurnGoal,
+                stepsGoal: $stepsGoalToday,
+                distanceGoal: $walkingDistanceGoal,
+                tint: accentOverride ?? .accentColor,
+                onCancel: { showDailySummaryEditor = false },
+                onDone: { showDailySummaryEditor = false }
+            )
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showWeightsEditor) {
+            WeightsGroupEditorSheet(bodyParts: $bodyParts) { updated in
+                bodyParts = updated
+                showWeightsEditor = false
+            }
+        }
         .onAppear {
+            loadAutoRestDaysIfNeeded()
+            seedWeekIfNeeded()
             // request HealthKit authorization and load values
             healthKitService.requestAuthorization { ok in
                 DispatchQueue.main.async {
@@ -627,6 +638,9 @@ struct WorkoutTabView: View {
                     }
                 }
             }
+        }
+        .onChange(of: selectedDate) { _, _ in
+            seedWeekIfNeeded()
         }
     }
 }
@@ -723,6 +737,49 @@ struct ActivityAdjustSheet: View {
 
 // helpers
 private extension WorkoutTabView {
+    func loadAutoRestDaysIfNeeded() {
+        guard !hasLoadedRestDays else { return }
+        let indices = storedAutoRestDayIndices
+            .split(separator: ",")
+            .compactMap { Int($0) }
+        autoRestDayIndices = Set(indices)
+        hasLoadedRestDays = true
+    }
+
+    func persistAutoRestDays() {
+        let encoded = autoRestDayIndices.sorted().map(String.init).joined(separator: ",")
+        storedAutoRestDayIndices = encoded
+    }
+
+    func seedWeekIfNeeded() {
+        let key = currentWeekKey()
+        guard storedRestWeekKey != key else { return }
+        storedRestWeekKey = key
+
+        // Reset week statuses and mark configured rest days.
+        weeklyProgress = Array(repeating: .notLogged, count: 7)
+        applyAutoRestDaysToWeek()
+    }
+
+    func currentWeekKey() -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2 // Monday
+        let comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        let year = comps.yearForWeekOfYear ?? 0
+        let week = comps.weekOfYear ?? 0
+        return "\(year)-\(week)"
+    }
+
+    func applyAutoRestDaysToWeek() {
+        // Ensure the array has 7 slots to match the weekday pills.
+        if weeklyProgress.count != 7 {
+            weeklyProgress = Array(repeating: .notLogged, count: 7)
+        }
+        for index in autoRestDayIndices where weeklyProgress.indices.contains(index) {
+            weeklyProgress[index] = .rest
+        }
+    }
+
     func unitForTarget(_ target: String?) -> String {
         switch target {
         case "steps": return "steps"
@@ -794,10 +851,15 @@ private extension WorkoutTabView {
     func refreshHealthKitValues() {
         healthKitService.fetchTodaySteps { v in
             DispatchQueue.main.async {
-                if let v = v { stepsTakenToday = v }
+                if let v = v {
+                    hkStepsValue = v
+                    stepsTakenToday = v
+                } else {
+                    hkStepsValue = nil
+                }
             }
         }
-                    healthKitService.fetchTodayDistance { v in
+        healthKitService.fetchTodayDistance { v in
             DispatchQueue.main.async {
                 if let v = v {
                                 // treat fetched distance as walking distance for display simplicity
@@ -942,12 +1004,12 @@ private let coachingDefaultSupplements: [Supplement] = [
 
 // Sample weekly schedule for coaching tab
 private let coachingWeeklySchedule: [WorkoutScheduleItem] = [
-    .init(day: "Mon", sessions: [.init(name: "Chest", duration: "20 mins", isGymRelated: false)]),
-    .init(day: "Tue", sessions: [.init(name: "Back", duration: "40 mins", isGymRelated: false)]),
+    .init(day: "Mon", sessions: [.init(name: "Chest", colorHex: "#D84A4A")]),
+    .init(day: "Tue", sessions: [.init(name: "Back", colorHex: "#4FB6C6")]),
     .init(day: "Wed", sessions: []),
-    .init(day: "Thu", sessions: [.init(name: "Legs", duration: "30 mins", isGymRelated: true)]),
-    .init(day: "Fri", sessions: [.init(name: "Shoulders", duration: "50 mins", isGymRelated: true)]),
-    .init(day: "Sat", sessions: [.init(name: "Abs", duration: "30 mins", isGymRelated: false)]),
+    .init(day: "Thu", sessions: [.init(name: "Legs", colorHex: "#7A5FD1")]),
+    .init(day: "Fri", sessions: [.init(name: "Shoulders", colorHex: "#E6C84F")]),
+    .init(day: "Sat", sessions: [.init(name: "Abs", colorHex: "#4CAF6A")]),
     .init(day: "Sun", sessions: [])
 ]
 
@@ -1065,6 +1127,7 @@ private struct CoachingWorkoutProgressSection: View {
     @Binding var weeklyProgress: [CoachingWorkoutDayStatus]
     let accentColor: Color
     let currentDayIndex: Int
+    var onEditRestDays: () -> Void
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -1077,7 +1140,7 @@ private struct CoachingWorkoutProgressSection: View {
                     .font(.headline)
                     .fontWeight(.semibold)
                 Spacer()
-                Button(action: { /* TODO: hook up edit handling */ }) {
+                Button(action: { onEditRestDays() }) {
                     Label("Edit", systemImage: "pencil")
                         .font(.callout)
                         .fontWeight(.medium)
@@ -1131,29 +1194,85 @@ private struct CoachingWorkoutProgressButtonStyle: ButtonStyle {
     }
 }
 
+private struct RestDayPickerSheet: View {
+    @Binding var autoRestDayIndices: Set<Int>
+    var tint: Color
+    var onDone: () -> Void
+
+    private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Rest Days")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
+                            ForEach(Array(daySymbols.enumerated()), id: \.0) { index, label in
+                                SelectablePillComponent(
+                                    label: label,
+                                    isSelected: autoRestDayIndices.contains(index),
+                                    selectedTint: tint
+                                ) {
+                                    toggleDay(at: index)
+                                }
+                            }
+                        }
+                    }
+
+                    Text("Pick which days should default to Rest at the start of each week. Those days will be marked grey in your weekly timeline.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle("Edit Rest Days")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { onDone() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private func toggleDay(at index: Int) {
+        if autoRestDayIndices.contains(index) {
+            autoRestDayIndices.remove(index)
+        } else {
+            autoRestDayIndices.insert(index)
+        }
+    }
+}
+
 // MARK: - Weekly schedule models & views moved from WorkoutTabView
 
 struct WorkoutScheduleItem: Identifiable {
     let id = UUID()
     let day: String
-    let sessions: [WorkoutSession]
+    var sessions: [WorkoutSession]
 }
 
 struct WorkoutSession: Identifiable {
     let id = UUID()
-    let name: String
-    let duration: String?
-    let isGymRelated: Bool
+    var name: String
 
-    init(name: String, duration: String? = nil, isGymRelated: Bool = true) {
+    var colorHex: String = ""
+
+    init(name: String, colorHex: String = "") {
         self.name = name
-        self.duration = duration
-        self.isGymRelated = isGymRelated
+        self.colorHex = colorHex
     }
 }
 
 private struct WeeklyWorkoutScheduleCard: View {
-    let schedule: [WorkoutScheduleItem]
+    @Binding var schedule: [WorkoutScheduleItem]
     let accentColor: Color
 
     @State private var showEditSheet = false
@@ -1189,7 +1308,7 @@ private struct WeeklyWorkoutScheduleCard: View {
                                 ForEach(day.sessions) { session in
                                     WeeklySessionCard(
                                         session: session,
-                                        accentColor: Color.random().opacity(0.8)
+                                        accentColor: accentColor
                                     )
                                 }
                             }
@@ -1214,16 +1333,320 @@ private struct WeeklyWorkoutScheduleCard: View {
         .padding(.horizontal, 18)
         .padding(.top, 28)
         .sheet(isPresented: $showEditSheet) {
-            Text("Edit Weekly Schedule")
-                .font(.title)
-                .padding()
+            WorkoutScheduleEditorSheet(
+                schedule: $schedule,
+                accentColor: accentColor
+            ) { updated in
+                schedule = updated
+                showEditSheet = false
+            }
         }
+    }
+}
+
+private struct WorkoutScheduleEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var schedule: [WorkoutScheduleItem]
+    var accentColor: Color
+    var onSave: ([WorkoutScheduleItem]) -> Void
+
+    @State private var working: [WorkoutScheduleItem] = []
+    @State private var hasLoaded = false
+
+    @State private var newName: String = ""
+    @State private var newColorHex: String = ""
+    @State private var selectedDayIndex: Int = 0
+
+    @State private var showColorPickerSheet = false
+    @State private var colorPickerTarget: (dayIndex: Int, sessionId: UUID)? = nil
+
+    private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    private var presets: [WorkoutSession] {
+        [
+            WorkoutSession(name: "Chest"),
+            WorkoutSession(name: "Back"),
+            WorkoutSession(name: "Shoulder"),
+            WorkoutSession(name: "Legs"),
+            WorkoutSession(name: "Core"),
+            WorkoutSession(name: "Yoga"),
+            WorkoutSession(name: "Pilates"),
+            WorkoutSession(name: "Hyrox"),
+            WorkoutSession(name: "Crossfit"),
+            WorkoutSession(name: "Calisthenic"),
+            WorkoutSession(name: "Meditate"),
+            WorkoutSession(name: "Cardio"),
+            WorkoutSession(name: "Run")
+        ]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Current schedule by day
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Tracked Schedule")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 14) {
+                            ForEach(Array(working.enumerated()), id: \.element.id) { dayIndex, day in
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack {
+                                        Text(day.day)
+                                            .font(.callout.weight(.semibold))
+                                            .textCase(.uppercase)
+                                        Spacer()
+                                        if !day.sessions.isEmpty {
+                                            Text("\(day.sessions.count)" + (day.sessions.count == 1 ? " activity" : " activities"))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+
+                                    if day.sessions.isEmpty {
+                                        Text("No activities added yet.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        VStack(spacing: 10) {
+                                            ForEach(Array(day.sessions.enumerated()), id: \.element.id) { sessionIndex, _ in
+                                                let binding = $working[dayIndex].sessions[sessionIndex]
+                                                let sessionId = working[dayIndex].sessions[sessionIndex].id
+                                                HStack(spacing: 12) {
+                                                    Button {
+                                                        colorPickerTarget = (dayIndex, sessionId)
+                                                        showColorPickerSheet = true
+                                                    } label: {
+                                                        Circle()
+                                                            .fill((Color(hex: binding.colorHex.wrappedValue) ?? accentColor).opacity(0.18))
+                                                            .frame(width: 40, height: 40)
+                                                            .overlay(
+                                                                Image(systemName: "figure.run")
+                                                                    .font(.system(size: 16, weight: .semibold))
+                                                                    .foregroundStyle(Color(hex: binding.colorHex.wrappedValue) ?? accentColor)
+                                                            )
+                                                    }
+                                                    .buttonStyle(.plain)
+
+                                                    VStack(alignment: .leading, spacing: 6) {
+                                                        TextField("Activity", text: binding.name)
+                                                            .font(.subheadline.weight(.semibold))
+
+                                                        HStack(spacing: 8) {
+                                                            Menu {
+                                                                ForEach(Array(daySymbols.enumerated()), id: \.0) { moveIndex, label in
+                                                                    Button(label) {
+                                                                        moveSession(from: dayIndex, sessionIndex: sessionIndex, to: moveIndex)
+                                                                    }
+                                                                }
+                                                            } label: {
+                                                                HStack(spacing: 6) {
+                                                                    Image(systemName: "arrow.left.arrow.right")
+                                                                        .font(.system(size: 14, weight: .semibold))
+                                                                    Text("Move")
+                                                                        .font(.caption)
+                                                                }
+                                                                .foregroundStyle(.secondary)
+                                                            }
+                                                            .buttonStyle(.plain)
+
+                                                            Spacer()
+                                                        }
+                                                    }
+
+                                                    Spacer()
+
+                                                    Button(role: .destructive) {
+                                                        removeSession(dayIndex: dayIndex, sessionId: sessionId)
+                                                    } label: {
+                                                        Image(systemName: "trash")
+                                                            .foregroundStyle(.red)
+                                                    }
+                                                    .buttonStyle(.plain)
+                                                }
+                                                .padding()
+                                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Quick Add presets
+                    if !presets.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets, id: \.id) { preset in
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill((Color(hex: preset.colorHex) ?? accentColor).opacity(0.18))
+                                            .frame(width: 42, height: 42)
+                                            .overlay(
+                                                Image(systemName: "figure.run")
+                                                    .foregroundStyle(Color(hex: preset.colorHex) ?? accentColor)
+                                                    .font(.system(size: 18, weight: .semibold))
+                                            )
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(preset.name)
+                                                .font(.subheadline.weight(.semibold))
+                                        }
+
+                                        Spacer()
+
+                                        Menu {
+                                            ForEach(Array(daySymbols.enumerated()), id: \.0) { dayIdx, label in
+                                                Button(label) { addPreset(preset, to: dayIdx) }
+                                            }
+                                        } label: {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 28, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                                }
+                            }
+                        }
+                    }
+
+                    // Custom activity composer
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Custom Activity")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            HStack {
+                                TextField("Activity name", text: $newName)
+                                  .textInputAutocapitalization(.words)
+                                  .padding()
+                                  .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                
+                                Menu {
+                                    ForEach(Array(daySymbols.enumerated()), id: \.0) { idx, label in
+                                        Button(label) {
+                                            selectedDayIndex = idx
+                                            addCustomActivity()
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(accentColor)
+                                        .opacity(!canAddCustom ? 0.4 : 1)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                            }
+
+                            Text("You can add activities to any day.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Weekly Schedule")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { saveChanges() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var canAddCustom: Bool {
+        !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedDayIndex < working.count
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = schedule.isEmpty ? coachingWeeklySchedule : schedule
+        hasLoaded = true
+    }
+
+    private func addPreset(_ preset: WorkoutSession, to dayIndex: Int) {
+        guard working.indices.contains(dayIndex) else { return }
+        working[dayIndex].sessions.append(preset)
+    }
+
+    private func addCustomActivity() {
+        guard canAddCustom, working.indices.contains(selectedDayIndex) else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let newSession = WorkoutSession(
+            name: trimmed,
+            colorHex: newColorHex
+        )
+        working[selectedDayIndex].sessions.append(newSession)
+        newName = ""
+        newColorHex = ""
+    }
+
+    private func removeSession(dayIndex: Int, sessionId: UUID) {
+        guard working.indices.contains(dayIndex) else { return }
+        working[dayIndex].sessions.removeAll { $0.id == sessionId }
+    }
+
+    private func moveSession(from dayIndex: Int, sessionIndex: Int, to targetDayIndex: Int) {
+        guard working.indices.contains(dayIndex), working.indices.contains(targetDayIndex),
+              working[dayIndex].sessions.indices.contains(sessionIndex) else { return }
+        let session = working[dayIndex].sessions.remove(at: sessionIndex)
+        working[targetDayIndex].sessions.append(session)
+    }
+
+    private func applyColor(hex: String) {
+        if let target = colorPickerTarget,
+           working.indices.contains(target.dayIndex),
+           let idx = working[target.dayIndex].sessions.firstIndex(where: { $0.id == target.sessionId }) {
+            working[target.dayIndex].sessions[idx].colorHex = hex
+            return
+        }
+        // Fallback for new custom activity color selection
+        newColorHex = hex
+    }
+
+    private func saveChanges() {
+        schedule = working
+        onSave(working)
+        dismiss()
     }
 }
 
 private struct WeeklySessionCard: View {
     let session: WorkoutSession
     let accentColor: Color
+
+    private var resolvedColor: Color {
+        Color(hex: session.colorHex) ?? accentColor
+    }
 
     var body: some View {
         Text(session.name)
@@ -1233,7 +1656,7 @@ private struct WeeklySessionCard: View {
             .frame(width: 70, alignment: .center)
             .padding(.horizontal, 6)
             .padding(.vertical, 8)
-            .glassEffect(.regular.tint(accentColor), in: .rect(cornerRadius: 12.0))
+            .glassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
     }
 }
 
@@ -1255,16 +1678,320 @@ private struct BodyPartWeights: Identifiable {
     var isEditing: Bool = false
 }
 
+private extension BodyPartWeights {
+    static var defaultGroups: [BodyPartWeights] {
+        [
+            .init(
+                name: "Chest",
+                exercises: [
+                    WeightExercise(name: "Bench Press", weight: "", sets: "", reps: ""),
+                    WeightExercise(name: "", weight: "", sets: "", reps: "")
+                ]
+            ),
+            .init(name: "Back", exercises: []),
+            .init(name: "Legs", exercises: [])
+        ]
+    }
+}
+
+private struct DailySummaryGoalSheet: View {
+    @Binding var calorieGoal: Int
+    @Binding var stepsGoal: Int
+    @Binding var distanceGoal: Double
+    var tint: Color
+    var onCancel: () -> Void
+    var onDone: () -> Void
+
+    @State private var calorieText: String = ""
+    @State private var stepsText: String = ""
+    @State private var distanceText: String = ""
+    @State private var hasLoaded = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Calorie Burn Goal")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        TextField("Calories", text: $calorieText)
+                            .keyboardType(.numberPad)
+                            .padding()
+                            .surfaceCard(16)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Steps Goal")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        TextField("Steps", text: $stepsText)
+                            .keyboardType(.numberPad)
+                            .padding()
+                            .surfaceCard(16)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Distance Goal (m)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        TextField("Meters", text: $distanceText)
+                            .keyboardType(.numberPad)
+                            .padding()
+                            .surfaceCard(16)
+
+                        Text("Distance goal is stored in meters; display converts to km in the summary cards.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle("Edit Daily Goals")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onCancel() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        applyChanges()
+                        onDone()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .tint(tint)
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        calorieText = String(calorieGoal)
+        stepsText = String(stepsGoal)
+        distanceText = String(Int(distanceGoal))
+        hasLoaded = true
+    }
+
+    private func applyChanges() {
+        if let cals = Int(calorieText.trimmingCharacters(in: .whitespacesAndNewlines)), cals > 0 {
+            calorieGoal = cals
+        }
+        if let steps = Int(stepsText.trimmingCharacters(in: .whitespacesAndNewlines)), steps > 0 {
+            stepsGoal = steps
+        }
+        if let dist = Double(distanceText.trimmingCharacters(in: .whitespacesAndNewlines)), dist > 0 {
+            distanceGoal = dist
+        }
+    }
+}
+
+private struct WeightsGroupEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var bodyParts: [BodyPartWeights]
+    var onSave: ([BodyPartWeights]) -> Void
+
+    @State private var working: [BodyPartWeights] = []
+    @State private var newName: String = ""
+    @State private var hasLoaded = false
+
+    private let presets: [String] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"]
+    private let maxTracked = 12
+
+    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Tracked Groups")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 12) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "dumbbell")
+                                                .foregroundStyle(Color.accentColor))
+
+                                        TextField("Body part", text: binding.name)
+                                            .font(.subheadline.weight(.semibold))
+
+                                        Spacer()
+
+                                        VStack(spacing: 4) {
+                                            Button(action: { moveGroupUp(idx) }) {
+                                                Image(systemName: "chevron.up")
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(idx == 0)
+                                            .opacity(idx == 0 ? 0.35 : 1)
+
+                                            Button(action: { moveGroupDown(idx) }) {
+                                                Image(systemName: "chevron.down")
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(idx == working.count - 1)
+                                            .opacity(idx == working.count - 1 ? 0.35 : 1)
+                                        }
+                                        .padding(.trailing, 4)
+
+                                        Button(role: .destructive) {
+                                            removeGroup(working[idx].id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding()
+                                    .surfaceCard(16)
+                                }
+                            }
+                        }
+                    }
+
+                    if !presets.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Quick Add")
+                                .font(.subheadline.weight(.semibold))
+
+                            VStack(spacing: 12) {
+                                ForEach(presets.filter { !isPresetSelected($0) }, id: \.self) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(Image(systemName: "dumbbell")
+                                                .foregroundStyle(Color.accentColor))
+
+                                        Text(preset)
+                                            .font(.subheadline.weight(.semibold))
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(18)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Custom Group")
+                            .font(.subheadline.weight(.semibold))
+
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                TextField("Group name", text: $newName)
+                                    .textInputAutocapitalization(.words)
+                                    .padding()
+                                    .surfaceCard(16)
+
+                                Button(action: addCustomGroup) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustom)
+                                .opacity(!canAddCustom ? 0.4 : 1)
+                            }
+
+                            Text("You can track up to \(maxTracked) groups.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Weight Groups")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { donePressed() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = bodyParts.isEmpty ? BodyPartWeights.defaultGroups : bodyParts
+        hasLoaded = true
+    }
+
+    private func togglePreset(_ name: String) {
+        if isPresetSelected(name) {
+            working.removeAll { $0.name == name }
+        } else if canAddMore {
+            working.append(.init(name: name, exercises: []))
+        }
+    }
+
+    private func isPresetSelected(_ name: String) -> Bool {
+        working.contains { $0.name == name }
+    }
+
+    private func addCustomGroup() {
+        guard canAddCustom else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        working.append(.init(name: trimmed, exercises: []))
+        newName = ""
+    }
+
+    private func removeGroup(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func moveGroupUp(_ index: Int) {
+        guard working.indices.contains(index), index > 0 else { return }
+        working.swapAt(index, index - 1)
+    }
+
+    private func moveGroupDown(_ index: Int) {
+        guard working.indices.contains(index), index < working.count - 1 else { return }
+        working.swapAt(index, index + 1)
+    }
+
+    private func donePressed() {
+        bodyParts = working
+        onSave(working)
+        dismiss()
+    }
+}
+
 private struct WeightsTrackingSection: View {
-    @State private var bodyParts: [BodyPartWeights] = [
-        .init(
-            name: "Chest",
-            exercises: [
-                WeightExercise(name: "Bench Press", weight: "", sets: "", reps: ""),
-                WeightExercise(name: "", weight: "", sets: "", reps: "")
-            ]
-        )
-    ]
+    @Binding var bodyParts: [BodyPartWeights]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {

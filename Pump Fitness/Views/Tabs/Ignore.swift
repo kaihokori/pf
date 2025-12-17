@@ -10,18 +10,18 @@ struct IgnoreView: View {
 
     private let currentDayIndex = 5
     private let weeklySchedule: [WorkoutScheduleItem] = [
-        .init(day: "Mon", sessions: [.init(name: "Chest", duration: "45 mins")]),
+        .init(day: "Mon", sessions: [.init(name: "Chest", colorHex: "#FF8A65")]),
         .init(day: "Tue", sessions: [
-            .init(name: "Back", duration: "60 mins"),
-            .init(name: "Cardio", duration: "30 mins"),
-            .init(name: "Yoga", duration: "40 mins")
+            .init(name: "Back", colorHex: "#4DD0E1"),
+            .init(name: "Cardio", colorHex: "#81C784"),
+            .init(name: "Yoga", colorHex: "#BA68C8")
         ]),
         .init(day: "Wed", sessions: []),
-        .init(day: "Thu", sessions: [.init(name: "Legs", duration: "50 mins")]),
-        .init(day: "Fri", sessions: [.init(name: "Shoulders", duration: "45 mins")]),
+        .init(day: "Thu", sessions: [.init(name: "Legs", colorHex: "#F2994A")]),
+        .init(day: "Fri", sessions: [.init(name: "Shoulders", colorHex: "#FFD54F")]),
         .init(day: "Sat", sessions: [
-            .init(name: "Abs", duration: "20 mins"),
-            .init(name: "Hyrox", duration: "90 mins")
+            .init(name: "Abs", colorHex: "#9B51E0"),
+            .init(name: "Hyrox", colorHex: "#56CCF2")
         ]),
         .init(day: "Sun", sessions: [])
     ]
@@ -378,41 +378,27 @@ private struct ActivityRow: View {
     let session: WorkoutSession
     let accentColor: Color
 
+    private var resolvedColor: Color {
+        Color(hex: session.colorHex) ?? accentColor
+    }
+
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(accentColor.opacity(0.18))
+                    .fill(resolvedColor.opacity(0.18))
                     .frame(width: 48, height: 48)
                 Image(systemName: "figure.strengthtraining.traditional") // Replace with appropriate symbol logic
                     .resizable()
                     .scaledToFit()
                     .frame(width: 28, height: 28)
-                    .foregroundColor(accentColor)
+                    .foregroundColor(resolvedColor)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(session.name)
                     .font(.headline)
                     .fontWeight(.semibold)
-
-                if session.isGymRelated {
-                    HStack(spacing: 12) {
-                        Text(session.duration ?? "Unknown duration")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("•")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("") // Placeholder for exercise count or other details
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text(session.duration ?? "Unknown duration")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             Spacer()

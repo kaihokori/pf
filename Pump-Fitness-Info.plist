@@ -19,5 +19,7 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is used to scan food barcodes.</string>
 </dict>
 </plist>

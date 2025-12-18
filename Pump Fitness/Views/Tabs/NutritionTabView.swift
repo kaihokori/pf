@@ -2997,7 +2997,7 @@ private struct MealIntakeSheet: View {
     }
 }
 
-// USDA Quick Lookup Sheet (matches LookupTabView styling)
+// FatSecret Quick Lookup Sheet (matches LookupTabView styling)
 private struct QuickLookupSheet: View {
     var tint: Color
     var initialQuery: String
@@ -3085,7 +3085,7 @@ private struct QuickLookupSheet: View {
                             Image(systemName: "info.circle.fill")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("Data sourced from the U.S. Department of Agriculture")
+                            Text("Data sourced from FatSecret")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -3111,22 +3111,21 @@ private struct QuickLookupSheet: View {
                                         Text(item.name)
                                             .font(.headline)
 
+                                        if let brand = item.brand, !brand.isEmpty {
+                                            Text(brand)
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+
+                                        Spacer()
+
                                         Text("\(Int(grams))g")
                                             .font(.caption2)
                                             .padding(.vertical, 4)
                                             .padding(.horizontal, 6)
                                             .background(tint.opacity(0.15))
                                             .cornerRadius(6)
-
-                                        Spacer()
-                                        Button {
-                                            selectedItem = item
-                                            showDetail = true
-                                        } label: {
-                                            Image(systemName: "info.circle")
-                                                .imageScale(.large)
-                                        }
-                                        .buttonStyle(.plain)
                                     }
 
                                     HStack(spacing: 12) {
@@ -3205,7 +3204,7 @@ private struct QuickLookupSheet: View {
         errorMessage = nil
         Task {
             do {
-                let results = try await fetchUSDA(query: query)
+                let results = try await fetchFatSecret(query: query)
                 if results.isEmpty {
                     foundItems = []
                     errorMessage = "No results found for \(query)."
@@ -3231,106 +3230,28 @@ private struct QuickLookupSheet: View {
         }
     }
 
-    private func fetchUSDA(query: String) async throws -> [LookupFoodItem] {
-        guard let apiKey = USDAKeyProvider.apiKey() else {
-            let guidance = "USDA API key not found. Add `USDA_API_KEY` in your scheme environment or build setting `INFOPLIST_KEY_USDA_API_KEY`."
-            throw NSError(domain: "USDA", code: 0, userInfo: [NSLocalizedDescriptionKey: guidance])
-        }
-
-        guard let url = URL(string: "https://api.nal.usda.gov/fdc/v1/foods/search?api_key=\(apiKey)") else {
-            throw URLError(.badURL)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "query": query,
-            "pageSize": 25
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let msg = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-            throw NSError(domain: "USDA", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
-        }
-
-        struct SearchResponse: Codable { let foods: [FoodData]? }
-        struct FoodData: Codable { let description: String?; let foodNutrients: [Nutrient]? }
-        struct Nutrient: Codable { let nutrientName: String?; let value: Double? }
-
-        let decoder = JSONDecoder()
-        let resp = try decoder.decode(SearchResponse.self, from: data)
-        let foods = resp.foods ?? []
-
-        let rawMapped: [LookupFoodItem] = foods.compactMap { f in
-            let name = f.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown"
-            var calories = 0
-            var protein = 0
-            var carbs = 0
-            var fat = 0
-            var sugar = 0
-            var sodium = 0 // mg
-            var potassium = 0 // mg
-
-            if let nutrients = f.foodNutrients {
-                for n in nutrients {
-                    guard let nName = n.nutrientName?.lowercased(), let val = n.value else { continue }
-                    if nName.contains("energy") || nName.contains("kcal") || nName.contains("calorie") {
-                        calories = Int(round(val))
-                    } else if nName.contains("protein") {
-                        protein = Int(round(val))
-                    } else if nName.contains("carbohydrate") || nName.contains("carb") {
-                        carbs = Int(round(val))
-                    } else if nName.contains("sugar") {
-                        sugar = Int(round(val))
-                    } else if nName.contains("sodium") {
-                        sodium = Int(round(val))
-                    } else if nName.contains("potassium") {
-                        potassium = Int(round(val))
-                    } else if nName.contains("fat") || nName.contains("lipid") {
-                        fat = Int(round(val))
-                    }
-                }
-            }
-
-            return LookupFoodItem(
-                name: name,
-                calories: calories,
-                protein: protein,
-                carbs: carbs,
-                fat: fat,
-                sugar: sugar,
-                sodium: sodium,
-                potassium: potassium
+    private func fetchFatSecret(query: String) async throws -> [LookupFoodItem] {
+        let results = try await FatSecretService.shared.searchFoods(query: query)
+        return results.map { item in
+            LookupFoodItem(
+                name: item.name,
+                brand: item.brand,
+                calories: item.calories,
+                protein: item.protein,
+                carbs: item.carbs,
+                fat: item.fat,
+                sugar: item.sugar,
+                sodium: item.sodium,
+                potassium: item.potassium
             )
         }
-
-        var deduped: [String: LookupFoodItem] = [:]
-        func score(_ item: LookupFoodItem) -> Int {
-            item.calories + item.protein + item.carbs + item.fat + item.sugar + item.sodium + item.potassium
-        }
-
-        for item in rawMapped {
-            let key = item.name.lowercased()
-            if let existing = deduped[key] {
-                if score(item) > score(existing) {
-                    deduped[key] = item
-                }
-            } else {
-                deduped[key] = item
-            }
-        }
-
-        return deduped.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 }
 
 private struct LookupFoodItem: Identifiable, Hashable {
     let id = UUID()
     let name: String
+    let brand: String?
     let calories: Int
     let protein: Int
     let carbs: Int
@@ -3343,6 +3264,7 @@ private struct LookupFoodItem: Identifiable, Hashable {
         let factor = grams / 100.0
         return LookupFoodItem(
             name: name,
+            brand: brand,
             calories: Int(round(Double(calories) * factor)),
             protein: Int(round(Double(protein) * factor)),
             carbs: Int(round(Double(carbs) * factor)),
@@ -3379,6 +3301,12 @@ private struct NutritionDetailView: View {
                 Text(item.name)
                     .font(.largeTitle)
                     .bold()
+
+                if let brand = item.brand, !brand.isEmpty {
+                    Text(brand)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
 
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {

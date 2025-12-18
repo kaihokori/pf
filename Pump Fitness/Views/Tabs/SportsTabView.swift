@@ -224,139 +224,160 @@ struct SportsTabView: View {
         let description: String
     }
 
+    // Weather visual grouping used across WeatherSection and surrounding layout
+    private enum WeatherGroup {
+        case sunny, night, cloudy, rainy, snowy, other
+
+        init(symbolName: String) {
+            let s = symbolName.lowercased()
+            if s.contains("moon") { self = .night }
+            else if s.contains("snow") || s.contains("ice") || s.contains("hail") { self = .snowy }
+            else if s.contains("rain") || s.contains("drizzle") || s.contains("thunder") { self = .rainy }
+            else if s.contains("cloud") || s.contains("fog") || s.contains("overcast") { self = .cloudy }
+            else if s.contains("sun") || s.contains("clear") { self = .sunny }
+            else { self = .other }
+        }
+
+        var gradient: LinearGradient {
+            switch self {
+            case .sunny:
+                return LinearGradient(colors: [.orange.opacity(0.18), .yellow.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .night:
+                return LinearGradient(colors: [.indigo.opacity(0.18), .blue.opacity(0.06)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .cloudy:
+                return LinearGradient(colors: [.gray.opacity(0.18), .blue.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .rainy:
+                return LinearGradient(colors: [.blue.opacity(0.18), .indigo.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .snowy:
+                return LinearGradient(colors: [.cyan.opacity(0.18), .white.opacity(0.36)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            case .other:
+                return LinearGradient(colors: [.teal.opacity(0.18), .gray.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+        }
+
+        var iconName: String {
+            switch self {
+            case .sunny: return "sun.max.fill"
+            case .night: return "moon.stars.fill"
+            case .cloudy: return "cloud.fill"
+            case .rainy: return "cloud.rain.fill"
+            case .snowy: return "snowflake"
+            case .other: return "wind"
+            }
+        }
+        
+        var iconColor: Color {
+            switch self {
+            case .sunny: return .orange
+            case .night: return .yellow.opacity(0.9)
+            case .cloudy: return .gray
+            case .rainy: return .blue
+            case .snowy: return .cyan
+            case .other: return .teal
+            }
+        }
+    }
+
     struct WeatherSection: View {
         @ObservedObject var viewModel: WeatherViewModel
         let selectedDate: Date
 
-        private func symbolColors(for symbol: String) -> [Color] {
-            let s = symbol.lowercased()
-            if s.contains("sun") || s.contains("clear") { return [Color.yellow, Color.orange] }
-            if s.contains("cloud") { return [Color.gray.opacity(0.9), Color.gray.opacity(0.6)] }
-            if s.contains("rain") || s.contains("drizzle") { return [Color.blue.opacity(0.9), Color.cyan.opacity(0.7)] }
-            if s.contains("snow") { return [Color.white, Color.blue.opacity(0.6)] }
-            if s.contains("wind") { return [Color.gray, Color.cyan] }
-            return []
-        }
-
         var body: some View {
-            ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: 16) {
-                    switch viewModel.state {
-                    case .idle, .loading:
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                            Spacer()
-                        }
-                    case .failed(let message):
-                        VStack(alignment: .center, spacing: 8) {
-                            Text("Weather unavailable")
-                                .font(.headline)
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                    case .loaded:
-                        if let current = viewModel.currentSnapshot {
-                            HStack {
-                                Spacer()
-                                VStack(spacing: 8) {
-                                    let colors = symbolColors(for: current.symbol)
-                                    if colors.isEmpty {
-                                        Image(systemName: current.symbol)
-                                            .font(.system(size: 42, weight: .semibold))
-                                            .symbolRenderingMode(.multicolor)
-                                    } else {
-                                        Image(systemName: current.symbol)
-                                            .font(.system(size: 42, weight: .semibold))
-                                            .symbolRenderingMode(.palette)
-                                            .foregroundStyle(colors.count > 0 ? colors[0] : .primary,
-                                                             colors.count > 1 ? colors[1] : colors.first ?? .primary)
-                                    }
-                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+            VStack(alignment: .leading, spacing: 16) {
+                switch viewModel.state {
+                case .idle, .loading:
+                    HStack {
+                        Spacer()
+                        ProgressView().progressViewStyle(.circular)
+                        Spacer()
+                    }
+                    .frame(height: 200)
+                case .failed(let message):
+                    VStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.largeTitle)
+                            .foregroundStyle(.orange)
+                        Text("Weather unavailable")
+                            .font(.headline)
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                case .loaded:
+                    if let current = viewModel.currentSnapshot {
+                        let group = WeatherGroup(symbolName: current.symbol)
+                        
+                        VStack(spacing: 0) {
+                            // Main Info
+                            HStack(alignment: .center) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(current.description.capitalized)
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                                         Text("\(current.temperature)°")
-                                            .font(.system(size: 56, weight: .bold, design: .rounded))
-
+                                            .font(.system(size: 64, weight: .bold, design: .rounded))
+                                        
                                         if let delta = current.temperatureDelta, delta != 0 {
-                                            let isWarmer = delta > 0
-                                            let trendColor: Color = isWarmer ? .red : .blue
-
-                                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                                Image(systemName: isWarmer ? "chevron.up" : "chevron.down")
-                                                    .font(.headline.weight(.bold))
-                                                    .foregroundStyle(trendColor)
-                                                Text(String(format: "%+d°", delta))
-                                                    .font(.headline.weight(.bold))
-                                                    .foregroundStyle(trendColor)
+                                            HStack(spacing: 2) {
+                                                Image(systemName: delta > 0 ? "arrow.up" : "arrow.down")
+                                                Text("\(abs(delta))°")
                                             }
+                                            .font(.headline.weight(.bold))
+                                            .foregroundStyle(delta > 0 ? .red : .blue)
                                         }
                                     }
-                                    Text(current.description)
-                                        .font(.headline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text("Min \(current.min)°   Max \(current.max)°")
+                                    
+                                    Text("H: \(current.max)°  L: \(current.min)°")
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
-                                    let pillColumns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
-                                    LazyVGrid(columns: pillColumns, alignment: .center, spacing: 12) {
-                                        WeatherMetricPill(title: "UV", value: "\(current.uvIndex)", tint: .purple)
-                                        WeatherMetricPill(title: "Wind", value: "\(current.windSpeed) km/h", tint: .white)
-                                        WeatherMetricPill(title: "Humidity", value: "\(current.humidity)%", tint: .green)
-                                        WeatherMetricPill(title: "Precipitation", value: "\(current.precipitationChance)%", tint: .cyan)
-                                    }
-                                    .frame(maxWidth: 280, alignment: .center)
                                 }
+                                
                                 Spacer()
+                                
+                                Image(systemName: group.iconName)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 80, height: 80)
+                                    .symbolRenderingMode(.multicolor)
+                                    .foregroundStyle(group.iconColor)
+                                    .shadow(color: group.iconColor.opacity(0.3), radius: 10, x: 0, y: 5)
                             }
-                        }
-
-                        Divider()
-
-                        HStack {
-                            Text(label(for: selectedDate))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(viewModel.upcomingSnapshots.prefix(12)) { snapshot in
-                                    VStack(alignment: .center, spacing: 10) {
-                                        Text(snapshot.label)
-                                            .font(.footnote.weight(.semibold))
-                                            
-                                        let sColors = symbolColors(for: snapshot.symbol)
-                                        if sColors.isEmpty {
-                                            Image(systemName: snapshot.symbol)
-                                                .symbolRenderingMode(.multicolor)
-                                        } else {
-                                            Image(systemName: snapshot.symbol)
-                                                .symbolRenderingMode(.palette)
-                                                .foregroundStyle(sColors.count > 0 ? sColors[0] : .primary,
-                                                                  sColors.count > 1 ? sColors[1] : sColors.first ?? .primary)
-                                        }
-
-                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                            Text("\(snapshot.temperature)°")
-                                                .font(.title3.weight(.semibold))
-
-                                            if let delta = snapshot.temperatureDelta, delta != 0 {
-                                                let isWarmer = delta > 0
-                                                Image(systemName: isWarmer ? "chevron.up" : "chevron.down")
-                                                    .font(.caption.weight(.bold))
-                                                    .foregroundStyle(isWarmer ? Color.red : Color.blue)
-                                            }
+                            .padding(24)
+                            
+                            // Metrics
+                            HStack(spacing: 0) {
+                                MetricItem(title: "Wind", value: "\(current.windSpeed)", unit: "km/h", icon: "wind")
+                                Divider()
+                                MetricItem(title: "Humidity", value: "\(current.humidity)", unit: "%", icon: "humidity")
+                                Divider()
+                                MetricItem(title: "Precip", value: "\(current.precipitationChance)", unit: "%", icon: "drop.fill")
+                            }
+                            .padding(.vertical, 16)
+                            
+                            // Forecast
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(label(for: selectedDate))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 24)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(viewModel.upcomingSnapshots.prefix(12)) { snapshot in
+                                            HourlyForecastCell(snapshot: snapshot)
                                         }
                                     }
-                                    .padding(12)
-                                    .frame(width: 80)
-                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                    .padding(.horizontal, 24)
                                 }
                             }
-                            .padding(.horizontal, 2)
+                            .padding(.bottom, 24)
+                            .padding(.top, 16)
                         }
                     }
                 }
@@ -365,9 +386,62 @@ struct SportsTabView: View {
 
         private func label(for date: Date) -> String {
             let calendar = Calendar.current
-            if calendar.isDateInToday(date) { return "Next 12 Hours" }
+            if calendar.isDateInToday(date) { return "Forecast" }
             if calendar.isDateInTomorrow(date) { return "Tomorrow" }
             return DateFormatter.shortDay.string(from: date)
+        }
+    }
+
+    private struct MetricItem: View {
+        let title: String
+        let value: String
+        let unit: String
+        let icon: String
+        
+        var body: some View {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(tintColor)
+                Text(value)
+                    .font(.headline)
+                Text(unit)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+
+        private var tintColor: Color {
+            switch title.lowercased() {
+            case "wind": return .teal
+            case "humidity": return .blue
+            case "precip", "precipitation": return .cyan
+            default: return .secondary
+            }
+        }
+    }
+
+    private struct HourlyForecastCell: View {
+        let snapshot: WeatherSnapshot
+        
+        var body: some View {
+            VStack(spacing: 8) {
+                Text(snapshot.label)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                
+                Image(systemName: snapshot.symbol)
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.title2)
+                    .frame(height: 24)
+                    .foregroundStyle(WeatherGroup(symbolName: snapshot.symbol).iconColor.opacity(0.85))
+                
+                Text("\(snapshot.temperature)°")
+                    .font(.callout.weight(.semibold))
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
         }
     }
 
@@ -710,7 +784,7 @@ struct SportsTabView: View {
                                 WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 18)
-                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    .glassEffect(.regular.tint(weatherModel.currentSnapshot.map { WeatherGroup(symbolName: $0.symbol).iconColor.opacity(0.1) } ?? WeatherGroup.other.iconColor.opacity(0.1)), in: .rect(cornerRadius: 16.0))
                                     .padding(.horizontal, 18)
                             }
 

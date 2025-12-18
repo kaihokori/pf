@@ -43,10 +43,6 @@ struct LookupTabView: View {
     @State private var errorMessage: String?
     @State private var portionSizeGrams: String = "100"
 
-    // Detail sheet
-    @State private var showDetail = false
-    @State private var selectedItem: FoodItem?
-
     var body: some View {
         ZStack {
             backgroundView
@@ -161,14 +157,6 @@ struct LookupTabView: View {
                                         .cornerRadius(6)
 
                                     Spacer()
-                                    Button {
-                                        selectedItem = item
-                                        showDetail = true
-                                    } label: {
-                                        Image(systemName: "info.circle")
-                                            .imageScale(.large)
-                                    }
-                                    .buttonStyle(.plain)
                                 }
 
                                 let macroLine = macroSummary(for: scaled)
@@ -201,11 +189,6 @@ struct LookupTabView: View {
         }
         .navigationDestination(isPresented: $showAccountsView) {
             AccountsView(account: $account)
-        }
-        .sheet(isPresented: $showDetail) {
-            if let selectedItem = selectedItem {
-                NutritionDetailView(item: selectedItem)
-            }
         }
     }
 }
@@ -363,75 +346,24 @@ private extension LookupTabView {
     /// Build a single summary line showing only the macros the user tracks.
     /// This keeps the row readable by letting text wrap to multiple lines when needed.
     func macroSummary(for item: FoodItem) -> String {
-        let tracked = account.trackedMacros
-        guard !tracked.isEmpty else { return "" }
-
         var parts: [String] = []
 
-        for macro in tracked {
-            let name = macro.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            let lower = name.lowercased()
-
-            func append(_ value: Double, unit: String, label: String? = nil) {
-                guard value > 0 else { return }
-                let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
-                let formatted = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
-                parts.append("\(label ?? name) \(formatted)\(unit)")
-            }
-
-            if lower.contains("protein") {
-                append(Double(item.protein), unit: "g")
-            } else if lower.contains("carb") {
-                append(Double(item.carbs), unit: "g")
-            } else if lower.contains("fat") && !lower.contains("satur") {
-                append(Double(item.fat), unit: "g")
-            } else if lower.contains("sugar") {
-                append(Double(item.sugar), unit: "g")
-            } else if lower.contains("sodium") || lower.contains("salt") {
-                append(Double(item.sodium), unit: "mg")
-            } else if lower.contains("potassium") {
-                append(Double(item.potassium), unit: "mg")
-            } else if lower.contains("cal") || lower.contains("energy") {
-                append(Double(item.calories), unit: "cal", label: "Calories")
-            }
+        func append(_ label: String, _ value: Double, unit: String) {
+            guard value > 0 else { return }
+            let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
+            let formatted = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
+            parts.append("\(label) \(formatted)\(unit)")
         }
+
+        // Show a consistent set of macros in a sensible order
+        append("Calories", Double(item.calories), unit: "cal")
+        append("Protein", Double(item.protein), unit: "g")
+        append("Carbs", Double(item.carbs), unit: "g")
+        append("Fat", Double(item.fat), unit: "g")
+        append("Sugar", Double(item.sugar), unit: "g")
+        append("Sodium", Double(item.sodium), unit: "mg")
+        append("Potassium", Double(item.potassium), unit: "mg")
 
         return parts.joined(separator: " • ")
-    }
-}
-
-// Simple nutrition detail view shown in a sheet when tapping the info button
-private struct NutritionDetailView: View {
-    let item: FoodItem
-    @Environment(\.presentationMode) private var presentationMode
-
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(item.name)
-                    .font(.largeTitle)
-                    .bold()
-
-                HStack {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Calories: \(item.calories)")
-                        Text("Protein: \(item.protein) g")
-                        Text("Carbs: \(item.carbs) g")
-                        Text("Fat: \(item.fat) g")
-                    }
-                    Spacer()
-                }
-
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Nutrition")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { presentationMode.wrappedValue.dismiss() }
-                }
-            }
-        }
     }
 }

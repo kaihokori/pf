@@ -69,10 +69,17 @@ struct ExpenseTrackerSection: View {
     @State private var showingAddSheet: Bool = false
     @State private var addSheetDate: Date? = nil
 
+    @State private var currencyOverride: String = "$"
+
     private let historyDays: Int = 7
 
     private var tint: Color {
         accentColorOverride ?? .accentColor
+    }
+
+    private var displayedCurrencySymbol: String {
+        let trimmed = currencyOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? currentCurrencySymbol() : trimmed
     }
 
     private var dailyCategoryTotals: [DailyCategoryTotal] {
@@ -163,12 +170,26 @@ struct ExpenseTrackerSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Spacer()
+                HStack(spacing: 8) {
+                    Text("Currency")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    TextField("", text: $currencyOverride, prompt: Text("$"))
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 72)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
             // Chart showing daily totals
             Chart {
                 ForEach(dailyCategoryTotals) { item in
                     BarMark(
                         x: .value("Day", DateFormatter.shortDate.string(from: item.date)),
-                        y: .value("Amount (\(currentCurrencySymbol()))", item.total)
+                        y: .value("Amount (\(displayedCurrencySymbol))", item.total)
                     )
                     .foregroundStyle(by: .value("Category", item.category))
                     .position(by: .value("Category", item.category), axis: .horizontal)
@@ -197,7 +218,7 @@ struct ExpenseTrackerSection: View {
 
             // Detailed entries for this week (Monday - Sunday)
             VStack(spacing: 0) {
-                ForEach(displayDates.reversed(), id: \.self) { day in
+                ForEach(displayDates, id: \.self) { day in
                     let dayEntries = entries.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
                     Section(header:
                         HStack {
@@ -215,7 +236,7 @@ struct ExpenseTrackerSection: View {
                                 addSheetDate = day
                                 showingAddSheet = true
                             } label: {
-                                Label("", systemImage: "plus")
+                                Image(systemName: "plus")
                                     .font(.callout)
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
@@ -277,7 +298,7 @@ struct ExpenseTrackerSection: View {
         .padding(.horizontal, 18)
         .padding(.top, 12)
         .sheet(item: $editingEntry) { entry in
-            ExpenseEntryEditorView(categories: categories, day: entry.date, entry: entry) { updated in
+            ExpenseEntryEditorView(categories: categories, day: entry.date, entry: entry, currencySymbol: displayedCurrencySymbol) { updated in
                 if let idx = entries.firstIndex(where: { $0.id == updated.id }) {
                     entries[idx] = updated
                 }
@@ -288,7 +309,7 @@ struct ExpenseTrackerSection: View {
         }
         .sheet(isPresented: $showingAddSheet) {
             if let targetDay = addSheetDate {
-                ExpenseEntryEditorView(categories: categories, day: targetDay, entry: nil) { newEntry in
+                ExpenseEntryEditorView(categories: categories, day: targetDay, entry: nil, currencySymbol: displayedCurrencySymbol) { newEntry in
                     entries.append(newEntry)
                     showingAddSheet = false
                 } onCancel: {
@@ -307,6 +328,7 @@ private struct ExpenseEntryEditorView: View {
     var entry: ExpenseEntry?
     var onSave: (ExpenseEntry) -> Void
     var onCancel: () -> Void
+    var currencySymbol: String
 
     @State private var name: String
     @State private var amount: String
@@ -322,12 +344,13 @@ private struct ExpenseEntryEditorView: View {
         categories.sorted { $0.id < $1.id }
     }
 
-    init(categories: [ExpenseCategory], day: Date, entry: ExpenseEntry?, onSave: @escaping (ExpenseEntry) -> Void, onCancel: @escaping () -> Void) {
+    init(categories: [ExpenseCategory], day: Date, entry: ExpenseEntry?, currencySymbol: String, onSave: @escaping (ExpenseEntry) -> Void, onCancel: @escaping () -> Void) {
         self.categories = categories
         self.day = Calendar.current.startOfDay(for: day)
         self.entry = entry
         self.onSave = onSave
         self.onCancel = onCancel
+        self.currencySymbol = currencySymbol
 
         let fallbackCategory = categories.first?.id ?? 0
         _name = State(initialValue: entry?.name ?? "")
@@ -386,7 +409,7 @@ private struct ExpenseEntryEditorView: View {
                                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
 
                             HStack(spacing: 12) {
-                                TextField("Amount (\(currentCurrencySymbol()))", text: $amount)
+                                TextField("Amount (\(currencySymbol))", text: $amount)
                                     .keyboardType(.decimalPad)
                                     .padding()
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))

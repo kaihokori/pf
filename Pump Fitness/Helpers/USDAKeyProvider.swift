@@ -1,6 +1,14 @@
 import Foundation
 
 struct USDAKeyProvider {
+    // Optional hardcoded key. To enable, add `-D USE_HARDCODED_USDA_KEY` to
+    // Other Swift Flags and replace the placeholder below with your key.
+    // NOTE: Embedding secrets in the app binary is insecure for production.
+#if USE_HARDCODED_USDA_KEY
+    private static let hardcodedKey: String? = "bPr4F8qkrxNaEFW1v3GHJZUdtSPqLS9UALRwFdDD"
+#else
+    private static let hardcodedKey: String? = nil
+#endif
     /// Resolve the USDA API key from multiple locations.
     /// Priority:
     /// 1. Environment `USDA_API_KEY`
@@ -9,6 +17,14 @@ struct USDAKeyProvider {
     /// 4. Bundle Info.plist `INFOPLIST_KEY_USDA_API_KEY` (nested lookup or value)
     /// 5. UserDefaults entries for the same keys
     static func apiKey() -> String? {
+        // If a hardcoded key is compiled in, use it first (guarded by build flag).
+        if let key = hardcodedKey, !key.isEmpty, !isPlaceholder(key) {
+#if DEBUG
+            print("USDAKeyProvider: using hardcoded API key")
+#endif
+            return key
+        }
+
         let env = ProcessInfo.processInfo.environment
 
         func isPlaceholder(_ v: String) -> Bool {

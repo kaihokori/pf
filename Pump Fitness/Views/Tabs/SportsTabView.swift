@@ -262,23 +262,6 @@ struct SportsTabView: View {
                         if let current = viewModel.currentSnapshot {
                             HStack {
                                 Spacer()
-
-                                HStack(spacing: 6) {
-                                    Image(systemName: "location.fill")
-                                        .font(.caption.weight(.bold))
-                                    Text("Current Location")
-                                        .font(.caption.weight(.semibold))
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Color.white.opacity(0.14), in: Capsule())
-                                .foregroundStyle(.white)
-                                .padding(.bottom, 12)
-                                .offset(x: 10, y: -8)
-                            }
-
-                            HStack {
-                                Spacer()
                                 VStack(spacing: 8) {
                                     let colors = symbolColors(for: current.symbol)
                                     if colors.isEmpty {

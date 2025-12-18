@@ -3601,7 +3601,6 @@ struct DailyMealLogSection: View {
                         .listStyle(.plain)
                         .scrollDisabled(true)
                         .frame(height: max(listHeight, rowHeight))
-                        .padding(.top, -8)
                     }
                 }
             }
@@ -3718,7 +3717,7 @@ struct DailyMealLogSection: View {
             parts.append(macroText)
         }
         if parts.isEmpty {
-            return "Logged meal"
+            return ""
         }
         return parts.joined(separator: " • ")
     }

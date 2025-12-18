@@ -1091,7 +1091,7 @@ private struct SoloPlayMetricsEditorSheet: View {
                                         Circle()
                                             .fill(Color.accentColor.opacity(0.15))
                                             .frame(width: 44, height: 44)
-                                            .overlay(Image(systemName: "figure.climbing")
+                                            .overlay(Image(systemName: "figure.walk.motion")
                                                 .foregroundStyle(Color.accentColor))
 
                                         VStack {

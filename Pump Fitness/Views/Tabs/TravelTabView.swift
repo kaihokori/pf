@@ -1,12 +1,13 @@
 import SwiftUI
 
-struct LookupTabView: View {
+struct TravelTabView: View {
     @Binding var account: Account
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
+    @State private var itineraryEvents: [ItineraryEvent] = ItineraryEvent.mockEvents
 
     var body: some View {
         ZStack {
@@ -16,7 +17,24 @@ struct LookupTabView: View {
                     HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
                         .environmentObject(account)
 
-                    LookupComponent(accentColor: currentAccent)
+                    HStack {
+                        Text("Itinerary Tracking")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 48)
+                    .padding(.bottom, 8)
+
+                    MapSection(events: itineraryEvents)
+                        .padding(.horizontal, 18)
+
+                    ItineraryTrackingSection(events: itineraryEvents)
+                        .padding(.horizontal, 18)
                 }
                 .padding(.bottom, 24)
             }
@@ -34,7 +52,7 @@ struct LookupTabView: View {
     }
 }
 
-private extension LookupTabView {
+private extension TravelTabView {
     var currentAccent: Color {
         if themeManager.selectedTheme == .multiColour {
             return .accentColor
@@ -45,7 +63,7 @@ private extension LookupTabView {
     @ViewBuilder
     var backgroundView: some View {
         if themeManager.selectedTheme == .multiColour {
-            GradientBackground(theme: .lookup)
+            GradientBackground(theme: .travel)
         } else {
             themeManager.selectedTheme.background(for: colorScheme)
                 .ignoresSafeArea()

@@ -227,7 +227,7 @@ struct NutritionTabView: View {
                             Spacer()
 
                             Button {
-                                    showMealReminderSheet = true
+                                showMealReminderSheet = true
                             } label: {
                                 Label("Edit", systemImage: "pencil")
                                     .font(.callout)
@@ -2765,8 +2765,9 @@ private struct MealIntakeSheet: View {
     @State private var portionSizeGrams: String = "100"
     @State private var caloriesText: String = ""
     @State private var macroInputs: [String: String]
-    @State private var showLookupSheet = false
-    @State private var lookupSearchText: String = ""
+    @State private var isLookupPresented: Bool = false
+    @State private var lookupShouldAutoSearch: Bool = false
+    @State private var lookupShouldOpenScanner: Bool = false
 
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
@@ -2837,18 +2838,33 @@ private struct MealIntakeSheet: View {
                         }
                     }
 
-                    Button {
-                        lookupSearchText = itemName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        showLookupSheet = true
-                    } label: {
-                        Label("Quick Lookup", systemImage: "magnifyingglass")
-                            .font(.callout.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .glassEffect(in: .rect(cornerRadius: 16.0))
-                            .contentShape(Rectangle())
+                    HStack(spacing: 8) {
+                        Button(action: {
+                            lookupShouldOpenScanner = false
+                            lookupShouldAutoSearch = true
+                            isLookupPresented = true
+                        }) {
+                            Label("Search", systemImage: "magnifyingglass")
+                                .font(.callout.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: {
+                            lookupShouldOpenScanner = true
+                            lookupShouldAutoSearch = false
+                            isLookupPresented = true
+                        }) {
+                            Image(systemName: "barcode")
+                                .font(.title2.weight(.semibold))
+                                .frame(minWidth: 64, minHeight: 44)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Calories")
@@ -2917,17 +2933,18 @@ private struct MealIntakeSheet: View {
                         .disabled(itemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .sheet(isPresented: $showLookupSheet) {
-                QuickLookupSheet(
-                    tint: tint,
-                    initialQuery: lookupSearchText,
-                    initialPortionGrams: portionSizeGrams
-                ) { selection in
-                    applyLookupSelection(selection)
-                    showLookupSheet = false
-                } onCancel: {
-                    showLookupSheet = false
-                }
+            .sheet(isPresented: $isLookupPresented) {
+                LookupComponent(
+                    accentColor: tint,
+                    itemName: $itemName,
+                    portionSizeGrams: $portionSizeGrams,
+                    onAdd: { selected, portion, detail in
+                        applyLookupSelection(selected, portion: portion, detail: detail)
+                        isLookupPresented = false
+                    },
+                    shouldOpenScanner: $lookupShouldOpenScanner,
+                    shouldAutoSearch: $lookupShouldAutoSearch
+                )
             }
         }
     }
@@ -2958,380 +2975,56 @@ private struct MealIntakeSheet: View {
         dismiss()
     }
 
-    private func applyLookupSelection(_ selection: LookupFoodItem) {
-        itemName = selection.name
-        if selection.calories > 0 {
-            caloriesText = "\(selection.calories)"
-        }
+    private func applyLookupSelection(_ item: LookupResultItem, portion: Int, detail: FatSecretFoodDetail?) {
+        let grams = max(portion, 1)
+        let scaledDetail = detail
+
+        itemName = item.name
+        portionSizeGrams = String(grams)
+
+        let caloriesValue = scaledDetail?.calories ?? Double(item.calories)
+        caloriesText = String(Int(round(caloriesValue)))
 
         for macro in trackedMacros {
-            let lower = macro.name.lowercased()
-            if lower.contains("protein") {
-                macroInputs[macro.id] = selection.protein > 0 ? "\(selection.protein)" : macroInputs[macro.id]
-            } else if lower.contains("carb") {
-                macroInputs[macro.id] = selection.carbs > 0 ? "\(selection.carbs)" : macroInputs[macro.id]
-            } else if lower.contains("fat") {
-                macroInputs[macro.id] = selection.fat > 0 ? "\(selection.fat)" : macroInputs[macro.id]
-            } else if lower.contains("sugar") {
-                macroInputs[macro.id] = selection.sugar > 0 ? "\(selection.sugar)" : macroInputs[macro.id]
-            } else if lower.contains("sodium") || lower.contains("salt") {
-                if selection.sodium > 0 {
-                    if macro.unit.lowercased().contains("mg") {
-                        macroInputs[macro.id] = "\(selection.sodium)"
-                    } else {
-                        let grams = Double(selection.sodium) / 1000.0
-                        macroInputs[macro.id] = grams > 0 ? String(format: "%.2f", grams) : macroInputs[macro.id]
-                    }
-                }
-            } else if lower.contains("potassium") {
-                if selection.potassium > 0 {
-                    if macro.unit.lowercased().contains("mg") {
-                        macroInputs[macro.id] = "\(selection.potassium)"
-                    } else {
-                        let grams = Double(selection.potassium) / 1000.0
-                        macroInputs[macro.id] = grams > 0 ? String(format: "%.2f", grams) : macroInputs[macro.id]
-                    }
-                }
-            }
-        }
-    }
-}
-
-// FatSecret Quick Lookup Sheet (matches LookupTabView styling)
-private struct QuickLookupSheet: View {
-    var tint: Color
-    var initialQuery: String
-    var onSelect: (LookupFoodItem) -> Void
-    var onCancel: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var searchText: String
-    @State private var portionSizeGrams: String = "100"
-    @State private var foundItems: [LookupFoodItem] = []
-    @State private var isLoading: Bool = false
-    @State private var errorMessage: String?
-    @State private var showDetail = false
-    @State private var selectedItem: LookupFoodItem?
-
-    init(tint: Color, initialQuery: String, initialPortionGrams: String = "100", onSelect: @escaping (LookupFoodItem) -> Void, onCancel: @escaping () -> Void) {
-        self.tint = tint
-        self.initialQuery = initialQuery
-        self.onSelect = onSelect
-        self.onCancel = onCancel
-        _searchText = State(initialValue: initialQuery)
-        _portionSizeGrams = State(initialValue: initialPortionGrams.isEmpty ? "100" : initialPortionGrams)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                GradientBackground(theme: .lookup)
-                    .ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: 12) {
-                        HStack {
-                            Text("Food Lookup")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 24)
-
-                        HStack(spacing: 8) {
-                            TextField("", text: $searchText, prompt: Text("Search foods..."))
-                                .textInputAutocapitalization(.words)
-                                .disableAutocorrection(true)
-                                .padding()
-                                .glassEffect(in: .rect(cornerRadius: 8.0))
-                                .onSubmit { performSearch() }
-
-                            HStack {
-                                TextField("0", text: $portionSizeGrams)
-                                    .keyboardType(.decimalPad)
-                                    .textFieldStyle(.plain)
-                                Text("g")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding()
-                            .frame(width: 100)
-                            .glassEffect(in: .rect(cornerRadius: 8.0))
-                            .onChange(of: portionSizeGrams) { _, newValue in
-                                let filtered = newValue.filter { "0123456789".contains($0) }
-                                if filtered != newValue {
-                                    portionSizeGrams = filtered
-                                }
-                                if portionSizeGrams.isEmpty {
-                                    portionSizeGrams = "0"
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        Button(action: { performSearch() }) {
-                            Label("Search", systemImage: "magnifyingglass")
-                                .font(.callout.weight(.semibold))
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
-                        }
-                        .padding(.horizontal, 18)
-                        .buttonStyle(.plain)
-
-                        HStack(spacing: 6) {
-                            Image(systemName: "info.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Data sourced from FatSecret")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-
-                        Group {
-                            if isLoading {
-                                HStack { Spacer(); ProgressView().padding(); Spacer() }
-                            } else if let msg = errorMessage {
-                                HStack { Spacer(); Text(msg).foregroundColor(.red).font(.caption); Spacer() }
-                            }
-                        }
-                        .padding(.top, 32)
-
-                        LazyVStack(spacing: 10) {
-                            ForEach(foundItems) { item in
-                                let grams = Double(portionSizeGrams) ?? 100.0
-                                let scaled = item.scaled(to: grams)
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text(item.name)
-                                            .font(.headline)
-
-                                        if let brand = item.brand, !brand.isEmpty {
-                                            Text(brand)
-                                                .font(.subheadline)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                        }
-
-                                        Spacer()
-
-                                        Text("\(Int(grams))g")
-                                            .font(.caption2)
-                                            .padding(.vertical, 4)
-                                            .padding(.horizontal, 6)
-                                            .background(tint.opacity(0.15))
-                                            .cornerRadius(6)
-                                    }
-
-                                    HStack(spacing: 12) {
-                                        nutrientPill(color: .primary.opacity(0.8), label: "\(scaled.calories) cal")
-                                        nutrientPill(color: .red, label: "\(scaled.protein)g")
-                                        nutrientPill(color: Color(.systemTeal), label: "\(scaled.carbs)g")
-                                        nutrientPill(color: .orange, label: "\(scaled.fat)g")
-                                        if scaled.sugar > 0 {
-                                            nutrientPill(color: .pink, label: "Sugar \(scaled.sugar)g")
-                                        }
-                                        if scaled.sodium > 0 {
-                                            nutrientPill(color: .blue.opacity(0.7), label: "Sodium \(scaled.sodium)mg")
-                                        }
-                                        if scaled.potassium > 0 {
-                                            nutrientPill(color: .green.opacity(0.7), label: "Potassium \(scaled.potassium)mg")
-                                        }
-                                        Spacer()
-                                        Button {
-                                            onSelect(item.scaledItem(to: grams))
-                                            dismiss()
-                                        } label: {
-                                            Text("Use")
-                                                .font(.footnote.weight(.semibold))
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .background(tint.opacity(0.15))
-                                                .cornerRadius(8)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding()
-                                .background(Color(.systemBackground).opacity(0.9))
-                                .cornerRadius(12)
-                                .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
-                                .padding(.horizontal)
-                            }
-                        }
-                        .padding(.bottom, 24)
-                    }
-                }
-            }
-            .navigationTitle("Quick Lookup")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        onCancel()
-                        dismiss()
-                    }
-                }
-            }
-            .sheet(isPresented: $showDetail) {
-                if let selectedItem = selectedItem {
-                    NutritionDetailView(item: selectedItem) {
-                        showDetail = false
-                    }
-                }
-            }
-        }
-        .onAppear {
-            if !initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                performSearch()
-            }
+            guard let amount = lookupAmount(for: macro, item: item, detail: scaledDetail) else { continue }
+            macroInputs[macro.id] = formattedMacroAmount(amount)
         }
     }
 
-    private func performSearch() {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else {
-            foundItems = []
-            return
-        }
+    private func lookupAmount(for tracked: TrackedMacro, item: LookupResultItem, detail: FatSecretFoodDetail?) -> Double? {
+        let name = tracked.name.lowercased()
+        let unit = tracked.unit.lowercased()
 
-        isLoading = true
-        errorMessage = nil
-        Task {
-            do {
-                let results = try await fetchFatSecret(query: query)
-                if results.isEmpty {
-                    foundItems = []
-                    errorMessage = "No results found for \(query)."
-                } else {
-                    foundItems = results
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-                foundItems = []
-            }
-            isLoading = false
+        switch name {
+        case "protein":
+            return detail?.protein ?? Double(item.protein)
+        case "carb", "carbs", "carbohydrate", "carbohydrates":
+            return detail?.carbs ?? Double(item.carbs)
+        case "fat", "fats":
+            return detail?.fat ?? Double(item.fat)
+        case "fiber", "fibre":
+            return detail?.fiber
+        case "sugar", "sugars":
+            return detail?.sugar ?? Double(item.sugar)
+        case "sodium":
+            return convertMineral(detail?.sodium ?? Double(item.sodium), targetUnit: unit)
+        case "potassium":
+            return convertMineral(detail?.potassium ?? Double(item.potassium), targetUnit: unit)
+        default:
+            return nil
         }
     }
 
-    private func nutrientPill(color: Color, label: String) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
+    private func convertMineral(_ valueMg: Double, targetUnit: String) -> Double {
+        if targetUnit.contains("mg") { return valueMg }
+        if targetUnit.contains("g") { return valueMg / 1000.0 }
+        return valueMg
     }
 
-    private func fetchFatSecret(query: String) async throws -> [LookupFoodItem] {
-        let results = try await FatSecretService.shared.searchFoods(query: query)
-        return results.map { item in
-            LookupFoodItem(
-                name: item.name,
-                brand: item.brand,
-                calories: item.calories,
-                protein: item.protein,
-                carbs: item.carbs,
-                fat: item.fat,
-                sugar: item.sugar,
-                sodium: item.sodium,
-                potassium: item.potassium
-            )
-        }
-    }
-}
-
-private struct LookupFoodItem: Identifiable, Hashable {
-    let id = UUID()
-    let name: String
-    let brand: String?
-    let calories: Int
-    let protein: Int
-    let carbs: Int
-    let fat: Int
-    let sugar: Int
-    let sodium: Int // mg
-    let potassium: Int // mg
-
-    func scaled(to grams: Double) -> LookupFoodItem {
-        let factor = grams / 100.0
-        return LookupFoodItem(
-            name: name,
-            brand: brand,
-            calories: Int(round(Double(calories) * factor)),
-            protein: Int(round(Double(protein) * factor)),
-            carbs: Int(round(Double(carbs) * factor)),
-            fat: Int(round(Double(fat) * factor)),
-            sugar: Int(round(Double(sugar) * factor)),
-            sodium: Int(round(Double(sodium) * factor)),
-            potassium: Int(round(Double(potassium) * factor))
-        )
-    }
-
-    func scaledItem(to grams: Double) -> LookupFoodItem {
-        scaled(to: grams)
-    }
-
-    var macroInputs: [String: String] {
-        [
-            "protein": protein > 0 ? "\(protein)" : "",
-            "carbs": carbs > 0 ? "\(carbs)" : "",
-            "fat": fat > 0 ? "\(fat)" : "",
-            "sugar": sugar > 0 ? "\(sugar)" : "",
-            "sodium": sodium > 0 ? "\(sodium)" : "",
-            "potassium": potassium > 0 ? "\(potassium)" : ""
-        ]
-    }
-}
-
-private struct NutritionDetailView: View {
-    let item: LookupFoodItem
-    var onDone: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(item.name)
-                    .font(.largeTitle)
-                    .bold()
-
-                if let brand = item.brand, !brand.isEmpty {
-                    Text(brand)
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Calories: \(item.calories)")
-                        Text("Protein: \(item.protein) g")
-                        Text("Carbs: \(item.carbs) g")
-                        Text("Fat: \(item.fat) g")
-                        if item.sugar > 0 { Text("Sugar: \(item.sugar) g") }
-                        if item.sodium > 0 { Text("Sodium: \(item.sodium) mg") }
-                        if item.potassium > 0 { Text("Potassium: \(item.potassium) mg") }
-                    }
-                    Spacer()
-                }
-
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Nutrition")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { onDone() }
-                }
-            }
-        }
+    private func formattedMacroAmount(_ amount: Double) -> String {
+        let rounded = (amount * 10).rounded() / 10
+        let isWhole = rounded.truncatingRemainder(dividingBy: 1) == 0
+        return isWhole ? String(Int(rounded)) : String(format: "%.1f", rounded)
     }
 }
 

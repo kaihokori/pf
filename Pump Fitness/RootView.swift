@@ -869,12 +869,11 @@ private extension RootView {
                                 SportsTabView(account: accountBinding, selectedDate: $selectedDate)
                             }
                             Tab(
-                                "Lookup",
-                                systemImage: AppTab.lookup.systemImage,
-                                value: AppTab.lookup,
-                                role: .search
+                                "Travel",
+                                systemImage: AppTab.travel.systemImage,
+                                value: AppTab.travel,
                             ) {
-                                LookupTabView(account: accountBinding, selectedDate: $selectedDate)
+                                TravelTabView(account: accountBinding, selectedDate: $selectedDate)
                             }
                         }
                     }
@@ -909,7 +908,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
     case routine
     case workout
     case sports
-    case lookup
+    case travel
 
     var id: String { rawValue }
 
@@ -919,7 +918,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
         case .routine: return "Routine"
         case .workout: return "Workout"
         case .sports: return "Sports"
-        case .lookup: return "Search"
+        case .travel: return "Travel"
         }
     }
 
@@ -929,7 +928,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
         case .routine: return "calendar.and.person"
         case .workout: return "figure.strengthtraining.traditional"
         case .sports: return "sportscourt.fill"
-        case .lookup: return "magnifyingglass"
+        case .travel: return "globe.asia.australia.fill"
         }
     }
 }

@@ -32,6 +32,11 @@ struct LookupResultItem: Identifiable, Hashable {
 
 struct LookupComponent: View {
     var accentColor: Color
+    @Binding var itemName: String
+    @Binding var portionSizeGrams: String
+    var onAdd: (LookupResultItem, Int, FatSecretFoodDetail?) -> Void
+    @Binding var shouldOpenScanner: Bool
+    @Binding var shouldAutoSearch: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchFieldIsFocused: Bool
@@ -43,7 +48,6 @@ struct LookupComponent: View {
     @State private var scannedBarcode: String?
     @State private var scannedItem: LookupResultItem?
     @State private var errorMessage: String?
-    @State private var portionSizeGrams: String = "100"
     @State private var detailItem: LookupResultItem?
     @State private var detailPortion: Int = 100
     @State private var detailNutrition: FatSecretFoodDetail?
@@ -96,6 +100,20 @@ struct LookupComponent: View {
                 }
             }
             .padding(.horizontal)
+
+            .onChange(of: searchText) { _, newValue in
+                if itemName != newValue {
+                    itemName = newValue
+                }
+            }
+            .onChange(of: itemName) { _, newValue in
+                if searchText != newValue {
+                    searchText = newValue
+                }
+            }
+            .onAppear {
+                searchText = itemName
+            }
 
             HStack {
                 Button(action: { performSearch() }) {
@@ -209,6 +227,20 @@ struct LookupComponent: View {
                 .cornerRadius(16)
                 .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 6)
                 .padding(.horizontal)
+
+                Button {
+                    let gramsInt = resolvedPortion()
+                    let scaledSelection = scannedItem.scaled(to: Double(gramsInt))
+                    itemName = scaledSelection.name
+                    onAdd(scaledSelection, gramsInt, nil)
+                } label: {
+                    Label("Add", systemImage: "plus")
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .glassEffect(in: .rect(cornerRadius: 14.0))
+                }
+                .padding(.horizontal)
             }
 
             LazyVStack(spacing: 12, pinnedViews: []) {
@@ -228,55 +260,6 @@ struct LookupComponent: View {
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
-
-                                // Show macronutrients text per the metric serving size (fallback to per 100g)
-                                let metricText: String = {
-                                    if let detail = detailNutrition, let dItem = detailItem, dItem.fatSecretId == item.fatSecretId {
-                                        if let amount = detail.metricServingAmount, let unit = detail.metricServingUnit {
-                                            return "per \(Int(amount))\(unit)"
-                                        }
-                                        if let measure = detail.measurementDescription, !measure.isEmpty {
-                                            return "per \(measure)"
-                                        }
-                                    }
-                                    return "per 100g"
-                                }()
-
-                                let calVal: Int = {
-                                    if let detail = detailNutrition, let dItem = detailItem, dItem.fatSecretId == item.fatSecretId, let amount = detail.metricServingAmount {
-                                        let scaled = detail.scaled(to: Double(amount))
-                                        return Int(round(scaled.calories))
-                                    }
-                                    return item.calories
-                                }()
-
-                                let protVal: Int = {
-                                    if let detail = detailNutrition, let dItem = detailItem, dItem.fatSecretId == item.fatSecretId, let amount = detail.metricServingAmount {
-                                        let scaled = detail.scaled(to: Double(amount))
-                                        return Int(round(scaled.protein))
-                                    }
-                                    return item.protein
-                                }()
-
-                                let carbVal: Int = {
-                                    if let detail = detailNutrition, let dItem = detailItem, dItem.fatSecretId == item.fatSecretId, let amount = detail.metricServingAmount {
-                                        let scaled = detail.scaled(to: Double(amount))
-                                        return Int(round(scaled.carbs))
-                                    }
-                                    return item.carbs
-                                }()
-
-                                let fatVal: Int = {
-                                    if let detail = detailNutrition, let dItem = detailItem, dItem.fatSecretId == item.fatSecretId, let amount = detail.metricServingAmount {
-                                        let scaled = detail.scaled(to: Double(amount))
-                                        return Int(round(scaled.fat))
-                                    }
-                                    return item.fat
-                                }()
-
-                                Text("\(calVal) cal • \(protVal) g protein • \(carbVal) g carbs • \(fatVal) g fat \(metricText)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
 
                             Spacer()
@@ -316,6 +299,26 @@ struct LookupComponent: View {
             }
             .padding(.top, 48)
         }
+        .onAppear {
+            searchText = itemName
+            if shouldOpenScanner {
+                showingScanner = true
+                shouldOpenScanner = false
+            }
+            triggerAutoSearchIfNeeded()
+        }
+        .onChange(of: shouldOpenScanner) { _, new in
+            if new {
+                showingScanner = true
+                shouldOpenScanner = false
+            }
+        }
+        .onChange(of: shouldAutoSearch) { _, newValue in
+            if newValue {
+                triggerAutoSearchIfNeeded()
+            }
+        }
+
         .sheet(isPresented: $showingScanner) {
             BarcodeScannerView(
                 onCodeFound: { code in
@@ -415,10 +418,12 @@ private extension LookupComponent {
     }
 
     func showDetail(for item: LookupResultItem, portion: Double) {
-        detailPortion = Int(portion)
-        detailItem = item.scaled(to: portion)
+        let grams = max(Int(portion), 1)
+        detailPortion = grams
+        detailItem = item.scaled(to: Double(grams))
         detailNutrition = nil
         detailError = nil
+        itemName = item.name
 
         guard let id = item.fatSecretId else {
             detailIsLoading = false
@@ -469,6 +474,18 @@ private extension LookupComponent {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { detailItem = nil }
                         .tint(accentColor)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let selection = item
+                        let grams = detailPortion
+                        let nutrition = detailNutrition?.scaled(to: Double(grams))
+                        itemName = selection.name
+                        onAdd(selection, grams, nutrition)
+                        detailItem = nil
+                    }
+                    .fontWeight(.semibold)
+                    .tint(accentColor)
                 }
             }
         }
@@ -605,5 +622,17 @@ private extension LookupComponent {
         let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
         let number = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
         return "\(number) \(unit)"
+    }
+
+    func resolvedPortion() -> Int {
+        let raw = Int(Double(portionSizeGrams) ?? 0)
+        return max(raw, 1)
+    }
+
+    func triggerAutoSearchIfNeeded() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard shouldAutoSearch, !query.isEmpty else { return }
+        shouldAutoSearch = false
+        performSearch()
     }
 }

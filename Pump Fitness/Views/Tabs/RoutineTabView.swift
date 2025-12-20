@@ -727,11 +727,11 @@ private struct DailyTasksEditorView: View {
 
     private var presets: [DailyTaskItem] {
         [
-            DailyTaskItem(name: "Wake Up", time: "07:00", colorHex: "#FF0000"),
-            DailyTaskItem(name: "Coffee", time: "08:00", colorHex: "#FF7F00"),
-            DailyTaskItem(name: "Stretch", time: "09:00", colorHex: "#7F00FF"),
-            DailyTaskItem(name: "Lunch", time: "12:30", colorHex: "#00FF00"),
-            DailyTaskItem(name: "Workout", time: "18:00", colorHex: "#FFFF00")
+            DailyTaskItem(name: "Wake Up", time: "07:00", colorHex: "#D84A4A"),
+            DailyTaskItem(name: "Coffee", time: "08:00", colorHex: "#E39A3B"),
+            DailyTaskItem(name: "Stretch", time: "09:00", colorHex: "#4A7BD0"),
+            DailyTaskItem(name: "Lunch", time: "12:30", colorHex: "#4CAF6A"),
+            DailyTaskItem(name: "Workout", time: "18:00", colorHex: "#E6C84F")
         ]
     }
 

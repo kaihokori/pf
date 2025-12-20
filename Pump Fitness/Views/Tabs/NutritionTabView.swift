@@ -1443,12 +1443,6 @@ struct CravingEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    MacroEditorSummaryChip(
-                        currentCount: working.count,
-                        maxCount: maxTrackedCravings,
-                        tint: tint
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Cravings")
@@ -1520,7 +1514,7 @@ struct CravingEditorSheet: View {
                                             .fill(tint.opacity(0.15))
                                             .frame(width: 44, height: 44)
                                             .overlay(
-                                                Image(systemName: "sparkles")
+                                                Image(systemName: "birthday.cake")
                                                     .foregroundStyle(tint)
                                             )
 
@@ -1680,13 +1674,6 @@ struct SupplementEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    // Summary chip
-                    MacroEditorSummaryChip(
-                        currentCount: working.count,
-                        maxCount: maxTrackedSupplements,
-                        tint: tint
-                    )
-
                     // Tracked supplements
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -2376,12 +2363,6 @@ struct MacroEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    MacroEditorSummaryChip(
-                        currentCount: workingMacros.count,
-                        maxCount: NutritionMacroLimits.maxTrackedMacros,
-                        tint: tint
-                    )
-
                     if !workingMacros.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Macros")
@@ -2652,30 +2633,6 @@ private struct CustomMacroComposer: View {
                     .foregroundStyle(.red)
             }
         }
-    }
-}
-
-private struct MacroEditorSummaryChip: View {
-    var currentCount: Int
-    var maxCount: Int
-    var tint: Color
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Tracked Macros")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text("\(currentCount) / \(maxCount)")
-                    .font(.title3.weight(.semibold))
-            }
-            Spacer()
-            ProgressView(value: Double(currentCount), total: Double(maxCount))
-                .tint(tint)
-                .frame(width: 120)
-        }
-        .padding()
-        .surfaceCard(18)
     }
 }
 

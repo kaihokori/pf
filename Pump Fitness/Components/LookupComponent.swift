@@ -352,7 +352,6 @@ private extension LookupComponent {
         scannedItem = nil
 
         Task {
-            print("LookupComponent: performSearch -> \(query)")
             do {
                 let results = try await fetchFatSecret(query: query)
                 if results.isEmpty {

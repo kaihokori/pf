@@ -26,6 +26,8 @@ struct SportsTabView: View {
     @State private var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
     @State private var showTeamMetricsEditor = false
     @State private var showSoloMetricsEditor = false
+    @State private var showSportsEditor = false
+    @State private var metricsEditorSportIndex: Int? = nil
     @State private var hasLoadedTimeTrackingConfig = false
     // Track expanded state for each sport
     @State private var expandedSports: [Bool] = []
@@ -84,9 +86,70 @@ struct SportsTabView: View {
     struct SportType: Identifiable {
         let id = UUID()
         var name: String
+        var color: Color
         var activities: [SportActivity]
         var metrics: [SportMetric]
     }
+
+    struct SportPreset: Identifiable {
+        let id = UUID()
+        var name: String
+        var color: Color
+        var metrics: [SportMetric]
+    }
+
+    struct SportMetricPreset: Identifiable {
+        let id = UUID()
+        var key: String
+        var label: String
+        var unit: String
+        var color: Color
+        var valueTransform: ((SportActivity) -> Double)? = nil
+
+        func metric() -> SportMetric {
+            SportMetric(key: key, label: label, unit: unit, color: color, valueTransform: valueTransform)
+        }
+    }
+
+    private static let metricPresets: [SportMetricPreset] = [
+        .init(key: "distanceKm", label: "Distance", unit: "km", color: .blue),
+        .init(key: "durationMin", label: "Duration", unit: "min", color: .green),
+        .init(key: "speedKmh", label: "Speed", unit: "km/h", color: .orange),
+        .init(key: "speedKmhComputed", label: "Speed (calc)", unit: "km/h", color: .orange, valueTransform: { $0.speedKmhComputed ?? 0 }),
+        .init(key: "laps", label: "Laps", unit: "laps", color: .purple),
+        .init(key: "attemptsMade", label: "Attempts Made", unit: "count", color: .teal),
+        .init(key: "attemptsMissed", label: "Attempts Missed", unit: "count", color: .red),
+        .init(key: "accuracy", label: "Accuracy", unit: "%", color: .yellow),
+        .init(key: "accuracyComputed", label: "Accuracy (calc)", unit: "%", color: .yellow, valueTransform: { $0.accuracyComputed ?? 0 }),
+        .init(key: "rounds", label: "Rounds", unit: "rounds", color: .indigo),
+        .init(key: "roundDuration", label: "Round Duration", unit: "min", color: .mint),
+        .init(key: "points", label: "Points", unit: "pts", color: .pink),
+        .init(key: "holdTime", label: "Hold Time", unit: "sec", color: .cyan),
+        .init(key: "poses", label: "Poses", unit: "poses", color: .brown),
+        .init(key: "altitude", label: "Altitude", unit: "m", color: .gray),
+        .init(key: "timeToPeak", label: "Time to Peak", unit: "min", color: .blue.opacity(0.7)),
+        .init(key: "restTime", label: "Rest Time", unit: "min", color: .green.opacity(0.7))
+    ]
+
+    private static var metricPresetByKey: [String: SportMetricPreset] {
+        Dictionary(uniqueKeysWithValues: metricPresets.map { ($0.key, $0) })
+    }
+
+    private static func metrics(forKeys keys: [String]) -> [SportMetric] {
+        keys.compactMap { metricPresetByKey[$0]?.metric() }
+    }
+
+    private static let sportPresets: [SportPreset] = [
+        .init(name: "Running", color: .blue, metrics: metrics(forKeys: ["distanceKm", "durationMin", "speedKmhComputed"])),
+        .init(name: "Cycling", color: .green, metrics: metrics(forKeys: ["distanceKm", "durationMin", "speedKmhComputed"])),
+        .init(name: "Swimming", color: .purple, metrics: metrics(forKeys: ["distanceKm", "laps", "durationMin"])),
+        .init(name: "Team Sports", color: .teal, metrics: metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracyComputed"])),
+        .init(name: "Martial Arts", color: .indigo, metrics: metrics(forKeys: ["rounds", "roundDuration", "points"])),
+        .init(name: "Pilates/Yoga", color: .brown, metrics: metrics(forKeys: ["durationMin", "holdTime", "poses"])),
+        .init(name: "Climbing", color: .gray, metrics: metrics(forKeys: ["altitude", "timeToPeak", "restTime", "durationMin"])),
+        .init(name: "Padel", color: .pink, metrics: metrics(forKeys: ["durationMin", "attemptsMade", "points"])),
+        .init(name: "Tennis", color: .orange, metrics: metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracy", "points"]))
+    ]
 
     // MARK: - Sample Data
 
@@ -94,59 +157,19 @@ struct SportsTabView: View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
 
-        func metric(_ key: String, _ label: String, _ unit: String, _ color: Color, transform: ((SportActivity) -> Double)? = nil) -> SportMetric {
-            SportMetric(key: key, label: label, unit: unit, color: color, valueTransform: transform)
+        func presetColor(_ name: String, fallback: Color = .accentColor) -> Color {
+            Self.sportPresets.first { $0.name == name }?.color ?? fallback
         }
 
-        let runningMetrics = [
-            metric("distanceKm", "Distance", "km", .blue),
-            metric("durationMin", "Duration", "min", .green),
-            metric("speedKmhComputed", "Speed", "km/h", .orange, transform: { $0.speedKmhComputed ?? 0 })
-        ]
-        let cyclingMetrics = [
-            metric("distanceKm", "Distance", "km", .blue),
-            metric("durationMin", "Duration", "min", .green),
-            metric("speedKmhComputed", "Speed", "km/h", .orange, transform: { $0.speedKmhComputed ?? 0 })
-        ]
-        let swimmingMetrics = [
-            metric("distanceKm", "Distance", "km", .blue),
-            metric("laps", "Laps", "laps", .purple),
-            metric("durationMin", "Duration", "min", .green)
-        ]
-        let teamMetrics = [
-            metric("durationMin", "Duration", "min", .green),
-            metric("attemptsMade", "Attempts Made", "count", .teal),
-            metric("attemptsMissed", "Attempts Missed", "count", .red),
-            metric("accuracyComputed", "Accuracy", "%", .yellow, transform: { $0.accuracyComputed ?? 0 })
-        ]
-        let martialMetrics = [
-            metric("rounds", "Rounds", "rounds", .indigo),
-            metric("roundDuration", "Round Duration", "min", .mint),
-            metric("points", "Points", "pts", .pink)
-        ]
-        let pilatesMetrics = [
-            metric("durationMin", "Duration", "min", .green),
-            metric("holdTime", "Hold Time", "sec", .cyan),
-            metric("poses", "Poses", "poses", .brown)
-        ]
-        let climbingMetrics = [
-            metric("altitude", "Altitude", "m", .gray),
-            metric("timeToPeak", "Time to Peak", "min", .blue.opacity(0.7)),
-            metric("restTime", "Rest Time", "min", .green.opacity(0.7)),
-            metric("durationMin", "Duration", "min", .green)
-        ]
-        let padelMetrics = [
-            metric("durationMin", "Duration", "min", .green),
-            metric("attemptsMade", "Attempts Made", "count", .teal),
-            metric("points", "Points", "pts", .pink)
-        ]
-        let tennisMetrics = [
-            metric("durationMin", "Duration", "min", .green),
-            metric("attemptsMade", "Attempts Made", "count", .teal),
-            metric("attemptsMissed", "Attempts Missed", "count", .red),
-            metric("accuracy", "Accuracy", "%", .yellow),
-            metric("points", "Points", "pts", .pink)
-        ]
+        let runningMetrics = Self.metrics(forKeys: ["distanceKm", "durationMin", "speedKmhComputed"])
+        let cyclingMetrics = Self.metrics(forKeys: ["distanceKm", "durationMin", "speedKmhComputed"])
+        let swimmingMetrics = Self.metrics(forKeys: ["distanceKm", "laps", "durationMin"])
+        let teamMetrics = Self.metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracyComputed"])
+        let martialMetrics = Self.metrics(forKeys: ["rounds", "roundDuration", "points"])
+        let pilatesMetrics = Self.metrics(forKeys: ["durationMin", "holdTime", "poses"])
+        let climbingMetrics = Self.metrics(forKeys: ["altitude", "timeToPeak", "restTime", "durationMin"])
+        let padelMetrics = Self.metrics(forKeys: ["durationMin", "attemptsMade", "points"])
+        let tennisMetrics = Self.metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracy", "points"])
 
         // ...existing code for activities...
         let runningActivities: [SportActivity] = [
@@ -192,15 +215,15 @@ struct SportsTabView: View {
         ]
 
         return [
-            SportType(name: "Running", activities: runningActivities, metrics: runningMetrics),
-            SportType(name: "Cycling", activities: cyclingActivities, metrics: cyclingMetrics),
-            SportType(name: "Swimming", activities: swimmingActivities, metrics: swimmingMetrics),
-            SportType(name: "Team Sports", activities: teamActivities, metrics: teamMetrics),
-            SportType(name: "Martial Arts", activities: martialActivities, metrics: martialMetrics),
-            SportType(name: "Pilates/Yoga", activities: pilatesActivities, metrics: pilatesMetrics),
-            SportType(name: "Climbing", activities: climbingActivities, metrics: climbingMetrics),
-            SportType(name: "Padel", activities: padelActivities, metrics: padelMetrics),
-            SportType(name: "Tennis", activities: tennisActivities, metrics: tennisMetrics)
+            SportType(name: "Running", color: presetColor("Running", fallback: .blue), activities: runningActivities, metrics: runningMetrics),
+            SportType(name: "Cycling", color: presetColor("Cycling", fallback: .green), activities: cyclingActivities, metrics: cyclingMetrics),
+            SportType(name: "Swimming", color: presetColor("Swimming", fallback: .purple), activities: swimmingActivities, metrics: swimmingMetrics),
+            SportType(name: "Team Sports", color: presetColor("Team Sports", fallback: .teal), activities: teamActivities, metrics: teamMetrics),
+            SportType(name: "Martial Arts", color: presetColor("Martial Arts", fallback: .indigo), activities: martialActivities, metrics: martialMetrics),
+            SportType(name: "Pilates/Yoga", color: presetColor("Pilates/Yoga", fallback: .brown), activities: pilatesActivities, metrics: pilatesMetrics),
+            SportType(name: "Climbing", color: presetColor("Climbing", fallback: .gray), activities: climbingActivities, metrics: climbingMetrics),
+            SportType(name: "Padel", color: presetColor("Padel", fallback: .pink), activities: padelActivities, metrics: padelMetrics),
+            SportType(name: "Tennis", color: presetColor("Tennis", fallback: .orange), activities: tennisActivities, metrics: tennisMetrics)
         ]
     }()
 
@@ -226,7 +249,7 @@ struct SportsTabView: View {
 
     // Weather visual grouping used across WeatherSection and surrounding layout
     private enum WeatherGroup {
-        case sunny, night, cloudy, rainy, snowy, other
+        case clear, night, cloudy, rainy, snowy, other
 
         init(symbolName: String) {
             let s = symbolName.lowercased()
@@ -234,13 +257,13 @@ struct SportsTabView: View {
             else if s.contains("snow") || s.contains("ice") || s.contains("hail") { self = .snowy }
             else if s.contains("rain") || s.contains("drizzle") || s.contains("thunder") { self = .rainy }
             else if s.contains("cloud") || s.contains("fog") || s.contains("overcast") { self = .cloudy }
-            else if s.contains("sun") || s.contains("clear") { self = .sunny }
+            else if s.contains("sun") || s.contains("clear") { self = .clear }
             else { self = .other }
         }
 
         var gradient: LinearGradient {
             switch self {
-            case .sunny:
+            case .clear:
                 return LinearGradient(colors: [.orange.opacity(0.18), .yellow.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
             case .night:
                 return LinearGradient(colors: [.indigo.opacity(0.18), .blue.opacity(0.06)], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -257,7 +280,7 @@ struct SportsTabView: View {
 
         var iconName: String {
             switch self {
-            case .sunny: return "sun.max.fill"
+            case .clear: return "sun.max.fill"
             case .night: return "moon.stars.fill"
             case .cloudy: return "cloud.fill"
             case .rainy: return "cloud.rain.fill"
@@ -268,7 +291,7 @@ struct SportsTabView: View {
         
         var iconColor: Color {
             switch self {
-            case .sunny: return .orange
+            case .clear: return .orange
             case .night: return .yellow.opacity(0.9)
             case .cloudy: return .gray
             case .rainy: return .blue
@@ -317,11 +340,12 @@ struct SportsTabView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(current.description.capitalized)
                                         .font(.title3.weight(.semibold))
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(.white)
                                     
                                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                                         Text("\(current.temperature)°")
                                             .font(.system(size: 64, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.white)
                                         
                                         if let delta = current.temperatureDelta, delta != 0 {
                                             HStack(spacing: 2) {
@@ -329,13 +353,13 @@ struct SportsTabView: View {
                                                 Text("\(abs(delta))°")
                                             }
                                             .font(.headline.weight(.bold))
-                                            .foregroundStyle(delta > 0 ? .red : .blue)
+                                            .foregroundStyle(.white)
                                         }
                                     }
                                     
                                     Text("H: \(current.max)°  L: \(current.min)°")
                                         .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.white.opacity(0.85))
                                 }
                                 
                                 Spacer()
@@ -345,8 +369,7 @@ struct SportsTabView: View {
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 80, height: 80)
                                     .symbolRenderingMode(.multicolor)
-                                    .foregroundStyle(group.iconColor)
-                                    .shadow(color: group.iconColor.opacity(0.3), radius: 10, x: 0, y: 5)
+                                    .shadow(color: Color.black.opacity(0.6), radius: 8, x: 0, y: 4)
                             }
                             .padding(24)
                             
@@ -364,7 +387,7 @@ struct SportsTabView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(label(for: selectedDate))
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.white.opacity(0.85))
                                     .padding(.horizontal, 24)
                                 
                                 ScrollView(.horizontal, showsIndicators: false) {
@@ -402,24 +425,18 @@ struct SportsTabView: View {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.caption)
-                    .foregroundStyle(tintColor)
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(.white)
                 Text(value)
                     .font(.headline)
+                    .foregroundStyle(.white)
                 Text(unit)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.85))
             }
             .frame(maxWidth: .infinity)
         }
 
-        private var tintColor: Color {
-            switch title.lowercased() {
-            case "wind": return .teal
-            case "humidity": return .blue
-            case "precip", "precipitation": return .cyan
-            default: return .secondary
-            }
-        }
     }
 
     private struct HourlyForecastCell: View {
@@ -429,16 +446,17 @@ struct SportsTabView: View {
             VStack(spacing: 8) {
                 Text(snapshot.label)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.85))
                 
                 Image(systemName: snapshot.symbol)
-                    .symbolRenderingMode(.hierarchical)
+                    .symbolRenderingMode(.monochrome)
                     .font(.title2)
                     .frame(height: 24)
-                    .foregroundStyle(WeatherGroup(symbolName: snapshot.symbol).iconColor.opacity(0.85))
+                    .foregroundStyle(.white)
                 
                 Text("\(snapshot.temperature)°")
                     .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 8)
@@ -781,10 +799,35 @@ struct SportsTabView: View {
                                 .padding(.top, 48)
                                 .padding(.bottom, 8)
 
+                                let _wbGroup = weatherModel.currentSnapshot.map { WeatherGroup(symbolName: $0.symbol) } ?? .other
+                                let _isNight = (_wbGroup == .night)
+                                let _overlayOpacity = (_isNight ? 0.45 : 0.28)
+                                let _imageName: String = {
+                                    switch _wbGroup {
+                                    case .clear: return _isNight ? "weather_clear_night" : "weather_clear_day"
+                                    case .rainy: return _isNight ? "weather_rainy_night" : "weather_rainy_day"
+                                    case .cloudy: return _isNight ? "weather_cloudy_night" : "weather_cloudy_day"
+                                    case .snowy: fallthrough
+                                    case .other: fallthrough
+                                    case .night: return _isNight ? "weather_clear_night" : "weather_clear_day"
+                                    }
+                                }()
+
                                 WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 18)
-                                    .glassEffect(.regular.tint(weatherModel.currentSnapshot.map { WeatherGroup(symbolName: $0.symbol).iconColor.opacity(0.1) } ?? WeatherGroup.other.iconColor.opacity(0.1)), in: .rect(cornerRadius: 16.0))
+                                    .background {
+                                        ZStack {
+                                            Image(_imageName)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .clipped()
+                                                .blur(radius: 5)
+                                            // stronger dark scrim for better contrast
+                                            LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
+                                        }
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
                                     .padding(.horizontal, 18)
                             }
 
@@ -884,7 +927,7 @@ struct SportsTabView: View {
                                 Spacer()
 
                                 Button {
-                                    //
+                                    showSportsEditor = true
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                         .font(.callout)
@@ -903,19 +946,32 @@ struct SportsTabView: View {
                             VStack(alignment: .leading, spacing: 0) {
                                 ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
                                     VStack(alignment: .leading, spacing: 10) {
-                                        HStack {
-                                            Spacer()
-                                            VStack(spacing: 6) {
-                                                Text(sport.name)
-                                                    .font(.callout.weight(.semibold))
-                                                    .multilineTextAlignment(.center)
+                                        HStack(spacing: 10) {
+                                            Circle()
+                                                .fill(sport.color)
+                                                .frame(width: 16, height: 16)
 
-                                                Image(systemName: (idx < expandedSports.count && expandedSports[idx]) ? "chevron.up" : "chevron.down")
-                                                    .font(.callout.weight(.semibold))
-                                                    .accessibilityHidden(true)
-                                            }
-                                            .frame(maxWidth: .infinity)
+                                            Text(sport.name)
+                                                .font(.callout.weight(.semibold))
+                                                .multilineTextAlignment(.leading)
+
                                             Spacer()
+
+                                            Button {
+                                                metricsEditorSportIndex = idx
+                                            } label: {
+                                                Image(systemName: "pencil")
+                                                    .font(.callout.weight(.semibold))
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 6)
+                                                    .glassEffect(in: .rect(cornerRadius: 14.0))
+                                                    .accessibilityLabel("Edit sport metrics")
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            Image(systemName: (idx < expandedSports.count && expandedSports[idx]) ? "chevron.up" : "chevron.down")
+                                                .font(.callout.weight(.semibold))
+                                                .accessibilityHidden(true)
                                         }
                                         .contentShape(Rectangle())
                                         .onTapGesture {
@@ -992,6 +1048,29 @@ struct SportsTabView: View {
         .sheet(isPresented: $showSoloMetricsEditor) {
             SoloPlayMetricsEditorSheet(metrics: $soloMetrics) { updated in
                 soloMetrics = updated
+            }
+        }
+        .sheet(isPresented: $showSportsEditor) {
+            SportsEditorSheet(sports: $sports, presets: Self.sportPresets) { updated in
+                sports = updated
+                expandedSports = Array(repeating: false, count: updated.count)
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { metricsEditorSportIndex != nil },
+                set: { newValue in if !newValue { metricsEditorSportIndex = nil } }
+            )
+        ) {
+            if let idx = metricsEditorSportIndex, sports.indices.contains(idx) {
+                SportMetricsEditorSheet(
+                    sportName: sports[idx].name,
+                    metrics: $sports[idx].metrics,
+                    presets: Self.metricPresets,
+                    accent: sports[idx].color
+                ) { updated in
+                    sports[idx].metrics = updated
+                }
             }
         }
         .onAppear {
@@ -1656,6 +1735,405 @@ private struct TeamPlayMetricsEditorSheet: View {
     }
 }
 
+// Lightweight section header used by editor sheets (mirrors MacroEditorSheet styling)
+private struct MacroEditorSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+}
+
+// MARK: - Sports & Metrics Editors
+
+private struct SportsEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var sports: [SportsTabView.SportType]
+    let presets: [SportsTabView.SportPreset]
+    var onSave: ([SportsTabView.SportType]) -> Void
+
+    @State private var working: [SportsTabView.SportType] = []
+    @State private var newName: String = ""
+    @State private var newColor: Color = .accentColor
+    @State private var hasLoaded = false
+
+    private var availablePresets: [SportsTabView.SportPreset] {
+        presets.filter { preset in
+            !working.contains { $0.name.caseInsensitiveCompare(preset.name) == .orderedSame }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Tracked Sports")
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, sport in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 14) {
+                                        ColorPicker("", selection: binding.color, supportsOpacity: false)
+                                            .labelsHidden()
+                                            .frame(width: 42)
+
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            TextField("Name", text: binding.name)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text("ID: \(sport.id.uuidString.prefix(6))…")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeSport(sport.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(14)
+                                }
+                            }
+                        }
+                    }
+
+                    if !availablePresets.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Quick Add")
+                            VStack(spacing: 12) {
+                                ForEach(availablePresets) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(preset.color.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(
+                                                Image(systemName: "sportscourt")
+                                                    .foregroundStyle(preset.color)
+                                            )
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(preset.name)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text("\(preset.metrics.count) default values")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button {
+                                            addPreset(preset)
+                                        } label: {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(preset.color)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(18)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Custom Sports")
+                        VStack(spacing: 12) {
+                            TextField("Sport name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack(spacing: 12) {
+                                ColorPicker("", selection: $newColor, supportsOpacity: false)
+                                    .labelsHidden()
+                                    .frame(width: 44)
+
+                                Button(action: addCustomSport) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(newColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustomSport)
+                                .opacity(!canAddCustomSport ? 0.4 : 1)
+
+                                Spacer()
+
+                                Text("New sports get a fresh ID")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit Sports")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { donePressed() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private var canAddCustomSport: Bool {
+        !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = sports
+        hasLoaded = true
+    }
+
+    private func addPreset(_ preset: SportsTabView.SportPreset) {
+        working.append(
+            SportsTabView.SportType(
+                name: preset.name,
+                color: preset.color,
+                activities: [],
+                metrics: preset.metrics
+            )
+        )
+    }
+
+    private func addCustomSport() {
+        guard canAddCustomSport else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        working.append(
+            SportsTabView.SportType(
+                name: trimmed,
+                color: newColor,
+                activities: [],
+                metrics: []
+            )
+        )
+        newName = ""
+    }
+
+    private func removeSport(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func donePressed() {
+        sports = working
+        onSave(working)
+        dismiss()
+    }
+}
+
+private struct SportMetricsEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let sportName: String
+    @Binding var metrics: [SportsTabView.SportMetric]
+    let presets: [SportsTabView.SportMetricPreset]
+    var accent: Color
+    var onSave: ([SportsTabView.SportMetric]) -> Void
+
+    @State private var working: [SportsTabView.SportMetric] = []
+    @State private var newName: String = ""
+    @State private var newUnit: String = ""
+    @State private var newColor: Color = .accentColor
+    @State private var hasLoaded = false
+
+    private var availablePresets: [SportsTabView.SportMetricPreset] {
+        let existingKeys = Set(working.map { $0.key })
+        return presets.filter { !existingKeys.contains($0.key) }
+    }
+
+    private var canAddCustomMetric: Bool {
+        !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !newUnit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    if !working.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Tracked Values")
+                            VStack(spacing: 12) {
+                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, metric in
+                                    let binding = $working[idx]
+                                    HStack(spacing: 14) {
+                                        ColorPicker("", selection: binding.color, supportsOpacity: false)
+                                            .labelsHidden()
+                                            .frame(width: 42)
+
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            TextField("Name", text: binding.label)
+                                                .font(.subheadline.weight(.semibold))
+                                            TextField("Unit (e.g. km, min)", text: binding.unit)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(role: .destructive) {
+                                            removeMetric(metric.id)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(14)
+                                }
+                            }
+                        }
+                    }
+
+                    if !availablePresets.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Quick Add")
+                            VStack(spacing: 12) {
+                                ForEach(availablePresets) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(preset.color.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(
+                                                Image(systemName: "chart.bar.fill")
+                                                    .foregroundStyle(preset.color)
+                                            )
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(preset.label)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text(preset.unit)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button {
+                                            addPreset(preset)
+                                        } label: {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(preset.color)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(18)
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Custom Values")
+                        VStack(spacing: 12) {
+                            TextField("Value name", text: $newName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            TextField("Unit (e.g. pts, km)", text: $newUnit)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack(spacing: 12) {
+                                ColorPicker("", selection: $newColor, supportsOpacity: false)
+                                    .labelsHidden()
+                                    .frame(width: 44)
+
+                                Button(action: addCustomMetric) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(newColor)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustomMetric)
+                                .opacity(!canAddCustomMetric ? 0.4 : 1)
+
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Edit \(sportName) Values")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { donePressed() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .onAppear(perform: loadInitial)
+    }
+
+    private func loadInitial() {
+        guard !hasLoaded else { return }
+        working = metrics
+        newColor = accent
+        hasLoaded = true
+    }
+
+    private func addPreset(_ preset: SportsTabView.SportMetricPreset) {
+        working.append(preset.metric())
+    }
+
+    private func addCustomMetric() {
+        guard canAddCustomMetric else { return }
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUnit = newUnit.trimmingCharacters(in: .whitespacesAndNewlines)
+        let custom = SportsTabView.SportMetric(
+            key: "custom-\(UUID().uuidString)",
+            label: trimmedName,
+            unit: trimmedUnit,
+            color: newColor,
+            valueTransform: nil
+        )
+        working.append(custom)
+        newName = ""
+        newUnit = ""
+    }
+
+    private func removeMetric(_ id: UUID) {
+        working.removeAll { $0.id == id }
+    }
+
+    private func donePressed() {
+        metrics = working
+        onSave(working)
+        dismiss()
+    }
+}
+
 // MARK: - Modular Metric Graph
 
 struct SportMetricGraph: View {
@@ -1716,19 +2194,8 @@ struct SportMetricGraph: View {
                     .foregroundStyle(metric.color)
                 
                 Spacer()
-
-                Button {
-                    // 
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.callout)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                        .accessibilityLabel("Edit")
-                }
-                .buttonStyle(.plain)
             }
+            .padding(.bottom, 4)
 
             Chart {
                 ForEach(dailyTotals, id: \.date) { item in

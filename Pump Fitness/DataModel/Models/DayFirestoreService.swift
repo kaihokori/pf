@@ -102,7 +102,6 @@ class DayFirestoreService {
             docRef = db.collection(daysSubcollection).document(key)
         }
 
-        print("DayFirestoreService: fetching day for key=\(key)")
         docRef.getDocument { snapshot, error in
             if error != nil {
                 // On error, fall back to local cache if available
@@ -214,7 +213,6 @@ class DayFirestoreService {
                     }
 
                     day.macroConsumptions = updatedMacros
-                    print("DayFirestoreService: found remote day for key=\(key), using date=\(remoteDate), caloriesConsumed=\(day.caloriesConsumed)")
                     completion(day)
                     return
                 } else {
@@ -233,32 +231,26 @@ class DayFirestoreService {
                         distanceTravelled: distanceRemote ?? 0,
                         dailyTaskCompletions: dailyTaskCompletionsRemote
                     )
-                    print("DayFirestoreService: found remote day for key=\(key) (no context), returning ephemeral day, caloriesConsumed=\(calories)")
                     completion(day)
                     return
                 }
             } else {
                 // Remote doc missing — ensure local exists and upload it
-                print("DayFirestoreService: no remote day for key=\(key). Creating local default.")
                 // Create local default
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: date, in: ctx, trackedMacros: trackedMacros)
                     // If user is signed in, attempt immediate upload; otherwise mark for later
                     if Auth.auth().currentUser != nil {
-                        print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key)")
                         if self.dayHasMeaningfulData(day) {
                             self.saveDay(day) { _ in completion(day) }
                         } else {
-                            print("DayFirestoreService: local day for key=\(key) has no meaningful data — skipping upload")
                             completion(day)
                         }
                     } else {
-                        print("DayFirestoreService: user NOT signed in — queuing pending key=\(key)")
                         // schedule for upload when user signs in only if there is something to upload
                         if self.dayHasMeaningfulData(day) {
                             self.pendingDayKeys.insert(key)
                         } else {
-                            print("DayFirestoreService: local day for key=\(key) has no meaningful data — not queued")
                         }
                         completion(day)
                     }
@@ -269,19 +261,15 @@ class DayFirestoreService {
                         macroConsumptions: trackedMacros?.map { MacroConsumption(trackedMacroId: $0.id, name: $0.name, unit: $0.unit, consumed: 0) } ?? []
                     )
                     if Auth.auth().currentUser != nil {
-                        print("DayFirestoreService: user signed in — attempting immediate upload for key=\(key) (no context)")
                         if self.dayHasMeaningfulData(day) {
                             self.saveDay(day) { _ in completion(day) }
                         } else {
-                            print("DayFirestoreService: ephemeral day for key=\(key) has no meaningful data — skipping upload")
                             completion(day)
                         }
                     } else {
-                        print("DayFirestoreService: user NOT signed in — queuing pending key=\(key) (no context)")
                         if self.dayHasMeaningfulData(day) {
                             self.pendingDayKeys.insert(key)
                         } else {
-                            print("DayFirestoreService: ephemeral day for key=\(key) has no meaningful data — not queued")
                         }
                         completion(day)
                     }
@@ -296,7 +284,6 @@ class DayFirestoreService {
         // If the day only contains default/zero values then avoid uploading it —
         // this prevents accidental overwrites of non-zero remote/core-data values with zeros.
         if !dayHasMeaningfulData(day) {
-            print("DayFirestoreService: skipping save for day with no meaningful data (key will not be written)")
             completion(true)
             return
         }
@@ -347,7 +334,6 @@ class DayFirestoreService {
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
             let path = "accounts/\(uid)/days/\(key)"
-            print("DayFirestoreService: saving day to \(path) with data=\(data)")
             db.collection(userCollection)
                 .document(uid)
                 .collection(daysSubcollection)
@@ -355,8 +341,6 @@ class DayFirestoreService {
                 .setData(data, merge: true) { err in
                     if let err = err {
                         print("DayFirestoreService: failed to save day to \(path): \(err)")
-                    } else {
-                        print("DayFirestoreService: successfully saved day to \(path)")
                     }
                     completion(err == nil)
                 }
@@ -365,12 +349,10 @@ class DayFirestoreService {
 
         // Fallback legacy path
         let path = "\(daysSubcollection)/\(key)"
-        print("DayFirestoreService: saving day to legacy path \(path) with data=\(data)")
         db.collection(daysSubcollection).document(key).setData(data, merge: true) { err in
             if let err = err {
                 print("DayFirestoreService: failed to save day to legacy path \(path): \(err)")
             } else {
-                print("DayFirestoreService: successfully saved day to legacy path \(path)")
             }
             completion(err == nil)
         }
@@ -478,7 +460,6 @@ class DayFirestoreService {
 
         if let uid = Auth.auth().currentUser?.uid {
             let path = "accounts/\(uid)/days/\(key)"
-            print("DayFirestoreService: updating fields for \(path): \(fieldsToWrite)")
             db.collection(userCollection)
                 .document(uid)
                 .collection(daysSubcollection)
@@ -486,8 +467,6 @@ class DayFirestoreService {
                 .setData(fieldsToWrite, merge: true) { err in
                     if let err = err {
                         print("DayFirestoreService: failed to update fields for \(path): \(err)")
-                    } else {
-                        print("DayFirestoreService: successfully updated fields for \(path)")
                     }
                     completion(err == nil)
                 }
@@ -496,12 +475,9 @@ class DayFirestoreService {
 
         // Legacy path
         let path = "\(daysSubcollection)/\(key)"
-        print("DayFirestoreService: updating fields for legacy path \(path): \(fieldsToWrite)")
         db.collection(daysSubcollection).document(key).setData(fieldsToWrite, merge: true) { err in
             if let err = err {
                 print("DayFirestoreService: failed to update fields for legacy path \(path): \(err)")
-            } else {
-                print("DayFirestoreService: successfully updated fields for legacy path \(path)")
             }
             completion(err == nil)
         }
@@ -513,9 +489,7 @@ class DayFirestoreService {
     ///   - completion: called with `true` if all uploads succeeded (or nothing pending)
     func uploadPendingDays(in context: ModelContext, completion: @escaping (Bool) -> Void) {
         guard !pendingDayKeys.isEmpty else { completion(true); return }
-        guard Auth.auth().currentUser != nil else { print("DayFirestoreService: uploadPendingDays called but user not signed in"); completion(false); return }
-
-        print("DayFirestoreService: uploading pending days: \(pendingDayKeys)")
+        guard Auth.auth().currentUser != nil else { completion(false); return }
 
         // Capture keys and clear pending set (we'll re-add on failure)
         let keysToUpload = Array(pendingDayKeys)
@@ -531,7 +505,6 @@ class DayFirestoreService {
             fmt.timeZone = TimeZone(secondsFromGMT: 0)!
             fmt.dateFormat = "dd-MM-yyyy"
             if let date = fmt.date(from: key) {
-                print("DayFirestoreService: attempting upload for pending key=\(key)")
                 // find local Day for this date using the same UTC calendar as the formatter
                 let dayStart = fmt.calendar.startOfDay(for: date)
                 let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == dayStart })
@@ -543,15 +516,12 @@ class DayFirestoreService {
                                 allSucceeded = false
                                 self.pendingDayKeys.insert(key)
                                 print("DayFirestoreService: upload failed for key=\(key), re-queued")
-                            } else {
-                                print("DayFirestoreService: upload succeeded for key=\(key)")
                             }
                             remaining -= 1
                             if remaining == 0 { completion(allSucceeded) }
                         }
                     } else {
                         // No local day found — nothing to upload for this key
-                        print("DayFirestoreService: no local Day found for pending key=\(key), skipping")
                         remaining -= 1
                         if remaining == 0 { completion(allSucceeded) }
                     }

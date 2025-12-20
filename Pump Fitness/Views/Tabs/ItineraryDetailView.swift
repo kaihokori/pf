@@ -63,7 +63,7 @@ struct ItineraryDetailView: View {
                 .frame(height: mapHeight)
             } else {
                 LinearGradient(
-                    colors: [Color.red.opacity(0.3), Color.yellow.opacity(0.2), Color.green.opacity(0.3), Color.blue.opacity(0.2)],
+                    colors: [Color.purple.opacity(0.3), Color.white, Color.indigo.opacity(0.3)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )

@@ -97,7 +97,6 @@ struct RootView: View {
             loadDay(for: selectedDate)
         }
         .onChange(of: selectedDate) { _, newDate in
-            print("RootView: selectedDate changed to \(newDate), fetching Day from Firestore...")
             loadDay(for: newDate)
         }
         .onChange(of: consumedCalories) { _, newValue in
@@ -107,7 +106,6 @@ struct RootView: View {
                 day.caloriesConsumed = newValue
                 do {
                     try modelContext.save()
-                    print("RootView: saved caloriesConsumed=\(newValue) for date=\(selectedDate) to local store")
                 } catch {
                     print("RootView: failed to save local Day: \(error)")
                 }
@@ -117,7 +115,6 @@ struct RootView: View {
                 if newValue != 0 {
                     dayFirestoreService.updateDayFields(["caloriesConsumed": newValue], for: day) { success in
                         if success {
-                            print("RootView: successfully synced caloriesConsumed to Firestore for date=\(selectedDate)")
                         } else {
                             print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
                         }
@@ -132,14 +129,12 @@ struct RootView: View {
 
             do {
                 try modelContext.save()
-                print("RootView: saved calorieGoal=\(newValue) to local Account")
             } catch {
                 print("RootView: failed to save calorieGoal to local Account: \(error)")
             }
 
             accountFirestoreService.saveAccount(account) { success in
                 if success {
-                    print("RootView: synced calorieGoal to Firestore via Account")
                 } else {
                     print("RootView: failed to sync calorieGoal to Firestore via Account")
                 }
@@ -159,7 +154,6 @@ struct RootView: View {
                 day.macroFocusRaw = newValue?.rawValue
                 do {
                     try modelContext.save()
-                    print("RootView: saved macroFocus=\(String(describing: newValue)) for date=\(selectedDate) to local store")
                 } catch {
                     print("RootView: failed to save local Day (macroFocus): \(error)")
                 }
@@ -175,7 +169,6 @@ struct RootView: View {
 
                 accountFirestoreService.saveAccount(account) { success in
                     if success {
-                        print("RootView: synced macroFocus to Firestore via Account")
                     } else {
                         print("RootView: failed to sync macroFocus to Firestore via Account")
                     }
@@ -230,12 +223,10 @@ struct RootView: View {
                         // Prefer server macros; if missing, fall back to any cached local value before defaulting.
                         if resolvedTrackedMacros.isEmpty, let local = fetchAccount(), !local.trackedMacros.isEmpty {
                             resolvedTrackedMacros = local.trackedMacros
-                            print("RootView: using cached local tracked macros because server returned none")
                         }
 
                         if resolvedTrackedMacros.isEmpty {
                             resolvedTrackedMacros = TrackedMacro.defaults
-                            print("RootView: seeding in-memory tracked macros with defaults; not syncing to Firestore")
                         }
 
                         fetched.trackedMacros = resolvedTrackedMacros
@@ -243,7 +234,6 @@ struct RootView: View {
                         var resolvedItineraryEvents = fetched.itineraryEvents
                         if resolvedItineraryEvents.isEmpty, let localAccount = fetchAccount(), !localAccount.itineraryEvents.isEmpty {
                             resolvedItineraryEvents = localAccount.itineraryEvents
-                            print("RootView: using cached local itinerary events because server returned none")
                         }
                         fetched.itineraryEvents = resolvedItineraryEvents
 
@@ -378,7 +368,6 @@ private extension RootView {
     func loadDay(for date: Date) {
         dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
             if let d = day {
-                print("RootView: fetched/created local Day for date=\(d.date)")
                 DispatchQueue.main.async {
                     applyDayState(d, for: date)
                 }
@@ -428,7 +417,6 @@ private extension RootView {
             if !fieldsToUpdate.isEmpty {
                 dayFirestoreService.updateDayFields(fieldsToUpdate, for: day) { success in
                     if success {
-                        print("RootView: synced inherited Day fields for date=\(targetDate): \(fieldsToUpdate)")
                     } else {
                         print("RootView: failed to sync inherited Day fields for date=\(targetDate)")
                     }
@@ -456,7 +444,6 @@ private extension RootView {
         if syncWithRemote {
             accountFirestoreService.saveAccount(account) { success in
                 if success {
-                    print("RootView: synced tracked macros to Firestore")
                 } else {
                     print("RootView: failed to sync tracked macros to Firestore")
                 }
@@ -481,7 +468,6 @@ private extension RootView {
         if syncWithRemote {
             dayFirestoreService.saveDay(day) { success in
                 if success {
-                    print("RootView: synced day macros after tracked macro change")
                 } else {
                     print("RootView: failed to sync day macros after tracked macro change")
                 }
@@ -531,7 +517,6 @@ private extension RootView {
             day.macroConsumptions = consumptions
             do {
                 try modelContext.save()
-                print("RootView: saved macro consumptions for date=\(selectedDate)")
             } catch {
                 print("RootView: failed to save macro consumptions locally: \(error)")
             }
@@ -540,7 +525,6 @@ private extension RootView {
             if hasConsumption {
                 dayFirestoreService.saveDay(day) { success in
                     if success {
-                        print("RootView: synced macro consumptions to Firestore for date=\(selectedDate)")
                     } else {
                         print("RootView: failed to sync macro consumptions to Firestore for date=\(selectedDate)")
                     }
@@ -555,14 +539,12 @@ private extension RootView {
         account.cravings = updatedCravings
         do {
             try modelContext.save()
-            print("RootView: saved cravings to local account")
         } catch {
             print("RootView: failed to save cravings locally: \(error)")
         }
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
-                print("RootView: synced cravings to Firestore")
             } else {
                 print("RootView: failed to sync cravings to Firestore")
             }
@@ -579,14 +561,12 @@ private extension RootView {
 
             do {
                 try modelContext.save()
-                print("RootView: saved completed meals for date=\(selectedDate): \(ordered)")
             } catch {
                 print("RootView: failed to save completed meals locally: \(error)")
             }
 
             dayFirestoreService.updateDayFields(["completedMeals": ordered], for: day) { success in
                 if success {
-                    print("RootView: synced completed meals to Firestore for date=\(selectedDate)")
                 } else {
                     print("RootView: failed to sync completed meals to Firestore for date=\(selectedDate)")
                 }
@@ -626,14 +606,12 @@ private extension RootView {
         account.mealReminders = reminders
         do {
             try modelContext.save()
-            print("RootView: saved meal reminders locally")
         } catch {
             print("RootView: failed to save meal reminders locally: \(error)")
         }
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
-                print("RootView: synced meal reminders to Firestore")
             } else {
                 print("RootView: failed to sync meal reminders to Firestore")
             }
@@ -650,14 +628,12 @@ private extension RootView {
 
         do {
             try modelContext.save()
-            print("RootView: saved itinerary events locally (count=\(events.count))")
         } catch {
             print("RootView: failed to save itinerary events locally: \(error)")
         }
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
-                print("RootView: synced itinerary events to Firestore")
             } else {
                 print("RootView: failed to sync itinerary events to Firestore")
             }
@@ -721,8 +697,6 @@ private extension RootView {
             let existing = try modelContext.fetch(request)
             if let local = existing.first {
                 // Debug: show counts before applying fetched values
-                print("RootView.upsertLocalAccount: existing local.weeklyProgress count=\(local.weeklyProgress.count)")
-                print("RootView.upsertLocalAccount: fetched.weeklyProgress count=\(fetched.weeklyProgress.count)")
                 local.profileImage = fetched.profileImage
                 local.profileAvatar = fetched.profileAvatar
                 local.name = fetched.name
@@ -773,7 +747,6 @@ private extension RootView {
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 local.itineraryEvents = fetched.itineraryEvents
                 try modelContext.save()
-                    print("RootView.upsertLocalAccount: after save local.weeklyProgress count=\(local.weeklyProgress.count)")
             } else {
                 let newAccount = Account(
                     id: fetched.id,
@@ -802,7 +775,6 @@ private extension RootView {
                 )
                 modelContext.insert(newAccount)
                 try modelContext.save()
-                print("RootView.upsertLocalAccount: inserted newAccount.weeklyProgress count=\(newAccount.weeklyProgress.count)")
             }
         } catch {
             print("Failed to upsert local Account: \(error)")

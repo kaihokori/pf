@@ -1458,7 +1458,6 @@ final class AccountsViewModel: ObservableObject {
             let db = Firestore.firestore()
             do {
                 try await db.collection("accounts").document(uid).delete()
-                print("Account deleted successfully.")
             } catch {
                 print("Failed to delete account: \(error)")
             }

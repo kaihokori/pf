@@ -99,14 +99,12 @@ struct NutritionTabView: View {
 
         do {
             try modelContext.save()
-            print("NutritionTabView: saved intermittent fasting minutes locally = \(minutes)")
         } catch {
             print("NutritionTabView: failed to save intermittent fasting minutes locally: \(error)")
         }
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
-                print("NutritionTabView: synced intermittent fasting minutes to Firestore")
             } else {
                 print("NutritionTabView: failed to sync intermittent fasting minutes to Firestore")
             }
@@ -511,7 +509,6 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
-            print("NutritionTabView.onAppear: loading weekly progress from local account, count=\(account.weeklyProgress.count)")
             for (i, r) in account.weeklyProgress.enumerated() {
                 print("  onAppear account.weeklyProgress[\(i)]: id=\(r.id) date=\(r.date) weight=\(r.weight) hasPhoto=\(r.photoData != nil)")
             }
@@ -1161,10 +1158,6 @@ private extension NutritionTabView {
                 )
             }
             .sorted { $0.date < $1.date }
-        print("NutritionTabView.reloadWeeklyProgressFromAccount: weeklyEntries count=\(weeklyEntries.count)")
-        for (i, e) in weeklyEntries.enumerated() {
-            print("  weeklyEntries[\(i)]: id=\(e.id) date=\(e.date) weight=\(e.weight) hasPhoto=\(e.photoData != nil)")
-        }
     }
 
     func persistWeeklyProgressEntries() {
@@ -1210,7 +1203,6 @@ private extension NutritionTabView {
 
         do {
             try modelContext.save()
-            print("NutritionTabView: saved weekly progress locally")
         } catch {
             print("NutritionTabView: failed to save weekly progress locally: \(error)")
         }
@@ -1219,7 +1211,6 @@ private extension NutritionTabView {
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
-                print("NutritionTabView: synced weekly progress to Firestore")
             } else {
                 print("NutritionTabView: failed to sync weekly progress to Firestore")
             }

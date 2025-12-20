@@ -135,6 +135,8 @@ private struct FullScreenMapView: View {
     @State private var didTapAnnotation: Bool = false
     @State private var editingEvent: ItineraryEvent?
     @State private var editorSeedDate = Date()
+    @State private var initialCamera: MapCameraPosition? = nil
+    @State private var hasMovedFromInitial: Bool = false
 
         private func regionForEvents(_ events: [ItineraryEvent]) -> MKCoordinateRegion {
             let coords = events.compactMap { $0.coordinate }
@@ -224,11 +226,13 @@ private struct FullScreenMapView: View {
                         let region = regionForEvents(filteredEvents)
                         locationManager.ignoreLocationUpdates = true
                         locationManager.cameraPosition = .region(region)
+                        initialCamera = .region(region)
                     } else {
                         // No annotations: center on default region but still ignore
                         // location-driven camera updates until user explicitly asks.
                         locationManager.ignoreLocationUpdates = true
                         locationManager.cameraPosition = .region(TravelLocationManager.defaultRegion)
+                        initialCamera = .region(TravelLocationManager.defaultRegion)
                     }
                 }
 
@@ -246,35 +250,26 @@ private struct FullScreenMapView: View {
 
                         Spacer()
 
+                        // Jump to user's current location
                         Button(action: {
-                            // Fit map to show all annotation events (or default region)
-                            let coords = filteredEvents.compactMap { $0.coordinate }
-                            let region: MKCoordinateRegion
-                            if coords.isEmpty {
-                                region = TravelLocationManager.defaultRegion
-                            } else {
-                                let lats = coords.map { $0.latitude }
-                                let lons = coords.map { $0.longitude }
-                                let minLat = lats.min() ?? coords.first!.latitude
-                                let maxLat = lats.max() ?? coords.first!.latitude
-                                let minLon = lons.min() ?? coords.first!.longitude
-                                let maxLon = lons.max() ?? coords.first!.longitude
-                                let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2.0,
-                                                                    longitude: (minLon + maxLon) / 2.0)
-                                let latDelta = max((maxLat - minLat) * 1.4, 0.01)
-                                let lonDelta = max((maxLon - minLon) * 1.4, 0.01)
-                                region = MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta))
-                            }
-                            // Apply region to the shared location manager with animation
-                            DispatchQueue.main.async {
-                                locationManager.ignoreLocationUpdates = true
-                                withAnimation(.easeInOut(duration: 0.6)) {
-                                    locationManager.cameraPosition = .region(region)
+                            if let loc = locationManager.lastLocation {
+                                let span = MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                                let region = MKCoordinateRegion(center: loc.coordinate, span: span)
+                                DispatchQueue.main.async {
+                                    locationManager.ignoreLocationUpdates = true
+                                    withAnimation(.easeInOut(duration: 0.6)) {
+                                        locationManager.cameraPosition = .region(region)
+                                    }
+                                    // Mark that the camera moved so the return button enables
+                                    hasMovedFromInitial = true
                                 }
+                            } else {
+                                // Trigger a location request so we can obtain the blue dot
+                                locationManager.requestLocation()
                             }
                         }) {
                             ZStack {
-                                Image(systemName: "scope")
+                                Image(systemName: "location")
                                     .foregroundStyle(Color.accentColor)
                                     .frame(width: 45, height: 45)
                                     .font(.system(size: 18))
@@ -297,6 +292,43 @@ private struct FullScreenMapView: View {
                     .padding(.top, 12)
 
                     Spacer()
+
+                    // Bottom-centered capsule to return to events (shown when
+                    // we have events; disabled until the user moves the camera)
+                    if !filteredEvents.isEmpty {
+                        Button(action: {
+                            let region = regionForEvents(filteredEvents)
+                            DispatchQueue.main.async {
+                                locationManager.ignoreLocationUpdates = true
+                                withAnimation(.easeInOut(duration: 0.6)) {
+                                    locationManager.cameraPosition = .region(region)
+                                }
+                                // After returning to events, consider this the new initial
+                                initialCamera = .region(region)
+                                hasMovedFromInitial = false
+                            }
+                        }) {
+                            Text("Jump to Events")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(.thickMaterial, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!hasMovedFromInitial)
+                        .opacity(hasMovedFromInitial ? 1.0 : 0.5)
+                        .scaleEffect(hasMovedFromInitial ? 1.0 : 0.96)
+                        .animation(.easeInOut(duration: 0.22), value: hasMovedFromInitial)
+                        .padding(.bottom, 20)
+                    }
+                }
+                // Observe camera changes to detect when the user moved away
+                .onChange(of: locationManager.cameraPosition) { _, new in
+                    guard let initial = initialCamera else { return }
+                    if new != initial {
+                        hasMovedFromInitial = true
+                    }
                 }
             }
             .sheet(isPresented: $isShowingPOISheet) {
@@ -475,6 +507,9 @@ private struct POIDetailSheet: View {
 final class TravelLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var cameraPosition: MapCameraPosition = .region(TravelLocationManager.defaultRegion)
 
+    /// The most recently observed device location (if any).
+    @Published var lastLocation: CLLocation? = nil
+
     /// When true, ignore location updates for the purpose of moving the map camera.
     var ignoreLocationUpdates: Bool = false
 
@@ -504,8 +539,12 @@ final class TravelLocationManager: NSObject, ObservableObject, CLLocationManager
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        if ignoreLocationUpdates { return }
         guard let location = locations.first else { return }
+        // Always keep a copy of the last known location so UI controls can
+        // jump to it even when camera updates are being ignored to prevent
+        // animated jumps while the user is viewing annotations.
+        lastLocation = location
+        if ignoreLocationUpdates { return }
         let span = MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         let region = MKCoordinateRegion(center: location.coordinate, span: span)
         cameraPosition = .region(region)
@@ -604,7 +643,6 @@ struct ItineraryEventEditorView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     categorySection
                     detailsSection
-                    locationSection
                     notesSection
                 }
                 .padding(.horizontal, 20)
@@ -674,6 +712,67 @@ struct ItineraryEventEditorView: View {
                 .font(.subheadline.weight(.semibold))
 
             VStack(spacing: 12) {
+                VStack(spacing: 12) {
+                    Button(action: {
+                        isShowingPlacePicker = true
+                    }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(locationName.isEmpty ? "Place or venue" : locationName)
+                                    .foregroundStyle(locationName.isEmpty ? Color.secondary.opacity(0.8) : Color.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                if !address.isEmpty {
+                                    Text(address)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+
+                            if !locationName.isEmpty {
+                                Button(action: {
+                                    locationName = ""
+                                    address = ""
+                                    latitude = ""
+                                    longitude = ""
+                                }) {
+                                    Text("Clear")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                        .frame(minWidth: 44)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color.secondary.opacity(0.08))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $isShowingPlacePicker) {
+                        PlaceLookupView { mapItem, resolvedAddress in
+                            if let name = mapItem.name, !name.isEmpty {
+                                locationName = name
+                            }
+                            address = resolvedAddress
+
+                            let coord: CLLocationCoordinate2D
+                            if #available(iOS 26, *) {
+                                coord = mapItem.location.coordinate
+                            } else {
+                                coord = mapItem.placemark.coordinate
+                            }
+
+                            latitude = String(format: "%.4f", coord.latitude)
+                            longitude = String(format: "%.4f", coord.longitude)
+                            isShowingPlacePicker = false
+                        }
+                    }
+                }
+                
                 HStack(spacing: 12) {
                     TextField("Event name", text: $name)
                         .textInputAutocapitalization(.words)
@@ -825,74 +924,6 @@ struct ItineraryEventEditorView: View {
                         .fill(Color.secondary.opacity(0.08))
                 )
                 .padding(.vertical, 6)
-            }
-        }
-    }
-
-    private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Location")
-                .font(.subheadline.weight(.semibold))
-
-            VStack(spacing: 12) {
-                Button(action: {
-                    isShowingPlacePicker = true
-                }) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(locationName.isEmpty ? "Place or venue" : locationName)
-                                .foregroundStyle(locationName.isEmpty ? Color.secondary.opacity(0.8) : Color.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            if !address.isEmpty {
-                                Text(address)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-
-                        if !locationName.isEmpty {
-                            Button(action: {
-                                locationName = ""
-                                address = ""
-                                latitude = ""
-                                longitude = ""
-                            }) {
-                                Text("Clear")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.accentColor)
-                                    .frame(minWidth: 44)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color.secondary.opacity(0.08))
-                    )
-                }
-                .buttonStyle(.plain)
-                .sheet(isPresented: $isShowingPlacePicker) {
-                    PlaceLookupView { mapItem, resolvedAddress in
-                        if let name = mapItem.name, !name.isEmpty {
-                            locationName = name
-                        }
-                        address = resolvedAddress
-
-                        let coord: CLLocationCoordinate2D
-                        if #available(iOS 26, *) {
-                            coord = mapItem.location.coordinate
-                        } else {
-                            coord = mapItem.placemark.coordinate
-                        }
-
-                        latitude = String(format: "%.4f", coord.latitude)
-                        longitude = String(format: "%.4f", coord.longitude)
-                        isShowingPlacePicker = false
-                    }
-                }
             }
         }
     }

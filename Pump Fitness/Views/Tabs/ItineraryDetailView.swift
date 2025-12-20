@@ -5,6 +5,7 @@ import CoreLocation
 
 struct ItineraryDetailView: View {
     let event: ItineraryEvent
+    var onEdit: ((ItineraryEvent) -> Void)?
 
     @State private var cameraPosition: MapCameraPosition
     @Environment(\.dismiss) private var dismiss
@@ -18,8 +19,9 @@ struct ItineraryDetailView: View {
         return top
     }
 
-    init(event: ItineraryEvent) {
+    init(event: ItineraryEvent, onEdit: ((ItineraryEvent) -> Void)? = nil) {
         self.event = event
+        self.onEdit = onEdit
         if let coordinate = event.coordinate {
             let region = ItineraryDetailView.fitRegion(for: coordinate)
             _cameraPosition = State(initialValue: .region(region))
@@ -78,7 +80,7 @@ struct ItineraryDetailView: View {
                 Spacer()
 
                 Button {
-                                    
+                    onEdit?(event)
                 } label: {
                     Label("Edit", systemImage: "pencil")
                         .font(.callout)

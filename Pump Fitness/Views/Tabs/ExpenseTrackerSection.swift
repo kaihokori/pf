@@ -170,21 +170,6 @@ struct ExpenseTrackerSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Spacer()
-                HStack(spacing: 8) {
-                    Text("Currency")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                    TextField("", text: $currencyOverride, prompt: Text("$"))
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 72)
-                        .textFieldStyle(.roundedBorder)
-                }
-            }
-
-            // Chart showing daily totals
             Chart {
                 ForEach(dailyCategoryTotals) { item in
                     BarMark(
@@ -375,7 +360,7 @@ private struct ExpenseEntryEditorView: View {
                                 } label: {
                                     HStack(spacing: 8) {
                                         Circle()
-                                            .fill((Color(hex: category.colorHex) ?? .accentColor).opacity(0.2))
+                                            .fill((Color(hex: category.colorHex) ?? .accentColor).opacity(0.6))
                                             .frame(width: 14, height: 14)
 
                                         Text(category.name)
@@ -418,7 +403,7 @@ private struct ExpenseEntryEditorView: View {
                                     .labelsHidden()
                                     .datePickerStyle(.compact)
                                     .padding(.horizontal)
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, 10)
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                             }
                         }

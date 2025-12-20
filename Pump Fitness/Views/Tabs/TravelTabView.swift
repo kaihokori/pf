@@ -7,6 +7,8 @@ struct TravelTabView: View {
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
+    @State private var isShowingEditor = false
+    @State private var editorSeedDate: Date = Date()
     @State private var itineraryEvents: [ItineraryEvent] = ItineraryEvent.mockEvents
 
     var body: some View {
@@ -24,14 +26,28 @@ struct TravelTabView: View {
                             .foregroundStyle(.primary)
 
                         Spacer()
+
+                        Button {
+                            editorSeedDate = selectedDate
+                            isShowingEditor = true
+                        } label: {
+                            Label("Add", systemImage: "plus")
+                                .font(.callout)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                        }
+                        .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)
                     .padding(.top, 48)
                     .padding(.bottom, 8)
 
-                    MapSection(events: itineraryEvents)
+                    MapSection(events: $itineraryEvents)
                         .padding(.horizontal, 18)
+                        .padding(.bottom, 24)
 
                     ItineraryTrackingSection(events: itineraryEvents)
                         .padding(.horizontal, 18)
@@ -48,6 +64,19 @@ struct TravelTabView: View {
         }
         .navigationDestination(isPresented: $showAccountsView) {
             AccountsView(account: $account)
+        }
+        .sheet(isPresented: $isShowingEditor) {
+            ItineraryEventEditorView(
+                event: nil,
+                defaultDate: editorSeedDate,
+                onSave: { newEvent in
+                    itineraryEvents.append(newEvent)
+                    isShowingEditor = false
+                },
+                onCancel: {
+                    isShowingEditor = false
+                }
+            )
         }
     }
 }

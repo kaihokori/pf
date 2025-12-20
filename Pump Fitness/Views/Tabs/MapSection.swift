@@ -340,7 +340,7 @@ private struct FullScreenMapView: View {
                     locationName: poi.name,
                     locationPostcode: nil,
                     locationSubThoroughfare: nil,
-                    locationThoroughfare: nil,
+                    locationThoroughfare: poi.subtitle,
                     type: "activity"
                 )
 
@@ -362,13 +362,19 @@ private struct FullScreenMapView: View {
 
             if #available(iOS 26, *) {
                 if let address = poiResult.address {
-                    subtitle = String(describing: address)
+                    let full = address.fullAddress
+                    if !full.isEmpty {
+                        subtitle = full
+                    } else {
+                        let short = address.shortAddress ?? ""
+                        subtitle = short.isEmpty ? "" : short
+                    }
                 } else {
                     let location = poiResult.location
                     subtitle = formattedCoordinate(location.coordinate)
                 }
             } else {
-                subtitle = poiResult.placemark.title ?? formattedCoordinate(coordinate)
+                subtitle = poiResult.name ?? formattedCoordinate(coordinate)
             }
             return POISelection(name: name, subtitle: subtitle, coordinate: coordinate)
         }
@@ -497,11 +503,13 @@ struct ItineraryEventEditorView: View {
     @State private var name: String
     @State private var notes: String
     @State private var locationName: String
+    @State private var address: String
     @State private var latitude: String
     @State private var longitude: String
     @State private var day: Date
     @State private var time: Date
     @State private var isShowingCalendar: Bool = false
+    @State private var isShowingPlacePicker: Bool = false
 
     // Calendar picker state and helpers (used by the inline calendar selector)
     private let calendar = Calendar.current
@@ -540,10 +548,12 @@ struct ItineraryEventEditorView: View {
 
         let cal = Calendar.current
         let baseDate = cal.startOfDay(for: event?.date ?? defaultDate)
+        let initialAddress = ItineraryEventEditorView.composedAddress(from: event)
         _selectedCategory = State(initialValue: event?.category ?? .activity)
         _name = State(initialValue: event?.name ?? "")
         _notes = State(initialValue: event?.notes ?? "")
         _locationName = State(initialValue: event?.locationName ?? "")
+        _address = State(initialValue: initialAddress)
         _latitude = State(initialValue: event?.coordinate.map { String(format: "%.4f", $0.latitude) } ?? "")
         _longitude = State(initialValue: event?.coordinate.map { String(format: "%.4f", $0.longitude) } ?? "")
         _day = State(initialValue: baseDate)
@@ -787,17 +797,234 @@ struct ItineraryEventEditorView: View {
                 .font(.subheadline.weight(.semibold))
 
             VStack(spacing: 12) {
-                TextField("Place or venue", text: $locationName)
-                    .textInputAutocapitalization(.words)
+                Button(action: {
+                    isShowingPlacePicker = true
+                }) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(locationName.isEmpty ? "Place or venue" : locationName)
+                                .foregroundStyle(locationName.isEmpty ? Color.secondary.opacity(0.8) : Color.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if !address.isEmpty {
+                                Text(address)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+
+                        if !locationName.isEmpty {
+                            Button(action: {
+                                locationName = ""
+                                address = ""
+                                latitude = ""
+                                longitude = ""
+                            }) {
+                                Text("Clear")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(minWidth: 44)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     .padding()
-                    .textFieldStyle(.plain)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(Color.secondary.opacity(0.08))
                     )
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $isShowingPlacePicker) {
+                    PlaceLookupView { mapItem, resolvedAddress in
+                        if let name = mapItem.name, !name.isEmpty {
+                            locationName = name
+                        }
+                        address = resolvedAddress
+
+                        let coord: CLLocationCoordinate2D
+                        if #available(iOS 26, *) {
+                            coord = mapItem.location.coordinate
+                        } else {
+                            coord = mapItem.placemark.coordinate
+                        }
+
+                        latitude = String(format: "%.4f", coord.latitude)
+                        longitude = String(format: "%.4f", coord.longitude)
+                        isShowingPlacePicker = false
+                    }
+                }
             }
         }
     }
+
+private struct PlaceLookupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var query: String = ""
+    @State private var results: [MKMapItem] = []
+    @FocusState private var isQueryFocused: Bool
+    @State private var hasSearched: Bool = false
+    var onSelect: (MKMapItem, String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack {
+                HStack {
+                    TextField("Search places", text: $query)
+                        .textInputAutocapitalization(.words)
+                        .padding()
+                        .textFieldStyle(.plain)
+                        .background(
+                          RoundedRectangle(cornerRadius: 14, style: .continuous)
+                              .fill(Color.secondary.opacity(0.08))
+                        )
+                        .focused($isQueryFocused)
+                        .submitLabel(.search)
+                        .onSubmit {
+                            Task { await performSearch() }
+                        }
+
+                    Button(action: {
+                        Task { await performSearch() }
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.title2.weight(.semibold))
+                            .frame(minWidth: 64, minHeight: 44)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.08))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .onAppear {
+                    DispatchQueue.main.async { isQueryFocused = true }
+                }
+                .padding()
+                .onChange(of: query) {
+                    hasSearched = false
+                    results = []
+                }
+
+                List {
+                    // Custom top result: allow adding the typed name only
+                    if hasSearched && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button(action: {
+                            // Create a map item with only the name (no coordinate)
+                            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if #available(iOS 26, *) {
+                                let location = CLLocation(latitude: 0, longitude: 0)
+                                let item = MKMapItem(location: location, address: nil)
+                                item.name = trimmed
+                                onSelect(item, "")
+                            } else {
+                                let coord = CLLocationCoordinate2D(latitude: 0, longitude: 0)
+                                let placemark = MKPlacemark(coordinate: coord)
+                                let item = MKMapItem(placemark: placemark)
+                                item.name = trimmed
+                                onSelect(item, "")
+                            }
+                            dismiss()
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "mappin")
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(Color.accentColor)
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading) {
+                                    Text("Can't find what you're looking for?")
+                                        .font(.body)
+                                    Text("Tap to add the name only")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+
+                    ForEach(results.indices, id: \.self) { idx in
+                        let item = results[idx]
+                        Button(action: {
+                            onSelect(item, subtitle(for: item))
+                            dismiss()
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "mappin")
+                                    .frame(width: 20, height: 20)
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(Color.accentColor)
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading) {
+                                    Text(item.name ?? "Unnamed Place")
+                                        .font(.body)
+                                    Text(subtitle(for: item))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Find a place")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func performSearch() async {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            results = []
+            return
+        }
+
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        // Leave region nil to search broadly; could be improved by passing a region
+
+        let search = MKLocalSearch(request: request)
+        do {
+            let resp = try await search.start()
+            results = resp.mapItems
+            hasSearched = true
+        } catch {
+            results = []
+            hasSearched = true
+        }
+    }
+
+    private func formattedCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
+        String(format: "Lat %.4f, Lon %.4f", coordinate.latitude, coordinate.longitude)
+    }
+    
+    private func subtitle(for item: MKMapItem) -> String {
+        if #available(iOS 26, *) {
+            if let address = item.address {
+                let full = address.fullAddress
+                if !full.isEmpty { return full }
+
+                let short = address.shortAddress ?? ""
+                if !short.isEmpty { return short }
+            }
+            let loc = item.location
+            return formattedCoordinate(loc.coordinate)
+        } else {
+            return item.placemark.title ?? item.name ?? ""
+        }
+    }
+}
 
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -841,6 +1068,7 @@ struct ItineraryEventEditorView: View {
             locationLocality: nil,
             locationLongitude: lonValue,
             locationName: trimmedLocation,
+            locationThoroughfare: address.isEmpty ? nil : address,
             type: selectedCategory.rawValue
         )
 
@@ -850,6 +1078,7 @@ struct ItineraryEventEditorView: View {
         updated.locationName = trimmedLocation
         updated.locationLatitude = latValue
         updated.locationLongitude = lonValue
+        updated.locationThoroughfare = address.isEmpty ? nil : address
         updated.type = selectedCategory.rawValue
 
         onSave(updated)
@@ -886,5 +1115,21 @@ struct ItineraryEventEditorView: View {
         var comps = calendar.dateComponents([.year, .month], from: month)
         comps.day = day
         return calendar.date(from: comps) ?? month
+    }
+
+    private static func composedAddress(from event: ItineraryEvent?) -> String {
+        guard let event else { return "" }
+        let parts = [
+            event.locationThoroughfare,
+            event.locationSubThoroughfare,
+            event.locationLocality,
+            event.locationAdministrativeArea,
+            event.locationPostcode,
+            event.locationCountry
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+        return parts.joined(separator: ", ")
     }
 }

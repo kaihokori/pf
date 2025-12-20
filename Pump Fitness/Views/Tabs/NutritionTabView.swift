@@ -2363,51 +2363,114 @@ struct MacroEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    // Tracked macros
                     if !workingMacros.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Macros")
-                            VStack(spacing: 16) {
-                                ForEach(Array(workingMacros.enumerated()), id: \.element.id) { index, element in
-                                    let binding = $workingMacros[index]
-                                    let currentMetric = element
-                                    MacroTargetEditorRow(
-                                        metric: binding,
-                                        tint: tint,
-                                        displayColor: displayColor(for: currentMetric),
-                                        onRemove: { removeMetric(currentMetric.id) }
-                                    )
+                            VStack(spacing: 12) {
+                                ForEach(Array(workingMacros.enumerated()), id: \.element.id) { idx, item in
+                                    let binding = $workingMacros[idx]
+                                    VStack(spacing: 8) {
+                                        HStack(spacing: 12) {
+                                            Circle()
+                                                .fill(displayColor(for: item).opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "chart.bar.fill")
+                                                        .foregroundStyle(displayColor(for: item))
+                                                )
+
+                                            VStack(alignment: .leading, spacing: 6) {
+                                                TextField("Name", text: binding.title)
+                                                    .font(.subheadline.weight(.semibold))
+                                                TextField("Target (e.g. 100 g or 2.0L)", text: binding.targetLabel)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+
+                                            Spacer()
+
+                                            Button(role: .destructive) {
+                                                removeMetric(item.id)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                                    .foregroundStyle(.red)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                        .padding()
+                                        .surfaceCard(12)
+                                    }
                                 }
                             }
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        MacroEditorSectionHeader(title: "Quick Add")
-                        VStack(spacing: 12) {
-                            ForEach(MacroPreset.allCases.filter { !isPresetSelected($0) }) { preset in
-                                MacroPresetRow(
-                                    preset: preset,
-                                    isSelected: isPresetSelected(preset),
-                                    canAddMore: canAddMoreMacros,
-                                    tint: tint,
-                                    color: displayColor(for: preset),
-                                    onToggle: { togglePreset(preset) }
-                                )
+                    // Quick Add
+                    if !MacroPreset.allCases.filter({ !isPresetSelected($0) }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            MacroEditorSectionHeader(title: "Quick Add")
+                            VStack(spacing: 12) {
+                                ForEach(MacroPreset.allCases.filter { !isPresetSelected($0) }, id: \.self) { preset in
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(displayColor(for: preset).opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(
+                                                Image(systemName: "chart.bar.fill")
+                                                    .foregroundStyle(displayColor(for: preset))
+                                            )
+
+                                        VStack(alignment: .leading) {
+                                            Text(preset.displayName)
+                                                .font(.subheadline.weight(.semibold))
+                                            Text(preset.allowedLabel)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(tint)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMoreMacros)
+                                        .opacity(!canAddMoreMacros ? 0.3 : 1)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .surfaceCard(18)
+                                }
                             }
                         }
                     }
 
+                    // Custom composer
                     VStack(alignment: .leading, spacing: 12) {
                         MacroEditorSectionHeader(title: "Custom Macros")
-                        VStack(spacing: 16) {
-                            CustomMacroComposer(
-                                name: $newCustomName,
-                                target: $newCustomTarget,
-                                tint: tint,
-                                isDisabled: !canAddCustomMacro,
-                                canAddMore: canAddMoreMacros,
-                                onAdd: addCustomMetric
-                            )
+                        VStack(spacing: 12) {
+                            TextField("Macro name", text: $newCustomName)
+                                .textInputAutocapitalization(.words)
+                                .padding()
+                                .surfaceCard(16)
+
+                            HStack(spacing: 12) {
+                                TextField("Target (e.g. 100 g or 2.0L)", text: $newCustomTarget)
+                                    .padding()
+                                    .surfaceCard(16)
+
+                                Button(action: addCustomMetric) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 28, weight: .semibold))
+                                        .foregroundStyle(tint)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canAddCustomMacro)
+                                .opacity(!canAddCustomMacro ? 0.4 : 1)
+                            }
 
                             Text("You can track up to \(NutritionMacroLimits.maxTrackedMacros) macros.")
                                 .font(.footnote)

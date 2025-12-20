@@ -12,6 +12,8 @@ private struct DotYPreferenceKey: PreferenceKey {
 private struct ItineraryGroupView: View {
         let date: Date
         let items: [ItineraryEvent]
+    let onEdit: (ItineraryEvent) -> Void
+    let onDelete: (ItineraryEvent) -> Void
 
         @State private var dotYs: [CGFloat] = []
 
@@ -37,12 +39,25 @@ private struct ItineraryGroupView: View {
 
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, event in
                         NavigationLink {
-                            ItineraryDetailView(event: event)
+                            ItineraryDetailView(event: event, onEdit: { updated in onEdit(updated) }, onDelete: { deleted in onDelete(deleted) })
                         } label: {
                             ItineraryTrackingSection.itineraryRow(for: event, isFirst: index == 0, isLast: index == items.count - 1, coordinateSpaceName: csName)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                onEdit(event)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                onDelete(event)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .coordinateSpace(name: csName)
@@ -56,6 +71,8 @@ private struct ItineraryGroupView: View {
 
 struct ItineraryTrackingSection: View {
     var events: [ItineraryEvent] = ItineraryEvent.mockEvents
+    var onEdit: (ItineraryEvent) -> Void = { _ in }
+    var onDelete: (ItineraryEvent) -> Void = { _ in }
 
     private var groupedEvents: [(date: Date, items: [ItineraryEvent])] {
         let grouped = Dictionary(grouping: events) { Calendar.current.startOfDay(for: $0.date) }
@@ -69,8 +86,8 @@ struct ItineraryTrackingSection: View {
             if events.isEmpty {
                 emptyState
             } else {
-                ForEach(groupedEvents, id: \.date) { date, items in
-                    ItineraryGroupView(date: date, items: items)
+                ForEach(groupedEvents, id: \.date) { group in
+                    ItineraryGroupView(date: group.date, items: group.items, onEdit: onEdit, onDelete: onDelete)
                 }
             }
         }
@@ -141,254 +158,6 @@ struct ItineraryTrackingSection: View {
         df.dateFormat = "EEEE, d MMM"
         return df
     }()
-}
-
-struct ItineraryEvent: Identifiable, Hashable {
-    var id: UUID
-    var name: String
-    var notes: String
-    var date: Date
-    var locationAdministrativeArea: String?
-    var locationCountry: String?
-    var locationLatitude: Double
-    var locationLocality: String?
-    var locationLongitude: Double
-    var locationName: String?
-    var locationPostcode: String?
-    var locationSubThoroughfare: String?
-    var locationThoroughfare: String?
-    var type: String
-
-    init(
-        id: UUID = UUID(),
-        name: String,
-        notes: String = "",
-        date: Date,
-        locationAdministrativeArea: String? = nil,
-        locationCountry: String? = nil,
-        locationLatitude: Double = 0.0,
-        locationLocality: String? = nil,
-        locationLongitude: Double = 0.0,
-        locationName: String? = nil,
-        locationPostcode: String? = nil,
-        locationSubThoroughfare: String? = nil,
-        locationThoroughfare: String? = nil,
-        type: String = "other"
-    ) {
-        self.id = id
-        self.name = name
-        self.notes = notes
-        self.date = date
-        self.locationAdministrativeArea = locationAdministrativeArea
-        self.locationCountry = locationCountry
-        self.locationLatitude = locationLatitude
-        self.locationLocality = locationLocality
-        self.locationLongitude = locationLongitude
-        self.locationName = locationName
-        self.locationPostcode = locationPostcode
-        self.locationSubThoroughfare = locationSubThoroughfare
-        self.locationThoroughfare = locationThoroughfare
-        self.type = type
-    }
-
-    var timeWindowLabel: String {
-        ItineraryEvent.timeFormatter.string(from: date)
-    }
-
-    private static let timeFormatter: DateFormatter = {
-        let df = DateFormatter()
-        df.dateFormat = "h:mm a"
-        return df
-    }()
-
-    // MARK: - Equatable & Hashable
-    static func == (lhs: ItineraryEvent, rhs: ItineraryEvent) -> Bool {
-        lhs.id == rhs.id
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-
-    var category: ItineraryCategory {
-        ItineraryCategory(rawValue: type) ?? .other
-    }
-
-    var coordinate: CLLocationCoordinate2D? {
-        if locationLatitude == 0 && locationLongitude == 0 { return nil }
-        return CLLocationCoordinate2D(latitude: locationLatitude, longitude: locationLongitude)
-    }
-
-    static var mockEvents: [ItineraryEvent] {
-        let calendar = Calendar.current
-
-        // Use explicit dates in Dec 2025 per user's request
-        func dateFor(day: Int, hour: Int, minute: Int) -> Date {
-            var comps = DateComponents()
-            comps.year = 2025
-            comps.month = 12
-            comps.day = day
-            comps.hour = hour
-            comps.minute = minute
-            return calendar.date(from: comps) ?? Date()
-        }
-
-        return [
-            // 19th Dec, 2025
-            ItineraryEvent(
-                id: UUID(),
-                name: "Car Pickup",
-                notes: "Collect compact SUV from Avia Car Rental. Bring driving license and booking confirmation.",
-                date: dateFor(day: 19, hour: 12, minute: 30),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.65,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.136,
-                locationName: "Avia Car Rental",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "12",
-                locationThoroughfare: "Jalan Raya Seminyak",
-                type: "travel"
-            ),
-            ItineraryEvent(
-                id: UUID(),
-                name: "Check‑in",
-                notes: "Early check-in requested; confirm room preference at reception.",
-                date: dateFor(day: 19, hour: 14, minute: 0),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.6485,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.1385,
-                locationName: "Tuscany Boutique Hotel",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "5",
-                locationThoroughfare: "Jalan Kayu Aya",
-                type: "stay"
-            ),
-            ItineraryEvent(
-                id: UUID(),
-                name: "Shopping Spree",
-                notes: "Pick up a local SIM card and grab sunscreen before heading to the beach.",
-                date: dateFor(day: 19, hour: 16, minute: 0),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.6520,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.1340,
-                locationName: "Seminyak Square",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "2",
-                locationThoroughfare: "Jalan Oberoi",
-                type: "activity"
-            ),
-            ItineraryEvent(
-                id: UUID(),
-                name: "Lunch with Damian",
-                notes: "$15 lunch special - try the pescado tacos.",
-                date: dateFor(day: 19, hour: 17, minute: 30),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.6470,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.1390,
-                locationName: "La Taqueria",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "8",
-                locationThoroughfare: "Jalan Laksmana",
-                type: "food"
-            ),
-
-            // 20th Dec, 2025
-            ItineraryEvent(
-                id: UUID(),
-                name: "Morning Markets",
-                notes: "Local market for breakfast and fresh fruit. Meet tour guide here.",
-                date: dateFor(day: 20, hour: 9, minute: 30),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.6490,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.1370,
-                locationName: "Kayu Aya Market",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "20",
-                locationThoroughfare: "Jalan Kayu Aya",
-                type: "activity"
-            ),
-            ItineraryEvent(
-                id: UUID(),
-                name: "Coffee",
-                notes: "Quick coffee and meet with the day’s walking tour leader.",
-                date: dateFor(day: 20, hour: 10, minute: 30),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.6510,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.1355,
-                locationName: "Vessel Cafe",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "7",
-                locationThoroughfare: "Jalan Kayu Aya",
-                type: "activity"
-            ),
-            ItineraryEvent(
-                id: UUID(),
-                name: "Hot Dogs",
-                notes: "Casual lunch spot - local favorite. Try the special.",
-                date: dateFor(day: 20, hour: 12, minute: 30),
-                locationAdministrativeArea: "Bali",
-                locationCountry: "ID",
-                locationLatitude: -8.6505,
-                locationLocality: "Seminyak",
-                locationLongitude: 115.1365,
-                locationName: "Vinnie’s Hot Dogs",
-                locationPostcode: "80361",
-                locationSubThoroughfare: "3",
-                locationThoroughfare: "Jalan Kayu Aya",
-                type: "food"
-            )
-        ]
-    }
-}
-
-enum ItineraryCategory: String, CaseIterable, Hashable {
-    case activity
-    case food
-    case stay
-    case travel
-    case other
-
-    var displayName: String {
-        switch self {
-        case .activity: return "Activity"
-        case .food: return "Food"
-        case .stay: return "Stay"
-        case .travel: return "Travel"
-        case .other: return "Other"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .activity: return Color(hex: "#4CAF6A") ?? .green
-        case .food: return Color(hex: "#E39A3B") ?? .yellow
-        case .stay: return Color(hex: "#D84A4A") ?? .red
-        case .travel: return Color(hex: "#7A5FD1") ?? .purple
-        case .other: return Color(hex: "#8E8E93") ?? .gray
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .activity: return "figure.play"
-        case .food: return "fork.knife"
-        case .stay: return "bed.double.fill"
-        case .travel: return "figure.wave"
-        case .other: return "aqi.medium"
-        }
-    }
 }
 
 #if DEBUG

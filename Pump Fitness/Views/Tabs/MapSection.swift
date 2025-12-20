@@ -86,9 +86,11 @@ struct MapSection: View {
                 // updates will be ignored to prevent jumping.
                 locationManager.requestLocation()
             } else {
-                // No annotations: allow location updates to set initial camera
-                // to the user's current position, and request location.
-                locationManager.ignoreLocationUpdates = false
+                // No annotations: do not auto-center the map when the device
+                // location becomes available. We still request location so the
+                // user's blue dot may appear, but keep `ignoreLocationUpdates`
+                // true to avoid an animated jump to the user's location.
+                locationManager.ignoreLocationUpdates = true
                 locationManager.requestLocation()
             }
         }
@@ -127,6 +129,10 @@ private struct FullScreenMapView: View {
     @State private var tappedPOI: POISelection?
     @State private var isShowingPOISheet = false
     @State private var isResolvingPOI = false
+    // Transient flag to ignore map-tap POI resolution when an annotation
+    // button was just tapped. This prevents the 'add' sheet opening when
+    // the user taps an existing annotation.
+    @State private var didTapAnnotation: Bool = false
     @State private var editingEvent: ItineraryEvent?
     @State private var editorSeedDate = Date()
 
@@ -175,8 +181,16 @@ private struct FullScreenMapView: View {
                             if let coordinate = event.coordinate {
                                 Annotation(event.name, coordinate: coordinate) {
                                     Button {
-                                        selectedEvent = event
-                                    } label: {
+                                            // Mark that an annotation was tapped so the
+                                            // map's tap handler can ignore the same
+                                            // interaction and avoid opening the add sheet.
+                                            didTapAnnotation = true
+                                            // Reset after a short delay to re-enable taps
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                                didTapAnnotation = false
+                                            }
+                                            selectedEvent = event
+                                        } label: {
                                         MapEventAnnotationView(event: event)
                                     }
                                     .buttonStyle(.plain)
@@ -190,6 +204,10 @@ private struct FullScreenMapView: View {
                             .onEnded { gesture in
                                 // Convert tap point to coordinate and resolve nearby POI
                                 let tapPoint = gesture.location
+                                // If an annotation button was just tapped, ignore
+                                // this tap to avoid opening the add sheet.
+                                if didTapAnnotation { return }
+
                                 if let coordinate = proxy.convert(tapPoint, from: .local) {
                                     resolvePOI(at: coordinate)
                                 }
@@ -286,11 +304,18 @@ private struct FullScreenMapView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $selectedEvent) { event in
-                    ItineraryDetailView(event: event) { toEdit in
-                    selectedEvent = toEdit
-                    editingEvent = toEdit
-                    editorSeedDate = toEdit.date
-                }
+                ItineraryDetailView(
+                    event: event,
+                    onEdit: { toEdit in
+                        selectedEvent = toEdit
+                        editingEvent = toEdit
+                        editorSeedDate = toEdit.date
+                    },
+                    onDelete: { toDelete in
+                        deleteEvent(toDelete)
+                        selectedEvent = nil
+                    }
+                )
             }
             .sheet(item: $editingEvent) { event in
                 ItineraryEventEditorView(
@@ -315,6 +340,11 @@ private struct FullScreenMapView: View {
         } else {
             events.append(event)
         }
+        events.sort { $0.date < $1.date }
+    }
+
+    private func deleteEvent(_ event: ItineraryEvent) {
+        events.removeAll { $0.id == event.id }
     }
 
     private func resolvePOI(at coordinate: CLLocationCoordinate2D) {
@@ -485,9 +515,12 @@ final class TravelLocationManager: NSObject, ObservableObject, CLLocationManager
         // Keep default region on failure
     }
 
+    // Neutral default region: center the world (no specific city) with a
+    // large span to avoid showing a distant default location like Bali.
+    // Default region centered to show Australia and Indonesia together.
     static let defaultRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: -8.65, longitude: 115.136),
-        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        center: CLLocationCoordinate2D(latitude: -10.0, longitude: 125.0),
+        span: MKCoordinateSpan(latitudeDelta: 40.0, longitudeDelta: 60.0)
     )
 }
 
@@ -521,7 +554,12 @@ struct ItineraryEventEditorView: View {
     @State private var showMonthPicker: Bool = false
     @State private var showYearPicker: Bool = false
 
-    private var title: String { event == nil ? "Add Event" : "Edit Event" }
+    private var isEditingExisting: Bool {
+        guard let event else { return false }
+        return !event.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var title: String { isEditingExisting ? "Edit Event" : "Add Event" }
 
     private var isValid: Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -582,7 +620,7 @@ struct ItineraryEventEditorView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
+                    Button(isEditingExisting ? "Save" : "Add") {
                         save()
                     }
                     .fontWeight(.semibold)

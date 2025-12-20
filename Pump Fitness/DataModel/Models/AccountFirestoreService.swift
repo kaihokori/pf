@@ -43,7 +43,8 @@ class AccountFirestoreService {
                 mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) },
                 weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
                 supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) },
-                dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) }
+                dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) },
+                itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) }
             )
 
             // Debug: print parsed weeklyProgress records
@@ -160,6 +161,8 @@ class AccountFirestoreService {
         if !account.dailyTasks.isEmpty {
             data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
         }
+        // Persist itinerary events even when empty so deletions propagate.
+        data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
 
         guard !data.isEmpty else {
             completion(true)

@@ -27,6 +27,7 @@ struct RootView: View {
     @State private var trackedMacros: [TrackedMacro] = []
     @State private var macroConsumptions: [MacroConsumption] = []
     @State private var cravings: [CravingItem] = []
+    @State private var itineraryEvents: [ItineraryEvent] = []
     @State private var checkedMeals: Set<String> = []
     @State private var mealReminders: [MealReminder] = MealReminder.defaults
     @State private var isHydratingTrackedMacros: Bool = false
@@ -87,6 +88,7 @@ struct RootView: View {
         .task {
             ensureAccountExists()
             initializeTrackedMacrosFromLocal()
+            initializeItineraryEventsFromLocal()
             initializeMealRemindersFromLocal()
             printSignedInUserDetails()
             // Ensure onboarding status is evaluated on startup
@@ -192,6 +194,9 @@ struct RootView: View {
         .onChange(of: mealReminders) { _, newValue in
             persistMealReminders(newValue)
         }
+        .onChange(of: itineraryEvents) { _, newValue in
+            persistItineraryEvents(newValue)
+        }
         .onChange(of: checkedMeals) { _, newValue in
             persistCheckedMeals(newValue)
         }
@@ -235,6 +240,13 @@ struct RootView: View {
 
                         fetched.trackedMacros = resolvedTrackedMacros
 
+                        var resolvedItineraryEvents = fetched.itineraryEvents
+                        if resolvedItineraryEvents.isEmpty, let localAccount = fetchAccount(), !localAccount.itineraryEvents.isEmpty {
+                            resolvedItineraryEvents = localAccount.itineraryEvents
+                            print("RootView: using cached local itinerary events because server returned none")
+                        }
+                        fetched.itineraryEvents = resolvedItineraryEvents
+
                         upsertLocalAccount(with: fetched)
                         // Use the fetched maintenance calories from the account on app load
                         maintenanceCalories = fetched.maintenanceCalories
@@ -249,6 +261,7 @@ struct RootView: View {
                         } else {
                             mealReminders = fetched.mealReminders
                         }
+                        itineraryEvents = fetched.itineraryEvents
                         scheduleMealNotifications(mealReminders)
                     }
                 } else {
@@ -296,7 +309,11 @@ private extension RootView {
                     startWeekOn: "monday",
                     trackedMacros: TrackedMacro.defaults,
                     cravings: [],
-                    mealReminders: MealReminder.defaults
+                    mealReminders: MealReminder.defaults,
+                    weeklyProgress: [],
+                    supplements: [],
+                    dailyTasks: [],
+                    itineraryEvents: []
                 )
                 modelContext.insert(defaultAccount)
                 try modelContext.save()
@@ -347,6 +364,15 @@ private extension RootView {
         if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
             selectedMacroFocus = mf
         }
+    }
+
+    func initializeItineraryEventsFromLocal() {
+        guard let account = fetchAccount() else {
+            itineraryEvents = []
+            return
+        }
+
+        itineraryEvents = account.itineraryEvents
     }
 
     func loadDay(for date: Date) {
@@ -616,6 +642,28 @@ private extension RootView {
         scheduleMealNotifications(reminders)
     }
 
+    func persistItineraryEvents(_ events: [ItineraryEvent]) {
+        guard let account = fetchAccount() else { return }
+
+        account.itineraryEvents = events.sorted { $0.date < $1.date }
+        itineraryEvents = account.itineraryEvents
+
+        do {
+            try modelContext.save()
+            print("RootView: saved itinerary events locally (count=\(events.count))")
+        } catch {
+            print("RootView: failed to save itinerary events locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+                print("RootView: synced itinerary events to Firestore")
+            } else {
+                print("RootView: failed to sync itinerary events to Firestore")
+            }
+        }
+    }
+
     func scheduleMealNotifications(_ reminders: [MealReminder]) {
         let center = UNUserNotificationCenter.current()
 
@@ -723,6 +771,7 @@ private extension RootView {
                     local.supplements = fetched.supplements
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
+                local.itineraryEvents = fetched.itineraryEvents
                 try modelContext.save()
                     print("RootView.upsertLocalAccount: after save local.weeklyProgress count=\(local.weeklyProgress.count)")
             } else {
@@ -747,7 +796,9 @@ private extension RootView {
                         cravings: fetched.cravings,
                         mealReminders: fetched.mealReminders,
                         weeklyProgress: fetched.weeklyProgress,
-                        supplements: fetched.supplements
+                        supplements: fetched.supplements,
+                        dailyTasks: fetched.dailyTasks,
+                        itineraryEvents: fetched.itineraryEvents
                 )
                 modelContext.insert(newAccount)
                 try modelContext.save()
@@ -818,6 +869,7 @@ private extension RootView {
                                         local.trackedMacros = newAccount.trackedMacros
                                         local.cravings = newAccount.cravings
                                         local.mealReminders = newAccount.mealReminders
+                                        local.itineraryEvents = newAccount.itineraryEvents
                                         try modelContext.save()
                                         mealReminders = newAccount.mealReminders
                                     }
@@ -873,7 +925,7 @@ private extension RootView {
                                 systemImage: AppTab.travel.systemImage,
                                 value: AppTab.travel,
                             ) {
-                                TravelTabView(account: accountBinding, selectedDate: $selectedDate)
+                                TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate)
                             }
                         }
                     }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TravelTabView: View {
     @Binding var account: Account
+    @Binding var itineraryEvents: [ItineraryEvent]
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
@@ -9,7 +10,7 @@ struct TravelTabView: View {
     @State private var showAccountsView = false
     @State private var isShowingEditor = false
     @State private var editorSeedDate: Date = Date()
-    @State private var itineraryEvents: [ItineraryEvent] = ItineraryEvent.mockEvents
+    @State private var editingEvent: ItineraryEvent? = nil
 
     var body: some View {
         ZStack {
@@ -29,6 +30,7 @@ struct TravelTabView: View {
 
                         Button {
                             editorSeedDate = selectedDate
+                            editingEvent = nil
                             isShowingEditor = true
                         } label: {
                             Label("Add", systemImage: "plus")
@@ -49,7 +51,17 @@ struct TravelTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.bottom, 24)
 
-                    ItineraryTrackingSection(events: itineraryEvents)
+                    ItineraryTrackingSection(
+                        events: itineraryEvents,
+                        onEdit: { event in
+                            editingEvent = event
+                            editorSeedDate = event.date
+                            isShowingEditor = true
+                        },
+                        onDelete: { event in
+                            deleteEvent(event)
+                        }
+                    )
                         .padding(.horizontal, 18)
                 }
                 .padding(.bottom, 24)
@@ -67,13 +79,15 @@ struct TravelTabView: View {
         }
         .sheet(isPresented: $isShowingEditor) {
             ItineraryEventEditorView(
-                event: nil,
+                event: editingEvent,
                 defaultDate: editorSeedDate,
                 onSave: { newEvent in
-                    itineraryEvents.append(newEvent)
+                    upsertEvent(newEvent)
+                    editingEvent = nil
                     isShowingEditor = false
                 },
                 onCancel: {
+                    editingEvent = nil
                     isShowingEditor = false
                 }
             )
@@ -97,5 +111,20 @@ private extension TravelTabView {
             themeManager.selectedTheme.background(for: colorScheme)
                 .ignoresSafeArea()
         }
+    }
+
+    private func upsertEvent(_ event: ItineraryEvent) {
+        var updated = itineraryEvents
+        if let idx = updated.firstIndex(where: { $0.id == event.id }) {
+            updated[idx] = event
+        } else {
+            updated.append(event)
+        }
+        updated.sort { $0.date < $1.date }
+        itineraryEvents = updated
+    }
+
+    private func deleteEvent(_ event: ItineraryEvent) {
+        itineraryEvents.removeAll { $0.id == event.id }
     }
 }

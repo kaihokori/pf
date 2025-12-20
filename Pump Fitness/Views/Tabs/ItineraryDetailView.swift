@@ -6,6 +6,7 @@ import CoreLocation
 struct ItineraryDetailView: View {
     let event: ItineraryEvent
     var onEdit: ((ItineraryEvent) -> Void)?
+    var onDelete: ((ItineraryEvent) -> Void)?
 
     @State private var cameraPosition: MapCameraPosition
     @Environment(\.dismiss) private var dismiss
@@ -19,9 +20,15 @@ struct ItineraryDetailView: View {
         return top
     }
 
-    init(event: ItineraryEvent, onEdit: ((ItineraryEvent) -> Void)? = nil) {
+    private var hasValidCoordinate: Bool {
+        guard let c = event.coordinate else { return false }
+        return abs(c.latitude) > 0.000001 || abs(c.longitude) > 0.000001
+    }
+
+    init(event: ItineraryEvent, onEdit: ((ItineraryEvent) -> Void)? = nil, onDelete: ((ItineraryEvent) -> Void)? = nil) {
         self.event = event
         self.onEdit = onEdit
+        self.onDelete = onDelete
         if let coordinate = event.coordinate {
             let region = ItineraryDetailView.fitRegion(for: coordinate)
             _cameraPosition = State(initialValue: .region(region))
@@ -45,20 +52,30 @@ struct ItineraryDetailView: View {
 
     private var mapSection: some View {
         ZStack {
-            Map(position: $cameraPosition, interactionModes: []) {
-                if let coordinate = event.coordinate {
-                    Annotation(event.name, coordinate: coordinate) {
-                        MapEventBadge(category: event.category)
+            if hasValidCoordinate {
+                Map(position: $cameraPosition, interactionModes: []) {
+                    if let coordinate = event.coordinate {
+                        Annotation(event.name, coordinate: coordinate) {
+                            MapEventBadge(category: event.category)
+                        }
                     }
                 }
+                .frame(height: mapHeight)
+            } else {
+                LinearGradient(
+                    colors: [Color.red.opacity(0.3), Color.yellow.opacity(0.2), Color.green.opacity(0.3), Color.blue.opacity(0.2)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .frame(height: mapHeight)
             }
-            .frame(height: mapHeight)
-            .overlay(alignment: .topTrailing) {
-                if event.coordinate != nil {
-                    directionsButton
-                        .padding(10)
-                        .padding(.top, topSafeAreaInset)
-                }
+
+        }
+        .overlay(alignment: .topTrailing) {
+            if hasValidCoordinate {
+                directionsButton
+                    .padding(10)
+                    .padding(.top, topSafeAreaInset)
             }
         }
         .overlay(alignment: .topLeading) {
@@ -90,6 +107,21 @@ struct ItineraryDetailView: View {
                         .glassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
+
+                if onDelete != nil {
+                    Button(role: .destructive) {
+                        onDelete?(event)
+                        dismiss()
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                            .font(.callout)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             HStack {
@@ -143,14 +175,17 @@ struct ItineraryDetailView: View {
             }
             .padding(.bottom)
 
-            VStack(alignment: .leading) {
-                Text("Address")
-                    .font(.headline)
-                    .bold()
-                Text(Self.formattedAddress(for: event))
-                    .font(.body)
+            let formattedAddr = Self.formattedAddress(for: event)
+            if !formattedAddr.isEmpty {
+                VStack(alignment: .leading) {
+                    Text("Address")
+                        .font(.headline)
+                        .bold()
+                    Text(formattedAddr)
+                        .font(.body)
+                }
+                .padding(.bottom)
             }
-            .padding(.bottom)
 
             if !event.notes.isEmpty {
                 Text("Notes")

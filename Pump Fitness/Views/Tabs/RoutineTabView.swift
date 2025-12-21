@@ -365,13 +365,14 @@ struct RoutineTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
-    @AppStorage("activityTimers.json") private var storedActivityTimersJSON: String = ""
     @State private var showCalendar = false
     @Binding var selectedDate: Date
+    @Binding var goals: [GoalItem]
+    @Binding var activityTimers: [ActivityTimerItem]
+    var onUpdateActivityTimers: ([ActivityTimerItem]) -> Void
+    var onUpdateGoals: ([GoalItem]) -> Void
     @State private var showAccountsView = false
     @State private var dailyTaskItems: [DailyTaskItem] = []
-    @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
-    @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
     @State private var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
     @State private var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
     @State private var currentDay: Day?
@@ -391,7 +392,6 @@ struct RoutineTabView: View {
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
-    @State private var hasLoadedActivityTimers: Bool = false
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -699,13 +699,15 @@ struct RoutineTabView: View {
         .accentColor(accentOverride ?? .accentColor)
         .onAppear {
             loadDailyTasks()
-            loadActivityTimersFromStorage()
         }
         .onChange(of: selectedDate) { _, _ in
             loadDailyTasks()
         }
         .onChange(of: account.dailyTasks) { _, _ in
             rebuildDailyTaskItems(using: currentDay)
+        }
+        .onChange(of: goals) { _, newValue in
+            onUpdateGoals(newValue)
         }
     }
 }
@@ -1927,6 +1929,7 @@ private struct ExpenseCategoriesEditorView: View {
 extension RoutineTabView {
     private func applyGoalsEditorChanges(_ items: [GoalItem]) {
         goals = items
+        onUpdateGoals(items)
     }
 
     private func applyGroceryListChanges(_ items: [GroceryItem]) {
@@ -1953,8 +1956,8 @@ extension RoutineTabView {
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {
         let trimmed = Array(items.prefix(ActivityTimersEditorView.maxFreeTimers))
-        activityTimers = trimmed
-        persistActivityTimers(trimmed)
+        activityTimers = trimmed.isEmpty ? ActivityTimerItem.defaultTimers : trimmed
+        onUpdateActivityTimers(activityTimers)
     }
 
     private func applyHabitsEditorChanges(_ items: [HabitItem]) {
@@ -1969,24 +1972,6 @@ extension RoutineTabView {
                 pruneCompletions(for: resolvedDay)
                 rebuildDailyTaskItems(using: resolvedDay)
             }
-        }
-    }
-
-    private func loadActivityTimersFromStorage() {
-        guard !hasLoadedActivityTimers else { return }
-        defer { hasLoadedActivityTimers = true }
-        guard !storedActivityTimersJSON.isEmpty, let data = storedActivityTimersJSON.data(using: .utf8) else {
-            persistActivityTimers(activityTimers)
-            return
-        }
-        if let decoded = try? JSONDecoder().decode([ActivityTimerItem].self, from: data) {
-            activityTimers = decoded
-        }
-    }
-
-    private func persistActivityTimers(_ items: [ActivityTimerItem]) {
-        if let data = try? JSONEncoder().encode(items), let json = String(data: data, encoding: .utf8) {
-            storedActivityTimersJSON = json
         }
     }
 

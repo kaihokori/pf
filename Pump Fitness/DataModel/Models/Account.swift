@@ -860,6 +860,7 @@ class Account: ObservableObject {
     var cravings: [CravingItem] = []
     var supplements: [Supplement] = []
     var dailyTasks: [DailyTaskDefinition] = []
+    var goals: [GoalItem] = GoalItem.sampleDefaults()
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
     var itineraryEvents: [ItineraryEvent] = []
@@ -867,6 +868,7 @@ class Account: ObservableObject {
     var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
     var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
     var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
+    var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
 
     init(
         id: String? = UUID().uuidString,
@@ -888,6 +890,7 @@ class Account: ObservableObject {
         autoRestDayIndices: [Int] = [],
         trackedMacros: [TrackedMacro] = [],
         cravings: [CravingItem] = [],
+        goals: [GoalItem] = GoalItem.sampleDefaults(),
         mealReminders: [MealReminder] = MealReminder.defaults,
         weeklyProgress: [WeeklyProgressRecord] = []
         ,supplements: [Supplement] = []
@@ -900,6 +903,7 @@ class Account: ObservableObject {
         ,stepsGoal: Int = 10_000
         ,distanceGoal: Double = 3_000
         ,weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
+        ,activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -923,6 +927,7 @@ class Account: ObservableObject {
         self.distanceGoal = distanceGoal
         self.trackedMacros = trackedMacros
         self.cravings = cravings
+        self.goals = goals
         self.mealReminders = mealReminders
         self.weeklyProgress = weeklyProgress
         self.supplements = supplements
@@ -932,6 +937,7 @@ class Account: ObservableObject {
         self.soloMetrics = soloMetrics
         self.teamMetrics = teamMetrics
         self.weightGroups = weightGroups
+        self.activityTimers = activityTimers
         
     }
 }

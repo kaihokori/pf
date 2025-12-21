@@ -1,4 +1,6 @@
 import SwiftUI
+import Combine
+import FirebaseFirestore
 
 struct ActivityTimerItem: Identifiable, Equatable, Codable {
     let id: String
@@ -13,6 +15,29 @@ struct ActivityTimerItem: Identifiable, Equatable, Codable {
         self.startTime = startTime
         self.durationMinutes = durationMinutes
         self.colorHex = colorHex
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let name = dictionary["name"] as? String else { return nil }
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let duration = (dictionary["durationMinutes"] as? NSNumber)?.intValue ?? dictionary["durationMinutes"] as? Int ?? 0
+        let colorHex = dictionary["colorHex"] as? String ?? "#4CAF6A"
+
+        let rawDate = dictionary["startTime"] as? Date
+        let tsDate = (dictionary["startTime"] as? Timestamp)?.dateValue()
+        let start = rawDate ?? tsDate ?? Date()
+
+        self.init(id: id, name: name, startTime: start, durationMinutes: duration, colorHex: colorHex)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "name": name,
+            "startTime": startTime,
+            "durationMinutes": durationMinutes,
+            "colorHex": colorHex
+        ]
     }
 
     var color: Color { Color(hex: colorHex) ?? .accentColor }
@@ -54,7 +79,7 @@ struct ActivityTimerItem: Identifiable, Equatable, Codable {
         return Calendar.current.date(from: comps) ?? Date()
     }
 
-    private static let timeFormatter: DateFormatter = {
+    static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
         df.locale = Locale(identifier: "en_US_POSIX")
         df.dateFormat = "h:mm a"
@@ -90,21 +115,101 @@ struct ActivityTimersSection: View {
     var accentColorOverride: Color?
     var timers: [ActivityTimerItem]
 
+    @AppStorage("activityTimers.runStates.json") private var storedRunStates: String = ""
+    @State private var runStates: [String: Date] = [:]
+    @State private var now: Date = Date()
+
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    private var renderedTimers: [RenderedTimer] {
+        timers.prefix(2).map { timer in
+            let duration = max(1, Double(timer.durationMinutes * 60))
+            let endDate = runStates[timer.id]
+            let remaining = endDate.map { max(0, $0.timeIntervalSince(now)) } ?? duration
+            let isRunning = endDate != nil && remaining > 0
+            let progress = 1 - min(1, remaining / duration)
+            let nextLabel: String = {
+                let fmt = ActivityTimerItem.timeFormatter
+                if isRunning, let endDate {
+                    return "Ends \(fmt.string(from: endDate))"
+                }
+                return "Duration \(timer.durationMinutes)m"
+            }()
+
+            return RenderedTimer(
+                item: timer,
+                remaining: remaining,
+                isRunning: isRunning,
+                progress: progress,
+                nextLabel: nextLabel
+            )
+        }
+    }
+
+    private func toggleTimer(_ item: ActivityTimerItem) {
+        if let endDate = runStates[item.id], endDate > now {
+            runStates[item.id] = nil
+        } else {
+            runStates[item.id] = Date().addingTimeInterval(Double(item.durationMinutes * 60))
+        }
+        persistRunStates()
+    }
+
+    private func restoreRunStates() {
+        guard !storedRunStates.isEmpty, let data = storedRunStates.data(using: .utf8) else { return }
+        if let decoded = try? JSONDecoder().decode([String: Double].self, from: data) {
+            let mapped = decoded.compactMapValues { epoch -> Date? in
+                let date = Date(timeIntervalSince1970: epoch)
+                return date > Date() ? date : nil
+            }
+            runStates = mapped
+        }
+        trimRunStatesToCurrentTimers()
+    }
+
+    private func persistRunStates() {
+        let epochs = runStates.mapValues { $0.timeIntervalSince1970 }
+        if let data = try? JSONEncoder().encode(epochs), let json = String(data: data, encoding: .utf8) {
+            storedRunStates = json
+        }
+    }
+
+    private func removeExpiredTimers() {
+        let now = Date()
+        let beforeCount = runStates.count
+        runStates = runStates.filter { _, end in end > now }
+        if runStates.count != beforeCount { persistRunStates() }
+    }
+
+    private func trimRunStatesToCurrentTimers() {
+        let validIds = Set(timers.map { $0.id })
+        let filtered = runStates.filter { validIds.contains($0.key) }
+        if filtered.count != runStates.count {
+            runStates = filtered
+            persistRunStates()
+        }
+    }
+
     var body: some View {
         Group {
             if timers.isEmpty {
                 placeholder
             } else {
                 HStack(spacing: 12) {
-                    ForEach(timers.prefix(2)) { timer in
+                    ForEach(renderedTimers) { timer in
                         ActivityTimerCard(
                             accentColorOverride: accentColorOverride,
-                            item: timer
+                            item: timer.item,
+                            remaining: timer.remaining,
+                            isRunning: timer.isRunning,
+                            progress: timer.progress,
+                            nextLabel: timer.nextLabel,
+                            onToggle: { toggleTimer(timer.item) }
                         )
                         .frame(maxWidth: .infinity)
                     }
 
-                    if timers.count == 1 {
+                    if renderedTimers.count == 1 {
                         Spacer(minLength: 0)
                     }
                 }
@@ -112,6 +217,12 @@ struct ActivityTimersSection: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 12)
+        .onAppear(perform: restoreRunStates)
+        .onChange(of: timers) { _, _ in trimRunStatesToCurrentTimers() }
+        .onReceive(ticker) { value in
+            now = value
+            removeExpiredTimers()
+        }
     }
 
     @ViewBuilder
@@ -139,16 +250,39 @@ struct ActivityTimersSection: View {
     }
 }
 
+private struct RenderedTimer: Identifiable, Equatable {
+    let id: String
+    var item: ActivityTimerItem
+    var remaining: TimeInterval
+    var isRunning: Bool
+    var progress: Double
+    var nextLabel: String
+
+    init(item: ActivityTimerItem, remaining: TimeInterval, isRunning: Bool, progress: Double, nextLabel: String) {
+        self.id = item.id
+        self.item = item
+        self.remaining = remaining
+        self.isRunning = isRunning
+        self.progress = progress
+        self.nextLabel = nextLabel
+    }
+}
+
 private struct ActivityTimerCard: View {
     var accentColorOverride: Color?
     var item: ActivityTimerItem
+    var remaining: TimeInterval
+    var isRunning: Bool
+    var progress: Double
+    var nextLabel: String
+    var onToggle: () -> Void
 
     private var tint: Color { accentColorOverride ?? item.color }
-    private var statusTitle: String { Date() < item.startTime ? "Starts In" : "Time Left" }
-    private var progress: Double { min(max(item.progress, 0), 1) }
+    private var statusTitle: String { isRunning ? "Time Left" : "Ready" }
+    private var buttonTitle: String { isRunning ? "Stop" : "Start" }
 
     private func formattedTimeString(for seconds: TimeInterval) -> String {
-        let totalSeconds = max(0, Int(seconds))
+        let totalSeconds = max(0, Int(seconds.rounded()))
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         return String(format: "%02dh %02dm", hours, minutes)
@@ -176,7 +310,7 @@ private struct ActivityTimerCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Text(formattedTimeString(for: item.countdownInterval))
+                    Text(formattedTimeString(for: remaining))
                         .font(.system(size: 18, weight: .semibold))
                         .multilineTextAlignment(.center)
                 }
@@ -185,17 +319,15 @@ private struct ActivityTimerCard: View {
             .frame(height: 140)
 
             VStack(alignment: .center) {
-                Text(item.nextLabel)
+                Text(nextLabel)
                     .font(.headline)
                     .fontWeight(.medium)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
             }
 
-            Button {
-                // TODO: wire start/stop behavior
-            } label: {
-                Text("Stop")
+            Button(action: onToggle) {
+                Text(buttonTitle)
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)

@@ -40,6 +40,8 @@ struct RootView: View {
     @State private var caloriesBurnedToday: Double = 0
     @State private var stepsTakenToday: Double = 0
     @State private var distanceTravelledToday: Double = 0
+    @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
+    @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
     @State private var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
     @State private var weightEntries: [WeightExerciseValue] = []
     @State private var lastWeightEntryByExerciseId: [UUID: WeightExerciseValue] = [:]
@@ -130,6 +132,8 @@ struct RootView: View {
         ensureAccountExists()
         initializeDailyGoalsFromLocal()
         initializeWeightTrackingFromLocal()
+        initializeActivityTimersFromLocal()
+        initializeGoalsFromLocal()
         initializeTrackedMacrosFromLocal()
         initializeItineraryEventsFromLocal()
         initializeMealRemindersFromLocal()
@@ -457,6 +461,39 @@ private extension RootView {
         caloriesBurnGoal = account.caloriesBurnGoal == 0 ? 800 : account.caloriesBurnGoal
         stepsGoal = account.stepsGoal == 0 ? 10_000 : account.stepsGoal
         distanceGoal = account.distanceGoal == 0 ? 3_000 : account.distanceGoal
+    }
+
+    func initializeActivityTimersFromLocal() {
+        guard let account = fetchAccount() else {
+            activityTimers = ActivityTimerItem.defaultTimers
+            return
+        }
+        activityTimers = account.activityTimers.isEmpty ? ActivityTimerItem.defaultTimers : account.activityTimers
+    }
+
+    func initializeGoalsFromLocal() {
+        guard let account = fetchAccount() else {
+            goals = GoalItem.sampleDefaults()
+            return
+        }
+
+        let resolved = account.goals.isEmpty ? GoalItem.sampleDefaults() : account.goals
+        goals = resolved
+
+        if account.goals.isEmpty {
+            account.goals = resolved
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save default goals to local account: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if !success {
+                    print("RootView: failed to sync default goals to Firestore")
+                }
+            }
+        }
     }
 
     func initializeWeightTrackingFromLocal() {
@@ -788,6 +825,25 @@ private extension RootView {
         }
     }
 
+    func persistGoals(_ updatedGoals: [GoalItem]) {
+        guard let account = fetchAccount() else { return }
+
+        goals = updatedGoals
+        account.goals = updatedGoals
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save goals locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync goals to Firestore")
+            }
+        }
+    }
+
     func refreshWeightHistoryCache(upTo cutoff: Date? = nil) {
         do {
             let descriptor = FetchDescriptor<Day>(sortBy: [SortDescriptor(\.date, order: .reverse)])
@@ -819,6 +875,22 @@ private extension RootView {
         accountFirestoreService.saveAccount(account) { success in
             if !success {
                 print("RootView: failed to sync weight groups to Firestore")
+            }
+        }
+    }
+
+    func persistActivityTimers(_ timers: [ActivityTimerItem]) {
+        guard let account = fetchAccount() else { return }
+        activityTimers = timers.isEmpty ? ActivityTimerItem.defaultTimers : timers
+        account.activityTimers = activityTimers
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save activity timers to Account: \(error)")
+        }
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync activity timers to Firestore")
             }
         }
     }
@@ -1170,15 +1242,18 @@ private extension RootView {
                     // Persist weekly progress and supplements from server into local Account
                     local.weeklyProgress = fetched.weeklyProgress
                     local.supplements = fetched.supplements
+                local.goals = fetched.goals
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 local.itineraryEvents = fetched.itineraryEvents
                     local.caloriesBurnGoal = fetched.caloriesBurnGoal
                     local.stepsGoal = fetched.stepsGoal
                     local.distanceGoal = fetched.distanceGoal
+                local.activityTimers = fetched.activityTimers
                 local.weightGroups = fetched.weightGroups
                 try modelContext.save()
                 weightGroups = local.weightGroups
+                goals = local.goals
             } else {
                 let newAccount = Account(
                     id: fetched.id,
@@ -1200,20 +1275,22 @@ private extension RootView {
                         autoRestDayIndices: fetched.autoRestDayIndices,
                         trackedMacros: fetched.trackedMacros,
                         cravings: fetched.cravings,
-                        mealReminders: fetched.mealReminders,
-                        weeklyProgress: fetched.weeklyProgress,
-                        supplements: fetched.supplements,
-                        dailyTasks: fetched.dailyTasks,
-                        itineraryEvents: fetched.itineraryEvents,
-                        sports: fetched.sports,
-                        soloMetrics: fetched.soloMetrics,
-                        teamMetrics: fetched.teamMetrics,
-                        caloriesBurnGoal: fetched.caloriesBurnGoal,
-                        stepsGoal: fetched.stepsGoal,
-                        distanceGoal: fetched.distanceGoal,
-                        weightGroups: fetched.weightGroups
+                    goals: fetched.goals, mealReminders: fetched.mealReminders,
+                    weeklyProgress: fetched.weeklyProgress,
+                    supplements: fetched.supplements,
+                    dailyTasks: fetched.dailyTasks,
+                    itineraryEvents: fetched.itineraryEvents,
+                    sports: fetched.sports,
+                    soloMetrics: fetched.soloMetrics,
+                    teamMetrics: fetched.teamMetrics,
+                    caloriesBurnGoal: fetched.caloriesBurnGoal,
+                    stepsGoal: fetched.stepsGoal,
+                    distanceGoal: fetched.distanceGoal,
+                    weightGroups: fetched.weightGroups,
+                    activityTimers: fetched.activityTimers
                 )
                     weightGroups = newAccount.weightGroups
+                goals = newAccount.goals
                 modelContext.insert(newAccount)
                 try modelContext.save()
             }
@@ -1288,8 +1365,11 @@ private extension RootView {
                                         local.distanceGoal = newAccount.distanceGoal
                                         local.itineraryEvents = newAccount.itineraryEvents
                                         local.weightGroups = newAccount.weightGroups
+                                        local.goals = newAccount.goals
+                                        local.activityTimers = newAccount.activityTimers
                                         try modelContext.save()
                                         mealReminders = newAccount.mealReminders
+                                        goals = newAccount.goals
                                     }
                                 } catch {
                                     print("RootView: failed to apply account binding set: \(error)")
@@ -1322,7 +1402,18 @@ private extension RootView {
                                 systemImage: AppTab.routine.systemImage,
                                 value: AppTab.routine
                             ) {
-                                RoutineTabView(account: accountBinding, selectedDate: $selectedDate)
+                                RoutineTabView(
+                                    account: accountBinding,
+                                    selectedDate: $selectedDate,
+                                    goals: $goals,
+                                    activityTimers: $activityTimers,
+                                    onUpdateActivityTimers: { timers in
+                                        persistActivityTimers(timers)
+                                    },
+                                    onUpdateGoals: { items in
+                                        persistGoals(items)
+                                    }
+                                )
                             }
                             Tab(
                                 "Workout",

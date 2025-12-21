@@ -16,6 +16,8 @@ class AccountFirestoreService {
             let teamMetricDefs = (data["teamMetrics"] as? [[String: Any]] ?? []).compactMap { TeamMetric(dictionary: $0) }
 
             let remoteWeightGroups = (data["weightGroups"] as? [[String: Any]] ?? []).compactMap { WeightGroupDefinition(dictionary: $0) }
+            let remoteActivityTimers = (data["activityTimers"] as? [[String: Any]] ?? []).compactMap { ActivityTimerItem(dictionary: $0) }
+            let remoteGoals = (data["goals"] as? [[String: Any]] ?? []).compactMap { GoalItem(dictionary: $0) }
 
             let account = Account(
                 id: id,
@@ -35,10 +37,11 @@ class AccountFirestoreService {
                 activityLevel: data["activityLevel"] as? String,
                 startWeekOn: data["startWeekOn"] as? String,
                 autoRestDayIndices: (data["autoRestDayIndices"] as? [Int]) ?? (data["autoRestDayIndices"] as? [NSNumber])?.map { $0.intValue } ?? [],
-                trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) }, cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) }, mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) }, weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) }, supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }, dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) }, itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) }, sports: (data["sports"] as? [[String: Any]] ?? []).compactMap { SportConfig(dictionary: $0) }, soloMetrics: soloMetricDefs.isEmpty ? SoloMetric.defaultMetrics : soloMetricDefs, teamMetrics: teamMetricDefs.isEmpty ? TeamMetric.defaultMetrics : teamMetricDefs, caloriesBurnGoal: data["caloriesBurnGoal"] as? Int ?? 800,
+                trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) }, cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) }, goals: remoteGoals.isEmpty ? GoalItem.sampleDefaults() : remoteGoals, mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) }, weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) }, supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }, dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) }, itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) }, sports: (data["sports"] as? [[String: Any]] ?? []).compactMap { SportConfig(dictionary: $0) }, soloMetrics: soloMetricDefs.isEmpty ? SoloMetric.defaultMetrics : soloMetricDefs, teamMetrics: teamMetricDefs.isEmpty ? TeamMetric.defaultMetrics : teamMetricDefs, caloriesBurnGoal: data["caloriesBurnGoal"] as? Int ?? 800,
                 stepsGoal: data["stepsGoal"] as? Int ?? 10_000,
                 distanceGoal: (data["distanceGoal"] as? NSNumber)?.doubleValue ?? data["distanceGoal"] as? Double ?? 3_000,
-                weightGroups: remoteWeightGroups.isEmpty ? WeightGroupDefinition.defaults : remoteWeightGroups
+                weightGroups: remoteWeightGroups.isEmpty ? WeightGroupDefinition.defaults : remoteWeightGroups,
+                activityTimers: remoteActivityTimers.isEmpty ? ActivityTimerItem.defaultTimers : remoteActivityTimers
             )
 
             completion(account)
@@ -140,6 +143,7 @@ class AccountFirestoreService {
         if !account.cravings.isEmpty {
             data["cravings"] = account.cravings.map { $0.asDictionary }
         }
+        data["goals"] = account.goals.map { $0.asDictionary }
         if !account.mealReminders.isEmpty {
             data["mealReminders"] = account.mealReminders.map { $0.asDictionary }
         }
@@ -158,6 +162,7 @@ class AccountFirestoreService {
         data["weightGroups"] = account.weightGroups.map { $0.asDictionary }
         data["soloMetrics"] = account.soloMetrics.map { $0.asDictionary }
         data["teamMetrics"] = account.teamMetrics.map { $0.asDictionary }
+        data["activityTimers"] = account.activityTimers.map { $0.asDictionary }
         // Persist itinerary events even when empty so deletions propagate.
         data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
 

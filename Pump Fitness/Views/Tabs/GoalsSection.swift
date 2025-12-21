@@ -109,52 +109,6 @@ struct GoalsSection: View {
     }
 }
 
-enum GoalBucket {
-    case today
-    case thisWeek
-    case thisMonth
-    case farFuture
-}
-
-struct GoalItem: Identifiable, Equatable {
-    let id: UUID
-    var title: String
-    var note: String
-    var isCompleted: Bool
-    var dueDate: Date
-
-    var bucket: GoalBucket {
-        let cal = Calendar.current
-        if cal.isDateInToday(dueDate) { return .today }
-        if cal.isDate(dueDate, equalTo: Date(), toGranularity: .weekOfYear) { return .thisWeek }
-        if cal.isDate(dueDate, equalTo: Date(), toGranularity: .month) { return .thisMonth }
-        return .farFuture
-    }
-
-    init(id: UUID = UUID(), title: String, note: String = "", isCompleted: Bool = false, dueDate: Date = Date()) {
-        self.id = id
-        self.title = title
-        self.note = note
-        self.isCompleted = isCompleted
-        self.dueDate = dueDate
-    }
-
-    static func sampleDefaults() -> [GoalItem] {
-        let cal = Calendar.current
-        let today = Date()
-        let weekAhead = cal.date(byAdding: .day, value: 3, to: today) ?? today
-        let monthAhead = cal.date(byAdding: .day, value: 15, to: today) ?? today
-        let future = cal.date(byAdding: .day, value: 45, to: today) ?? today
-        return [
-            GoalItem(title: "10 min Walk", note: "Post-breakfast", dueDate: today),
-            GoalItem(title: "Drink 2L water/day", note: "Hydration", dueDate: weekAhead),
-            GoalItem(title: "Lose 2 lbs", note: "Weight target", dueDate: monthAhead),
-            GoalItem(title: "Run 50 km", note: "Cumulative", dueDate: monthAhead),
-            GoalItem(title: "Achieve 10% bodyfat", note: "Long term", dueDate: future)
-        ]
-    }
-}
-
 #if DEBUG
 struct GoalsSection_Previews: PreviewProvider {
     static var previews: some View {

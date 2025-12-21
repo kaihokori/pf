@@ -2,6 +2,12 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+enum WorkoutCheckInStatus: String, Codable, CaseIterable {
+    case checkIn
+    case rest
+    case notLogged
+}
+
 struct MacroConsumption: Codable, Hashable, Identifiable {
     var id: String
     var trackedMacroId: String
@@ -148,6 +154,37 @@ struct SoloMetricValue: Codable, Hashable, Identifiable {
     }
 }
 
+struct TeamMetricValue: Codable, Hashable, Identifiable {
+    var id: String
+    var metricId: String
+    var metricName: String
+    var value: Double
+
+    init(id: String = UUID().uuidString, metricId: String, metricName: String, value: Double) {
+        self.id = id
+        self.metricId = metricId
+        self.metricName = metricName
+        self.value = value
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let metricId = dictionary["metricId"] as? String,
+              let metricName = dictionary["metricName"] as? String else { return nil }
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double ?? 0
+        self.init(id: id, metricId: metricId, metricName: metricName, value: value)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "metricId": metricId,
+            "metricName": metricName,
+            "value": value
+        ]
+    }
+}
+
 struct SportMetricValue: Codable, Hashable, Identifiable {
     var id: String
     var key: String
@@ -234,6 +271,75 @@ struct SportActivityRecord: Codable, Hashable, Identifiable {
     }
 }
 
+struct WeightExerciseValue: Codable, Hashable, Identifiable {
+    var id: String
+    var groupId: UUID
+    var exerciseId: UUID
+    var exerciseName: String
+    var weight: String
+    var sets: String
+    var reps: String
+
+    init(
+        id: String? = nil,
+        groupId: UUID,
+        exerciseId: UUID,
+        exerciseName: String,
+        weight: String,
+        sets: String,
+        reps: String
+    ) {
+        self.id = id ?? exerciseId.uuidString
+        self.groupId = groupId
+        self.exerciseId = exerciseId
+        self.exerciseName = exerciseName
+        self.weight = weight
+        self.sets = sets
+        self.reps = reps
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let groupIdRaw = dictionary["groupId"] as? String,
+              let exerciseIdRaw = dictionary["exerciseId"] as? String,
+              let groupId = UUID(uuidString: groupIdRaw),
+              let exerciseId = UUID(uuidString: exerciseIdRaw) else { return nil }
+
+        let id = dictionary["id"] as? String ?? exerciseId.uuidString
+        let exerciseName = dictionary["exerciseName"] as? String ?? ""
+        let weight = dictionary["weight"] as? String ?? ""
+        let sets = dictionary["sets"] as? String ?? ""
+        let reps = dictionary["reps"] as? String ?? ""
+
+        self.init(
+            id: id,
+            groupId: groupId,
+            exerciseId: exerciseId,
+            exerciseName: exerciseName,
+            weight: weight,
+            sets: sets,
+            reps: reps
+        )
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "groupId": groupId.uuidString,
+            "exerciseId": exerciseId.uuidString,
+            "exerciseName": exerciseName,
+            "weight": weight,
+            "sets": sets,
+            "reps": reps
+        ]
+    }
+
+    var hasContent: Bool {
+        !weight.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !sets.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !reps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 @Model
 class Day {
     var id: String? = UUID().uuidString
@@ -242,6 +348,7 @@ class Day {
     var calorieGoal: Int
     var maintenanceCalories: Int
     var macroFocusRaw: String?
+    var workoutCheckInStatusRaw: String? = WorkoutCheckInStatus.notLogged.rawValue
     var macroConsumptions: [MacroConsumption]
     var completedMeals: [String] = []
     var takenSupplements: [String] = []
@@ -250,9 +357,13 @@ class Day {
     var dailyTaskCompletions: [DailyTaskCompletion] = []
     var sportActivities: [SportActivityRecord] = []
     var soloMetricValues: [SoloMetricValue] = []
+    var teamMetricValues: [TeamMetricValue] = []
+    var teamHomeScore: Int = 0
+    var teamAwayScore: Int = 0
     var caloriesBurned: Double = 0
     var stepsTaken: Double = 0
     var distanceTravelled: Double = 0
+    var weightEntries: [WeightExerciseValue] = []
 
     var dayString: String {
         let fmt = DateFormatter()
@@ -268,6 +379,7 @@ class Day {
         calorieGoal: Int = 0,
         maintenanceCalories: Int = 0,
         macroFocusRaw: String? = nil,
+        workoutCheckInStatusRaw: String? = WorkoutCheckInStatus.notLogged.rawValue,
         macroConsumptions: [MacroConsumption] = [],
         completedMeals: [String] = [],
         takenSupplements: [String] = [],
@@ -276,9 +388,13 @@ class Day {
         dailyTaskCompletions: [DailyTaskCompletion] = [],
         sportActivities: [SportActivityRecord] = [],
         soloMetricValues: [SoloMetricValue] = [],
+        teamMetricValues: [TeamMetricValue] = [],
+        teamHomeScore: Int = 0,
+        teamAwayScore: Int = 0,
         caloriesBurned: Double = 0,
         stepsTaken: Double = 0,
-        distanceTravelled: Double = 0
+        distanceTravelled: Double = 0,
+        weightEntries: [WeightExerciseValue] = []
     ) {
         self.id = id
         var cal = Calendar(identifier: .gregorian)
@@ -288,6 +404,7 @@ class Day {
         self.calorieGoal = calorieGoal
         self.maintenanceCalories = maintenanceCalories
         self.macroFocusRaw = macroFocusRaw
+        self.workoutCheckInStatusRaw = workoutCheckInStatusRaw
         self.macroConsumptions = macroConsumptions
         self.completedMeals = completedMeals
         self.takenSupplements = takenSupplements
@@ -296,12 +413,16 @@ class Day {
         self.dailyTaskCompletions = dailyTaskCompletions
         self.sportActivities = sportActivities
         self.soloMetricValues = soloMetricValues
+        self.teamMetricValues = teamMetricValues
+        self.teamHomeScore = teamHomeScore
+        self.teamAwayScore = teamAwayScore
         self.caloriesBurned = caloriesBurned
         self.stepsTaken = stepsTaken
         self.distanceTravelled = distanceTravelled
+        self.weightEntries = weightEntries
     }
 
-    static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil, soloMetrics: [SoloMetric]? = nil) -> Day {
+    static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil, soloMetrics: [SoloMetric]? = nil, teamMetrics: [TeamMetric]? = nil) -> Day {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
         let dayStart = cal.startOfDay(for: date)
@@ -312,6 +433,10 @@ class Day {
             if let existing = results.first {
                 if let tracked = trackedMacros { existing.ensureMacroConsumptions(for: tracked) }
                 if let solo = soloMetrics { existing.ensureSoloMetricValues(for: solo) }
+                if let team = teamMetrics { existing.ensureTeamMetricValues(for: team) }
+                if existing.workoutCheckInStatusRaw == nil {
+                    existing.workoutCheckInStatusRaw = WorkoutCheckInStatus.notLogged.rawValue
+                }
                 return existing
             }
         } catch {
@@ -326,6 +451,10 @@ class Day {
                 existing.date = dayStart
                 if let tracked = trackedMacros { existing.ensureMacroConsumptions(for: tracked) }
                 if let solo = soloMetrics { existing.ensureSoloMetricValues(for: solo) }
+                if let team = teamMetrics { existing.ensureTeamMetricValues(for: team) }
+                if existing.workoutCheckInStatusRaw == nil {
+                    existing.workoutCheckInStatusRaw = WorkoutCheckInStatus.notLogged.rawValue
+                }
                 try? context.save()
                 return existing
             }
@@ -388,6 +517,10 @@ class Day {
             SoloMetricValue(metricId: metric.id, metricName: metric.name, value: 0)
         }
 
+        let teamValues: [TeamMetricValue] = (teamMetrics ?? []).map { metric in
+            TeamMetricValue(metricId: metric.id, metricName: metric.name, value: 0)
+        }
+
         let newDay = Day(
             id: UUID().uuidString,
             date: dayStart,
@@ -403,6 +536,7 @@ class Day {
             dailyTaskCompletions: [],
             sportActivities: [],
             soloMetricValues: soloValues,
+            teamMetricValues: teamValues,
             caloriesBurned: 0,
             stepsTaken: 0,
             distanceTravelled: 0
@@ -485,5 +619,36 @@ class Day {
         }
 
         soloMetricValues = updated
+    }
+
+    func ensureTeamMetricValues(for metrics: [TeamMetric]) {
+        let existingById: [String: TeamMetricValue] = teamMetricValues.reduce(into: [:]) { acc, item in
+            acc[item.metricId] = item
+        }
+
+        let existingByName: [String: TeamMetricValue] = teamMetricValues.reduce(into: [:]) { acc, item in
+            acc[item.metricName.lowercased()] = item
+        }
+
+        var updated: [TeamMetricValue] = []
+
+        for metric in metrics {
+            if var match = existingById[metric.id] {
+                match.metricName = metric.name
+                updated.append(match)
+                continue
+            }
+
+            if var match = existingByName[metric.name.lowercased()] {
+                match.metricId = metric.id
+                match.metricName = metric.name
+                updated.append(match)
+                continue
+            }
+
+            updated.append(TeamMetricValue(metricId: metric.id, metricName: metric.name, value: 0))
+        }
+
+        teamMetricValues = updated
     }
 }

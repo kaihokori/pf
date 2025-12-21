@@ -30,6 +30,9 @@ struct SportsTabView: View {
     @StateObject private var weatherModel = WeatherViewModel()
     @State private var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
     @State private var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
+    @State private var teamMetricValuesStore: [String: String] = [:]
+    @State private var teamHomeScore: Int = 0
+    @State private var teamAwayScore: Int = 0
     @State private var showTeamMetricsEditor = false
     @State private var showSoloMetricsEditor = false
     @State private var showSportsEditor = false
@@ -37,6 +40,7 @@ struct SportsTabView: View {
     @State private var dataEntrySportIndex: Int? = nil
     @State private var hasLoadedTimeTrackingConfig = false
     @State private var hasLoadedSoloMetrics = false
+    @State private var hasLoadedTeamMetrics = false
     @State private var hasLoadedSoloDay = false
     @State private var currentDay: Day? = nil
     @State private var soloMetricValuesStore: [String: String] = [:]
@@ -827,7 +831,15 @@ struct SportsTabView: View {
                             .padding(.top, 48)
                             .padding(.bottom, 8)
 
-                            TeamPlaySection(selectedDate: selectedDate, metrics: $teamMetrics)
+                            TeamPlaySection(
+                                selectedDate: selectedDate,
+                                metrics: $teamMetrics,
+                                metricValues: $teamMetricValuesStore,
+                                homeScore: $teamHomeScore,
+                                awayScore: $teamAwayScore,
+                                onValueChange: handleTeamMetricValueChange,
+                                onScoreChange: handleTeamScoreChange
+                            )
                                 .padding(.horizontal, 18)
 
                             HStack {
@@ -987,7 +999,7 @@ struct SportsTabView: View {
         }
         .sheet(isPresented: $showTeamMetricsEditor) {
             TeamPlayMetricsEditorSheet(metrics: $teamMetrics) { updated in
-                teamMetrics = updated
+                persistTeamMetrics(updated)
             }
         }
         .sheet(isPresented: $showSoloMetricsEditor) {
@@ -1044,6 +1056,7 @@ struct SportsTabView: View {
         .onAppear {
             rebuildSports()
             loadTimeTrackingConfigFromStorage()
+            loadTeamMetricsFromAccount()
             loadSoloMetricsFromAccount()
             loadDayForSelectedDate()
         }
@@ -1055,6 +1068,9 @@ struct SportsTabView: View {
             currentDay = nil
             hasLoadedSoloDay = false
             soloMetricValuesStore = [:]
+            teamMetricValuesStore = [:]
+            teamHomeScore = 0
+            teamAwayScore = 0
             loadDayForSelectedDate()
         }
         .onChange(of: sportConfigs) { _, _ in rebuildSports() }
@@ -1063,6 +1079,12 @@ struct SportsTabView: View {
             syncSoloMetricStoreWithMetrics()
             ensureCurrentDay().ensureSoloMetricValues(for: soloMetrics)
             persistDayIfLoaded()
+        }
+        .onChange(of: teamMetrics) { _, _ in
+            syncTeamMetricStoreWithMetrics()
+            ensureCurrentDay().ensureTeamMetricValues(for: teamMetrics)
+            persistDayIfLoaded()
+            persistTeamMetrics(teamMetrics)
         }
     }
 }
@@ -1098,6 +1120,14 @@ private extension SportsTabView {
         syncSoloMetricStoreWithMetrics()
     }
 
+    func loadTeamMetricsFromAccount() {
+        guard !hasLoadedTeamMetrics else { return }
+        let source = account.teamMetrics
+        teamMetrics = source.isEmpty ? TeamMetric.defaultMetrics : source
+        hasLoadedTeamMetrics = true
+        syncTeamMetricStoreWithMetrics()
+    }
+
     func persistSoloMetrics(_ metrics: [SoloMetric]) {
         soloMetrics = metrics
         account.soloMetrics = metrics
@@ -1114,14 +1144,40 @@ private extension SportsTabView {
         }
     }
 
+    func persistTeamMetrics(_ metrics: [TeamMetric]) {
+        teamMetrics = metrics
+        account.teamMetrics = metrics
+        syncTeamMetricStoreWithMetrics()
+        if hasLoadedSoloDay {
+            let day = ensureCurrentDay()
+            day.ensureTeamMetricValues(for: metrics)
+            persistDayIfLoaded()
+        }
+        accountService.saveAccount(account) { success in
+            if !success {
+                print("Failed to save team metrics")
+            }
+        }
+    }
+
     func loadDayForSelectedDate() {
         guard !hasLoadedSoloDay else { return }
-        dayService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros) { day in
+        dayService.fetchDay(
+            for: selectedDate,
+            in: modelContext,
+            trackedMacros: account.trackedMacros,
+            soloMetrics: soloMetrics,
+            teamMetrics: teamMetrics
+        ) { day in
             DispatchQueue.main.async {
-                let resolved = day ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics)
+                let resolved = day ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics, teamMetrics: teamMetrics)
                 resolved.ensureSoloMetricValues(for: soloMetrics)
+                resolved.ensureTeamMetricValues(for: teamMetrics)
                 currentDay = resolved
                 syncSoloMetricStoreWithMetrics()
+                syncTeamMetricStoreWithMetrics()
+                teamHomeScore = resolved.teamHomeScore
+                teamAwayScore = resolved.teamAwayScore
                 hasLoadedSoloDay = true
             }
         }
@@ -1131,7 +1187,7 @@ private extension SportsTabView {
         if let day = currentDay {
             return day
         }
-        let created = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics)
+        let created = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics, teamMetrics: teamMetrics)
         currentDay = created
         hasLoadedSoloDay = true
         return created
@@ -1141,17 +1197,35 @@ private extension SportsTabView {
         let validIds = Set(soloMetrics.map { $0.id })
         soloMetricValuesStore = soloMetricValuesStore.filter { validIds.contains($0.key) }
 
-        // Prefer existing day values when available
+        // Prefer current day's stored values; fall back to 0
         let dayValues: [String: Double] = {
             guard let day = currentDay else { return [:] }
             return Dictionary(uniqueKeysWithValues: day.soloMetricValues.map { ($0.metricId, $0.value) })
         }()
 
-        for metric in soloMetrics where soloMetricValuesStore[metric.id] == nil {
+        for metric in soloMetrics {
             if let value = dayValues[metric.id] {
                 soloMetricValuesStore[metric.id] = String(value)
-            } else {
+            } else if soloMetricValuesStore[metric.id] == nil {
                 soloMetricValuesStore[metric.id] = "0"
+            }
+        }
+    }
+
+    func syncTeamMetricStoreWithMetrics() {
+        let validIds = Set(teamMetrics.map { $0.id })
+        teamMetricValuesStore = teamMetricValuesStore.filter { validIds.contains($0.key) }
+
+        let dayValues: [String: Double] = {
+            guard let day = currentDay else { return [:] }
+            return Dictionary(uniqueKeysWithValues: day.teamMetricValues.map { ($0.metricId, $0.value) })
+        }()
+
+        for metric in teamMetrics {
+            if let value = dayValues[metric.id] {
+                teamMetricValuesStore[metric.id] = String(value)
+            } else if teamMetricValuesStore[metric.id] == nil {
+                teamMetricValuesStore[metric.id] = "0"
             }
         }
     }
@@ -1169,6 +1243,26 @@ private extension SportsTabView {
         persistDayIfLoaded()
     }
 
+    func handleTeamMetricValueChange(_ metric: TeamMetric, rawValue: String) {
+        let day = ensureCurrentDay()
+        day.ensureTeamMetricValues(for: teamMetrics)
+        let value = Double(rawValue) ?? 0
+        if let idx = day.teamMetricValues.firstIndex(where: { $0.metricId == metric.id }) {
+            day.teamMetricValues[idx].metricName = metric.name
+            day.teamMetricValues[idx].value = value
+        } else {
+            day.teamMetricValues.append(TeamMetricValue(metricId: metric.id, metricName: metric.name, value: value))
+        }
+        persistDayIfLoaded()
+    }
+
+    func handleTeamScoreChange(_ home: Int, _ away: Int) {
+        let day = ensureCurrentDay()
+        day.teamHomeScore = home
+        day.teamAwayScore = away
+        persistDayIfLoaded()
+    }
+
     func persistDayIfLoaded() {
         guard let day = currentDay else { return }
         do {
@@ -1179,7 +1273,7 @@ private extension SportsTabView {
 
         dayService.saveDay(day) { success in
             if !success {
-                print("SportsTabView: failed to sync Day solo metrics to Firestore")
+                print("SportsTabView: failed to sync Day to Firestore")
             }
         }
     }
@@ -1586,29 +1680,15 @@ private struct SoloPlayMetricsEditorSheet: View {
 
 // MARK: - Team Play
 
-fileprivate struct TeamMetric: Identifiable, Equatable, Hashable {
-    let id = UUID()
-    var name: String
-}
-
-fileprivate extension TeamMetric {
-    static var defaultMetrics: [TeamMetric] {
-        [
-            .init(name: "Attempts Made"),
-            .init(name: "Attempts Missed"),
-            .init(name: "Assists")
-        ]
-    }
-}
-
 fileprivate struct TeamPlaySection: View {
     let selectedDate: Date
 
     @Binding var metrics: [TeamMetric]
-
-    @State private var homeScore: Int = 0
-    @State private var awayScore: Int = 0
-    @State private var metricValues: [UUID: String] = [:]
+    @Binding var metricValues: [String: String]
+    @Binding var homeScore: Int
+    @Binding var awayScore: Int
+    var onValueChange: (TeamMetric, String) -> Void
+    var onScoreChange: (Int, Int) -> Void
 
     var body: some View {
         VStack(alignment: .center, spacing: 18) {
@@ -1628,7 +1708,8 @@ fileprivate struct TeamPlaySection: View {
                                     .foregroundStyle(.secondary)
 
                                 TextField(metric.name, text: valueBinding(for: metric), prompt: Text("Enter value…").foregroundStyle(.secondary))
-                                    .textInputAutocapitalization(.words)
+                                    .textInputAutocapitalization(.none)
+                                    .keyboardType(.decimalPad)
                                     .padding()
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                             }
@@ -1647,12 +1728,17 @@ fileprivate struct TeamPlaySection: View {
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .onAppear(perform: syncValueStore)
         .onChange(of: metrics) { _, _ in syncValueStore() }
+        .onChange(of: homeScore) { _, _ in onScoreChange(homeScore, awayScore) }
+        .onChange(of: awayScore) { _, _ in onScoreChange(homeScore, awayScore) }
     }
 
     private func valueBinding(for metric: TeamMetric) -> Binding<String> {
         Binding(
             get: { metricValues[metric.id] ?? "" },
-            set: { metricValues[metric.id] = $0 }
+            set: {
+                metricValues[metric.id] = $0
+                onValueChange(metric, $0)
+            }
         )
     }
 
@@ -1903,7 +1989,7 @@ private struct TeamPlayMetricsEditorSheet: View {
         newName = ""
     }
 
-    private func removeMetric(_ id: UUID) {
+    private func removeMetric(_ id: String) {
         working.removeAll { $0.id == id }
     }
 

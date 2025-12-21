@@ -111,7 +111,7 @@ struct ExerciseSupplementEditorSheet: View {
                                 VStack(alignment: .leading, spacing: 12) {
                                     MacroEditorSectionHeader(title: "Quick Add")
                                     VStack(spacing: 12) {
-                                        ForEach(presets.filter { !isPresetSelected($0) }, id: \ .name) { preset in
+                                        ForEach(presets.filter { !isPresetSelected($0) }, id: \.name) { preset in
                                             HStack(spacing: 14) {
                                                 Circle()
                                                     .fill(tint.opacity(0.15))
@@ -248,15 +248,27 @@ struct WorkoutTabView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showCalendar = false
     @Binding var selectedDate: Date
+    @Binding var weeklyProgress: [WorkoutCheckInStatus]
+    @Binding var autoRestDayIndices: Set<Int>
+    let currentDayIndex: Int
+    var onUpdateCheckInStatus: (WorkoutCheckInStatus) -> Void
+    var onUpdateAutoRestDays: (Set<Int>) -> Void
+    @Binding var caloriesBurnGoal: Int
+    @Binding var stepsGoal: Int
+    @Binding var distanceGoal: Double
+    @Binding var caloriesBurnedToday: Double
+    @Binding var stepsTakenToday: Double
+    @Binding var distanceTravelledToday: Double
+    @Binding var weightGroups: [WeightGroupDefinition]
+    @Binding var weightEntries: [WeightExerciseValue]
+    var lastWeightEntryByExerciseId: [UUID: WeightExerciseValue]
+    var onUpdateDailyActivity: (_ calories: Double?, _ steps: Double?, _ distance: Double?) -> Void
+    var onUpdateDailyGoals: (_ calorieGoal: Int, _ stepsGoal: Int, _ distanceGoal: Double) -> Void
+    var onUpdateWeightGroups: ([WeightGroupDefinition]) -> Void
+    var onUpdateWeightEntries: ([WeightExerciseValue]) -> Void
     @State private var showAccountsView = false
-    @State private var weeklyProgress: [CoachingWorkoutDayStatus] = [.notLogged, .notLogged, .notLogged, .notLogged, .rest, .notLogged, .notLogged]
-    private let coachingCurrentDayIndex = 5
     @State private var workoutSchedule: [WorkoutScheduleItem] = coachingWeeklySchedule
     @State private var showRestDaySheet = false
-    @AppStorage("coaching.autoRestDayIndices") private var storedAutoRestDayIndices: String = ""
-    @AppStorage("coaching.restWeekKey") private var storedRestWeekKey: String = ""
-    @State private var autoRestDayIndices: Set<Int> = []
-    @State private var hasLoadedRestDays = false
     // Use Account.supplements as the canonical source of supplement definitions
     // no local supplement store — use `account.supplements`
     @State private var showSupplementEditor = false
@@ -271,30 +283,65 @@ struct WorkoutTabView: View {
     @State private var hkCaloriesValue: Double? = nil
     @State private var hkStepsValue: Double? = nil
     @State private var hkDistanceValue: Double? = nil
-    
-    // Daily summary sample values (moved from Nutrition tab)
-    @State private var caloriesBurnedToday: Double = 0
-    @State private var caloriesBurnGoal: Int = 800
-    @State private var stepsTakenToday: Double = 0
-    @State private var stepsGoalToday: Int = 10_000
-
-    // New: walking distance (in meters)
-    @State private var walkingDistanceToday: Double = 0 // meters
-    @State private var walkingDistanceGoal: Double = 3_000 // meters
 
     @State private var showDailySummaryEditor = false
 
-    @State private var bodyParts: [BodyPartWeights] = BodyPartWeights.defaultGroups
+    @State private var bodyParts: [BodyPartWeights] = []
     @State private var showWeightsEditor = false
+    @State private var isHydratingWeights: Bool = false
+
+    init(
+        account: Binding<Account>,
+        selectedDate: Binding<Date>,
+        weeklyProgress: Binding<[WorkoutCheckInStatus]>,
+        autoRestDayIndices: Binding<Set<Int>>,
+        currentDayIndex: Int,
+        onUpdateCheckInStatus: @escaping (WorkoutCheckInStatus) -> Void,
+        onUpdateAutoRestDays: @escaping (Set<Int>) -> Void,
+        caloriesBurnGoal: Binding<Int>,
+        stepsGoal: Binding<Int>,
+        distanceGoal: Binding<Double>,
+        caloriesBurnedToday: Binding<Double>,
+        stepsTakenToday: Binding<Double>,
+        distanceTravelledToday: Binding<Double>,
+        weightGroups: Binding<[WeightGroupDefinition]>,
+        weightEntries: Binding<[WeightExerciseValue]>,
+        lastWeightEntryByExerciseId: [UUID: WeightExerciseValue],
+        onUpdateDailyActivity: @escaping (_ calories: Double?, _ steps: Double?, _ distance: Double?) -> Void,
+        onUpdateDailyGoals: @escaping (_ calorieGoal: Int, _ stepsGoal: Int, _ distanceGoal: Double) -> Void,
+        onUpdateWeightGroups: @escaping ([WeightGroupDefinition]) -> Void,
+        onUpdateWeightEntries: @escaping ([WeightExerciseValue]) -> Void
+    ) {
+        _account = account
+        _selectedDate = selectedDate
+        _weeklyProgress = weeklyProgress
+        _autoRestDayIndices = autoRestDayIndices
+        self.currentDayIndex = currentDayIndex
+        self.onUpdateCheckInStatus = onUpdateCheckInStatus
+        self.onUpdateAutoRestDays = onUpdateAutoRestDays
+        _caloriesBurnGoal = caloriesBurnGoal
+        _stepsGoal = stepsGoal
+        _distanceGoal = distanceGoal
+        _caloriesBurnedToday = caloriesBurnedToday
+        _stepsTakenToday = stepsTakenToday
+        _distanceTravelledToday = distanceTravelledToday
+        _weightGroups = weightGroups
+        _weightEntries = weightEntries
+        self.lastWeightEntryByExerciseId = lastWeightEntryByExerciseId
+        self.onUpdateDailyActivity = onUpdateDailyActivity
+        self.onUpdateDailyGoals = onUpdateDailyGoals
+        self.onUpdateWeightGroups = onUpdateWeightGroups
+        self.onUpdateWeightEntries = onUpdateWeightEntries
+    }
 
     private var stepsProgress: Double {
-        guard stepsGoalToday > 0 else { return 0 }
-        return min(max(Double(stepsTakenToday) / Double(stepsGoalToday), 0), 1)
+        guard stepsGoal > 0 else { return 0 }
+        return min(max(Double(stepsTakenToday) / Double(stepsGoal), 0), 1)
     }
 
     private var walkingProgress: Double {
-        guard walkingDistanceGoal > 0 else { return 0 }
-        return min(max(walkingDistanceToday / walkingDistanceGoal, 0), 1)
+        guard distanceGoal > 0 else { return 0 }
+        return min(max(distanceTravelledToday / distanceGoal, 0), 1)
     }
 
     private var formattedStepsTaken: String {
@@ -302,15 +349,22 @@ struct WorkoutTabView: View {
     }
 
     private var formattedStepsGoal: String {
-        NumberFormatter.withComma.string(from: NSNumber(value: stepsGoalToday)) ?? "\(stepsGoalToday)"
+        NumberFormatter.withComma.string(from: NSNumber(value: stepsGoal)) ?? "\(stepsGoal)"
     }
 
     private var formattedWalkingDistance: String {
-        String(format: "%.2f km", walkingDistanceToday / 1000)
+        String(format: "%.2f km", distanceTravelledToday / 1000)
     }
 
     private var formattedWalkingGoal: String {
-        String(format: "Goal %.1f km", walkingDistanceGoal / 1000)
+        String(format: "Goal %.1f km", distanceGoal / 1000)
+    }
+
+    private var lastWeightPlaceholderVersion: String {
+        lastWeightEntryByExerciseId
+            .sorted { $0.key.uuidString < $1.key.uuidString }
+            .map { "\($0.key.uuidString)|\($0.value.weight)|\($0.value.sets)|\($0.value.reps)" }
+            .joined(separator: ",")
     }
 
     var body: some View {
@@ -332,8 +386,14 @@ struct WorkoutTabView: View {
                     CoachingWorkoutProgressSection(
                         weeklyProgress: $weeklyProgress,
                         accentColor: accentOverride ?? .accentColor,
-                        currentDayIndex: coachingCurrentDayIndex,
-                        onEditRestDays: { showRestDaySheet = true }
+                        currentDayIndex: currentDayIndex,
+                        onEditRestDays: { showRestDaySheet = true },
+                        onSelectStatus: { status in
+                            if weeklyProgress.indices.contains(currentDayIndex) {
+                                weeklyProgress[currentDayIndex] = status
+                            }
+                            onUpdateCheckInStatus(status)
+                        }
                     )
                     
                     WeeklyWorkoutScheduleCard(
@@ -580,8 +640,7 @@ struct WorkoutTabView: View {
                 autoRestDayIndices: $autoRestDayIndices,
                 tint: accentOverride ?? .accentColor
             ) {
-                persistAutoRestDays()
-                applyAutoRestDaysToWeek()
+                onUpdateAutoRestDays(autoRestDayIndices)
                 showRestDaySheet = false
             }
             .presentationDetents([.medium, .large])
@@ -609,11 +668,14 @@ struct WorkoutTabView: View {
         .sheet(isPresented: $showDailySummaryEditor) {
             DailySummaryGoalSheet(
                 calorieGoal: $caloriesBurnGoal,
-                stepsGoal: $stepsGoalToday,
-                distanceGoal: $walkingDistanceGoal,
+                stepsGoal: $stepsGoal,
+                distanceGoal: $distanceGoal,
                 tint: accentOverride ?? .accentColor,
                 onCancel: { showDailySummaryEditor = false },
-                onDone: { showDailySummaryEditor = false }
+                onDone: {
+                    onUpdateDailyGoals(caloriesBurnGoal, stepsGoal, distanceGoal)
+                    showDailySummaryEditor = false
+                }
             )
             .presentationDetents([.medium])
         }
@@ -623,9 +685,15 @@ struct WorkoutTabView: View {
                 showWeightsEditor = false
             }
         }
+        .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
+        .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
+        .onChange(of: lastWeightPlaceholderVersion) { _, _ in rebuildBodyPartsFromModel() }
+        .onChange(of: bodyParts) { _, _ in persistBodyPartsChanges() }
         .onAppear {
-            loadAutoRestDaysIfNeeded()
-            seedWeekIfNeeded()
+            if weeklyProgress.count != 7 {
+                weeklyProgress = Array(repeating: .notLogged, count: 7)
+            }
+            rebuildBodyPartsFromModel()
             // request HealthKit authorization and load values
             healthKitService.requestAuthorization { ok in
                 DispatchQueue.main.async {
@@ -638,9 +706,6 @@ struct WorkoutTabView: View {
                     }
                 }
             }
-        }
-        .onChange(of: selectedDate) { _, _ in
-            seedWeekIfNeeded()
         }
     }
 }
@@ -737,49 +802,6 @@ struct ActivityAdjustSheet: View {
 
 // helpers
 private extension WorkoutTabView {
-    func loadAutoRestDaysIfNeeded() {
-        guard !hasLoadedRestDays else { return }
-        let indices = storedAutoRestDayIndices
-            .split(separator: ",")
-            .compactMap { Int($0) }
-        autoRestDayIndices = Set(indices)
-        hasLoadedRestDays = true
-    }
-
-    func persistAutoRestDays() {
-        let encoded = autoRestDayIndices.sorted().map(String.init).joined(separator: ",")
-        storedAutoRestDayIndices = encoded
-    }
-
-    func seedWeekIfNeeded() {
-        let key = currentWeekKey()
-        guard storedRestWeekKey != key else { return }
-        storedRestWeekKey = key
-
-        // Reset week statuses and mark configured rest days.
-        weeklyProgress = Array(repeating: .notLogged, count: 7)
-        applyAutoRestDaysToWeek()
-    }
-
-    func currentWeekKey() -> String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.firstWeekday = 2 // Monday
-        let comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
-        let year = comps.yearForWeekOfYear ?? 0
-        let week = comps.weekOfYear ?? 0
-        return "\(year)-\(week)"
-    }
-
-    func applyAutoRestDaysToWeek() {
-        // Ensure the array has 7 slots to match the weekday pills.
-        if weeklyProgress.count != 7 {
-            weeklyProgress = Array(repeating: .notLogged, count: 7)
-        }
-        for index in autoRestDayIndices where weeklyProgress.indices.contains(index) {
-            weeklyProgress[index] = .rest
-        }
-    }
-
     func unitForTarget(_ target: String?) -> String {
         switch target {
         case "steps": return "steps"
@@ -796,13 +818,82 @@ private extension WorkoutTabView {
             stepsTakenToday += (isAddition ? val : -val)
             persistActivityToDay(steps: stepsTakenToday)
         case "walking":
-            walkingDistanceToday += (isAddition ? val : -val)
-            persistActivityToDay(distance: walkingDistanceToday)
+            distanceTravelledToday += (isAddition ? val : -val)
+            persistActivityToDay(distance: distanceTravelledToday)
         case "calories":
             caloriesBurnedToday += (isAddition ? val : -val)
             persistActivityToDay(calories: caloriesBurnedToday)
         default:
             break
+        }
+    }
+
+    func rebuildBodyPartsFromModel() {
+        isHydratingWeights = true
+        let resolvedGroups = weightGroups.isEmpty ? WeightGroupDefinition.defaults : weightGroups
+        let entriesByExercise = Dictionary(uniqueKeysWithValues: weightEntries.map { ($0.exerciseId, $0) })
+
+        bodyParts = resolvedGroups.map { group in
+            let exercises = group.exercises.map { def -> WeightExercise in
+                let entry = entriesByExercise[def.id]
+                let placeholder = lastWeightEntryByExerciseId[def.id]
+                return WeightExercise(
+                    id: def.id,
+                    name: def.name,
+                    weight: entry?.weight ?? "",
+                    sets: entry?.sets ?? "",
+                    reps: entry?.reps ?? "",
+                    placeholderWeight: placeholder?.weight ?? "",
+                    placeholderSets: placeholder?.sets ?? "",
+                    placeholderReps: placeholder?.reps ?? ""
+                )
+            }
+            return BodyPartWeights(id: group.id, name: group.name, exercises: exercises)
+        }
+
+        if bodyParts.isEmpty {
+            bodyParts = BodyPartWeights.defaultGroups
+        }
+        isHydratingWeights = false
+    }
+
+    func persistBodyPartsChanges() {
+        guard !isHydratingWeights else { return }
+
+        let newGroups = bodyParts.map { part in
+            WeightGroupDefinition(
+                id: part.id,
+                name: part.name,
+                exercises: part.exercises.map { WeightExerciseDefinition(id: $0.id, name: $0.name) }
+            )
+        }
+
+        if newGroups != weightGroups {
+            weightGroups = newGroups
+            onUpdateWeightGroups(newGroups)
+        }
+
+        let newEntries: [WeightExerciseValue] = bodyParts.flatMap { part in
+            part.exercises.compactMap { exercise -> WeightExerciseValue? in
+                let hasContent = !exercise.weight.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    !exercise.sets.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    !exercise.reps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                guard hasContent else { return nil }
+                return WeightExerciseValue(
+                    id: exercise.id.uuidString,
+                    groupId: part.id,
+                    exerciseId: exercise.id,
+                    exerciseName: exercise.name,
+                    weight: exercise.weight,
+                    sets: exercise.sets,
+                    reps: exercise.reps
+                )
+            }
+        }
+
+        if newEntries != weightEntries {
+            weightEntries = newEntries
+            onUpdateWeightEntries(newEntries)
         }
     }
 
@@ -830,16 +921,16 @@ private extension WorkoutTabView {
         // Prefer local Day values (persisted in Core Data). Fall back to UserDefaults if Day not present.
         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
         stepsTakenToday = day.stepsTaken
-        walkingDistanceToday = day.distanceTravelled
+        distanceTravelledToday = day.distanceTravelled
         caloriesBurnedToday = day.caloriesBurned
         // If Day had no values, fallback to UserDefaults or estimate
         if stepsTakenToday == 0 {
             let steps = UserDefaults.standard.double(forKey: manualKey("steps"))
             if steps > 0 { stepsTakenToday = steps }
         }
-        if walkingDistanceToday == 0 {
+        if distanceTravelledToday == 0 {
             let walking = UserDefaults.standard.double(forKey: manualKey("walking"))
-            if walking > 0 { walkingDistanceToday = walking }
+            if walking > 0 { distanceTravelledToday = walking }
         }
         if caloriesBurnedToday == 0 {
             let cals = UserDefaults.standard.double(forKey: manualKey("calories"))
@@ -862,8 +953,11 @@ private extension WorkoutTabView {
         healthKitService.fetchTodayDistance { v in
             DispatchQueue.main.async {
                 if let v = v {
-                                // treat fetched distance as walking distance for display simplicity
-                                walkingDistanceToday = v
+                    hkDistanceValue = v
+                    // treat fetched distance as walking distance for display simplicity
+                    distanceTravelledToday = v
+                } else {
+                    hkDistanceValue = nil
                 }
             }
         }
@@ -872,46 +966,13 @@ private extension WorkoutTabView {
                 if let v = v { caloriesBurnedToday = v }
                 else { caloriesBurnedToday = estimateCaloriesFromAccount() }
 
-                // persist fetched values to Day + Firestore
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
-                day.stepsTaken = stepsTakenToday
-                day.distanceTravelled = walkingDistanceToday
-                day.caloriesBurned = caloriesBurnedToday
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("WorkoutTabView: failed to save Day after HealthKit refresh: \(error)")
-                }
-                dayFirestoreService.updateDayFields([
-                    "stepsTaken": stepsTakenToday,
-                    "distanceTravelled": walkingDistanceToday,
-                    "caloriesBurned": caloriesBurnedToday
-                ], for: day) { success in
-                    if !success { print("WorkoutTabView: failed to sync activity metrics to Firestore") }
-                }
+                onUpdateDailyActivity(caloriesBurnedToday, stepsTakenToday, distanceTravelledToday)
             }
         }
     }
 
     func persistActivityToDay(calories: Double? = nil, steps: Double? = nil, distance: Double? = nil) {
-        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
-        if let c = calories { day.caloriesBurned = c }
-        if let s = steps { day.stepsTaken = s }
-        if let d = distance { day.distanceTravelled = d }
-        do {
-            try modelContext.save()
-        } catch {
-            print("WorkoutTabView: failed to save Day after manual adjust: \(error)")
-        }
-        var fields: [String: Any] = [:]
-        if let c = calories { fields["caloriesBurned"] = c }
-        if let s = steps { fields["stepsTaken"] = s }
-        if let d = distance { fields["distanceTravelled"] = d }
-        if !fields.isEmpty {
-            dayFirestoreService.updateDayFields(fields, for: day) { success in
-                if !success { print("WorkoutTabView: failed to sync manual activity metrics to Firestore") }
-            }
-        }
+        onUpdateDailyActivity(calories, steps, distance)
     }
 
     func estimateCaloriesFromAccount() -> Double {
@@ -933,7 +994,7 @@ private extension WorkoutTabView {
         _ = 10.0 * (account.weight ?? weight) + 6.25 * (account.height ?? height) - 5.0 * Double(age) + genderFactor
 
         // distance-based estimates (kcal per km per kg approx)
-        let walkKm = walkingDistanceToday / 1000.0
+        let walkKm = distanceTravelledToday / 1000.0
         let walkCals = walkKm * (account.weight ?? weight) * 0.7
         let stepCals = stepsTakenToday * 0.04
 
@@ -960,39 +1021,6 @@ private extension WorkoutTabView {
     }
 }
 
-private enum WorkoutDayStatus {
-    case checkIn
-    case rest
-    case notLogged
-    case offDay
-
-    var timelineSymbol: String? {
-        switch self {
-        case .checkIn: return "circle.fill"
-        case .rest: return "circle.fill"
-        case .notLogged: return "circle"
-        case .offDay: return nil
-        }
-    }
-
-    var shouldHideTimelineNode: Bool {
-        self == .offDay
-    }
-
-    var accentColor: Color {
-        switch self {
-        case .checkIn:
-            return Color.yellow
-        case .rest:
-            return Color(.systemGray3)
-        case .notLogged:
-            return Color(.systemGray3)
-        case .offDay:
-            return .clear
-        }
-    }
-}
-
 private let coachingDefaultSupplements: [Supplement] = [
     Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
     Supplement(name: "Creatine", amountLabel: "5 g"),
@@ -1015,24 +1043,16 @@ private let coachingWeeklySchedule: [WorkoutScheduleItem] = [
     .init(day: "Sun", sessions: [])
 ]
 
-private enum CoachingWorkoutDayStatus {
-    case checkIn
-    case rest
-    case notLogged
-    case offDay
-
+private extension WorkoutCheckInStatus {
     var timelineSymbol: String? {
         switch self {
         case .checkIn: return "circle.fill"
         case .rest: return "circle.fill"
         case .notLogged: return "circle"
-        case .offDay: return nil
         }
     }
 
-    var shouldHideTimelineNode: Bool {
-        self == .offDay
-    }
+    var shouldHideTimelineNode: Bool { false }
 
     var accentColor: Color {
         switch self {
@@ -1042,15 +1062,13 @@ private enum CoachingWorkoutDayStatus {
             return Color(.systemGray3)
         case .notLogged:
             return Color(.systemGray3)
-        case .offDay:
-            return .clear
         }
     }
 }
 
 private struct CoachingWorkoutProgressTimelineView: View {
     let daySymbols: [String]
-    let statuses: [CoachingWorkoutDayStatus]
+    let statuses: [WorkoutCheckInStatus]
     let accentColor: Color
 
     private let nodeHeight: CGFloat = 56
@@ -1119,17 +1137,18 @@ private struct CoachingWorkoutProgressTimelineView: View {
         return !current.shouldHideTimelineNode && !next.shouldHideTimelineNode
     }
 
-    private func status(at index: Int) -> CoachingWorkoutDayStatus {
+    private func status(at index: Int) -> WorkoutCheckInStatus {
         guard statuses.indices.contains(index) else { return .notLogged }
         return statuses[index]
     }
 }
 
 private struct CoachingWorkoutProgressSection: View {
-    @Binding var weeklyProgress: [CoachingWorkoutDayStatus]
+    @Binding var weeklyProgress: [WorkoutCheckInStatus]
     let accentColor: Color
     let currentDayIndex: Int
     var onEditRestDays: () -> Void
+    var onSelectStatus: (WorkoutCheckInStatus) -> Void
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -1157,14 +1176,14 @@ private struct CoachingWorkoutProgressSection: View {
                 .padding(.bottom, -20)
 
             HStack(spacing: 12) {
-                Button(action: { updateCurrentDay(with: .checkIn) }) {
+                Button(action: { updateStatus(.checkIn) }) {
                     Text("Check-In")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(CoachingWorkoutProgressButtonStyle(background: .regularMaterial))
 
-                Button(action: { updateCurrentDay(with: .rest) }) {
+                Button(action: { updateStatus(.rest) }) {
                     Text("Rest")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
@@ -1178,9 +1197,10 @@ private struct CoachingWorkoutProgressSection: View {
         .padding(.top, 10)
     }
 
-    private func updateCurrentDay(with status: CoachingWorkoutDayStatus) {
+    private func updateStatus(_ status: WorkoutCheckInStatus) {
         guard weeklyProgress.indices.contains(currentDayIndex) else { return }
         weeklyProgress[currentDayIndex] = status
+        onSelectStatus(status)
     }
 }
 
@@ -1666,39 +1686,60 @@ private struct WeeklySessionCard: View {
 
 // MARK: - Weights Tracking Section
 
-private struct WeightExercise: Identifiable {
-    let id = UUID()
+private struct WeightExercise: Identifiable, Equatable {
+    var id: UUID
     var name: String
     var weight: String
     var sets: String
     var reps: String
+    var placeholderWeight: String
+    var placeholderSets: String
+    var placeholderReps: String
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        weight: String = "",
+        sets: String = "",
+        reps: String = "",
+        placeholderWeight: String = "",
+        placeholderSets: String = "",
+        placeholderReps: String = ""
+    ) {
+        self.id = id
+        self.name = name
+        self.weight = weight
+        self.sets = sets
+        self.reps = reps
+        self.placeholderWeight = placeholderWeight
+        self.placeholderSets = placeholderSets
+        self.placeholderReps = placeholderReps
+    }
 }
 
-private struct BodyPartWeights: Identifiable {
-    let id = UUID()
+private struct BodyPartWeights: Identifiable, Equatable {
+    var id: UUID
     var name: String
     var exercises: [WeightExercise]
     var isEditing: Bool = false
+
+    init(id: UUID = UUID(), name: String, exercises: [WeightExercise], isEditing: Bool = false) {
+        self.id = id
+        self.name = name
+        self.exercises = exercises
+        self.isEditing = isEditing
+    }
 }
 
 private extension BodyPartWeights {
     static var defaultGroups: [BodyPartWeights] {
-        [
-            .init(
-                name: "Chest",
-                exercises: [
-                    WeightExercise(name: "Bench Press", weight: "", sets: "", reps: ""),
-                    WeightExercise(name: "", weight: "", sets: "", reps: "")
-                ]
-            ),
-            .init(
-                name: "Back",
-                exercises: [
-                    WeightExercise(name: "Pull Down", weight: "", sets: "", reps: ""),
-                    WeightExercise(name: "", weight: "", sets: "", reps: "")
-                ]
+        WeightGroupDefinition.defaults.map { group in
+            BodyPartWeights(
+                id: group.id,
+                name: group.name,
+                exercises: group.exercises.map { WeightExercise(id: $0.id, name: $0.name) }
             )
-        ]
+        }
     }
 }
 
@@ -2119,14 +2160,14 @@ private struct WeightsTrackingSection: View {
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(minWidth: 0, maxWidth: .infinity)
 
-                                TextField("0", text: $exercise.weight)
+                                TextField(exercise.placeholderWeight.isEmpty ? "0" : exercise.placeholderWeight, text: $exercise.weight)
                                     .keyboardType(.decimalPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 60)
 
-                                TextField("0", text: $exercise.sets)
+                                TextField(exercise.placeholderSets.isEmpty ? "0" : exercise.placeholderSets, text: $exercise.sets)
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
@@ -2136,7 +2177,7 @@ private struct WeightsTrackingSection: View {
                                 Text("x")
                                     .frame(width: 15)
 
-                                TextField("0", text: $exercise.reps)
+                                TextField(exercise.placeholderReps.isEmpty ? "0" : exercise.placeholderReps, text: $exercise.reps)
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)

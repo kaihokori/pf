@@ -30,7 +30,20 @@ struct RootView: View {
     @State private var itineraryEvents: [ItineraryEvent] = []
     @State private var sportsConfigs: [SportConfig] = []
     @State private var sportActivities: [SportActivityRecord] = []
+    @State private var weeklyCheckInStatuses: [WorkoutCheckInStatus] = Array(repeating: .notLogged, count: 7)
+    @State private var autoRestDayIndices: Set<Int> = []
+    @State private var locallyUpdatedDayKeys: Set<String> = []
     @State private var checkedMeals: Set<String> = []
+    @State private var caloriesBurnGoal: Int = 800
+    @State private var stepsGoal: Int = 10_000
+    @State private var distanceGoal: Double = 3_000
+    @State private var caloriesBurnedToday: Double = 0
+    @State private var stepsTakenToday: Double = 0
+    @State private var distanceTravelledToday: Double = 0
+    @State private var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
+    @State private var weightEntries: [WeightExerciseValue] = []
+    @State private var lastWeightEntryByExerciseId: [UUID: WeightExerciseValue] = [:]
+    @State private var isHydratingDailyActivity: Bool = false
     @State private var mealReminders: [MealReminder] = MealReminder.defaults
     @State private var isHydratingTrackedMacros: Bool = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
@@ -108,24 +121,31 @@ struct RootView: View {
                 }
             } else {
                 hasCompletedOnboarding = false
+                autoRestDayIndices = []
+                weeklyCheckInStatuses = Array(repeating: .notLogged, count: 7)
             }
         }
     }
-
     private func handleInitialTask() {
         ensureAccountExists()
+        initializeDailyGoalsFromLocal()
+        initializeWeightTrackingFromLocal()
         initializeTrackedMacrosFromLocal()
         initializeItineraryEventsFromLocal()
         initializeMealRemindersFromLocal()
+        loadAutoRestDaysFromLocal()
         printSignedInUserDetails()
         // Ensure onboarding status is evaluated on startup
         checkOnboardingStatus()
         // Ensure today's Day exists locally and attempt to sync to Firestore
         loadDay(for: selectedDate)
+        refreshWeeklyCheckInStatuses(for: selectedDate)
     }
 
     private func handleSelectedDateChange(_ newDate: Date) {
         loadDay(for: newDate)
+        refreshWeeklyCheckInStatuses(for: newDate)
+        refreshWeightHistoryCache()
     }
 
     private func handleConsumedCaloriesChange(_ newValue: Int) {
@@ -274,6 +294,13 @@ struct RootView: View {
 
                         fetched.trackedMacros = resolvedTrackedMacros
 
+                        autoRestDayIndices = Set(fetched.autoRestDayIndices)
+
+                        // Daily summary goals with defaults
+                        caloriesBurnGoal = fetched.caloriesBurnGoal == 0 ? 800 : fetched.caloriesBurnGoal
+                        stepsGoal = fetched.stepsGoal == 0 ? 10_000 : fetched.stepsGoal
+                        distanceGoal = fetched.distanceGoal == 0 ? 3_000 : fetched.distanceGoal
+
                         var resolvedItineraryEvents = fetched.itineraryEvents
                         if resolvedItineraryEvents.isEmpty, let localAccount = fetchAccount(), !localAccount.itineraryEvents.isEmpty {
                             resolvedItineraryEvents = localAccount.itineraryEvents
@@ -296,9 +323,11 @@ struct RootView: View {
                         }
                         itineraryEvents = fetched.itineraryEvents
                         scheduleMealNotifications(mealReminders)
+                        refreshWeeklyCheckInStatuses(for: selectedDate)
                     }
                 } else {
                     hasCompletedOnboarding = false
+                    autoRestDayIndices = []
                 }
                 isCheckingOnboarding = false
             }
@@ -346,7 +375,10 @@ private extension RootView {
                     weeklyProgress: [],
                     supplements: [],
                     dailyTasks: [],
-                    itineraryEvents: []
+                    itineraryEvents: [],
+                    caloriesBurnGoal: 800,
+                    stepsGoal: 10_000,
+                    distanceGoal: 3_000
                 )
                 modelContext.insert(defaultAccount)
                 try modelContext.save()
@@ -419,6 +451,21 @@ private extension RootView {
         itineraryEvents = account.itineraryEvents
     }
 
+    func initializeDailyGoalsFromLocal() {
+        guard let account = fetchAccount() else { return }
+
+        caloriesBurnGoal = account.caloriesBurnGoal == 0 ? 800 : account.caloriesBurnGoal
+        stepsGoal = account.stepsGoal == 0 ? 10_000 : account.stepsGoal
+        distanceGoal = account.distanceGoal == 0 ? 3_000 : account.distanceGoal
+    }
+
+    func initializeWeightTrackingFromLocal() {
+        if let account = fetchAccount() {
+            weightGroups = account.weightGroups.isEmpty ? WeightGroupDefinition.defaults : account.weightGroups
+        }
+        refreshWeightHistoryCache()
+    }
+
     func loadDay(for date: Date) {
         dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
             if let d = day {
@@ -439,7 +486,13 @@ private extension RootView {
                 selectedMacroFocus = mf
             }
         }
+        isHydratingDailyActivity = true
+        caloriesBurnedToday = day.caloriesBurned
+        stepsTakenToday = day.stepsTaken
+        distanceTravelledToday = day.distanceTravelled
         consumedCalories = day.caloriesConsumed
+        weightEntries = day.weightEntries
+        refreshWeightHistoryCache()
 
         let previousCount = macroConsumptions.count
         if !trackedMacros.isEmpty {
@@ -452,6 +505,11 @@ private extension RootView {
         checkedMeals = completed
 
         sportActivities = day.sportActivities
+
+        let resolvedStatus = WorkoutCheckInStatus(rawValue: day.workoutCheckInStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue) ?? .notLogged
+        let idx = weekdayIndex(for: targetDate)
+        let statusToApply = (resolvedStatus == .notLogged && autoRestDayIndices.contains(idx)) ? .rest : resolvedStatus
+        setWeeklyStatusInState(statusToApply, for: targetDate)
 
         var fieldsToUpdate: [String: Any] = [:]
         if day.calorieGoal == 0 && calorieGoal > 0 {
@@ -485,6 +543,7 @@ private extension RootView {
                 }
             }
         }
+        isHydratingDailyActivity = false
     }
 
     func persistTrackedMacros(_ macros: [TrackedMacro], syncWithRemote: Bool = true) {
@@ -668,6 +727,119 @@ private extension RootView {
         }
     }
 
+    func persistDailyActivity(calories: Double? = nil, steps: Double? = nil, distance: Double? = nil) {
+        if isHydratingDailyActivity { return }
+
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        if let calories {
+            day.caloriesBurned = calories
+            caloriesBurnedToday = calories
+        }
+        if let steps {
+            day.stepsTaken = steps
+            stepsTakenToday = steps
+        }
+        if let distance {
+            day.distanceTravelled = distance
+            distanceTravelledToday = distance
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save daily activity locally: \(error)")
+        }
+
+        var fields: [String: Any] = [:]
+        if let calories { fields["caloriesBurned"] = calories }
+        if let steps { fields["stepsTaken"] = steps }
+        if let distance { fields["distanceTravelled"] = distance }
+
+        guard !fields.isEmpty else { return }
+
+        dayFirestoreService.updateDayFields(fields, for: day) { success in
+            if !success {
+                print("RootView: failed to sync daily activity metrics to Firestore for date=\(selectedDate)")
+            }
+        }
+    }
+
+    func persistDailyGoals(calorieGoalBurn: Int, stepsGoal: Int, distanceGoal: Double) {
+        guard let account = fetchAccount() else { return }
+
+        caloriesBurnGoal = calorieGoalBurn
+        self.stepsGoal = stepsGoal
+        self.distanceGoal = distanceGoal
+
+        account.caloriesBurnGoal = calorieGoalBurn
+        account.stepsGoal = stepsGoal
+        account.distanceGoal = distanceGoal
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save daily goals locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync daily goals to Firestore")
+            }
+        }
+    }
+
+    func refreshWeightHistoryCache(upTo cutoff: Date? = nil) {
+        do {
+            let descriptor = FetchDescriptor<Day>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+            let days = try modelContext.fetch(descriptor)
+            var cache: [UUID: WeightExerciseValue] = [:]
+            for day in days {
+                if let cutoff = cutoff, day.date > cutoff { continue }
+                for entry in day.weightEntries where entry.hasContent {
+                    if cache[entry.exerciseId] == nil {
+                        cache[entry.exerciseId] = entry
+                    }
+                }
+            }
+            lastWeightEntryByExerciseId = cache
+        } catch {
+            print("RootView: failed to refresh weight history cache: \(error)")
+        }
+    }
+
+    func persistWeightGroups(_ groups: [WeightGroupDefinition]) {
+        guard let account = fetchAccount() else { return }
+        weightGroups = groups.isEmpty ? WeightGroupDefinition.defaults : groups
+        account.weightGroups = weightGroups
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save Account weight groups: \(error)")
+        }
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync weight groups to Firestore")
+            }
+        }
+    }
+
+    func persistWeightEntries(_ entries: [WeightExerciseValue], for date: Date) {
+        let day = Day.fetchOrCreate(for: date, in: modelContext)
+        weightEntries = entries
+        day.weightEntries = entries
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save weight entries to Day: \(error)")
+        }
+        dayFirestoreService.updateDayFields(["weightEntries": entries], for: day) { success in
+            if !success {
+                print("RootView: failed to sync weight entries for date=\(date)")
+            }
+        }
+        refreshWeightHistoryCache(upTo: date)
+    }
+
     func initializeMealRemindersFromLocal() {
         guard let account = fetchAccount() else {
             mealReminders = MealReminder.defaults
@@ -732,6 +904,166 @@ private extension RootView {
                 print("RootView: failed to sync itinerary events to Firestore")
             }
         }
+    }
+
+    func loadAutoRestDaysFromLocal() {
+        guard let account = fetchAccount() else {
+            autoRestDayIndices = []
+            return
+        }
+        autoRestDayIndices = Set(account.autoRestDayIndices)
+    }
+
+    func persistAutoRestDays(_ indices: Set<Int>) {
+        guard let account = fetchAccount() else { return }
+        account.autoRestDayIndices = indices.sorted()
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save auto rest days locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync auto rest days to Firestore")
+            }
+        }
+
+        autoRestDayIndices = indices
+        refreshWeeklyCheckInStatuses(for: selectedDate)
+    }
+
+    func refreshWeeklyCheckInStatuses(for anchorDate: Date) {
+        let weekDates = datesForWeek(containing: anchorDate)
+        var resolved: [WorkoutCheckInStatus] = Array(repeating: .notLogged, count: 7)
+        let group = DispatchGroup()
+
+        for (index, date) in weekDates.enumerated() {
+            group.enter()
+            dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
+                if let day {
+                    let raw = day.workoutCheckInStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue
+                    resolved[index] = WorkoutCheckInStatus(rawValue: raw) ?? .notLogged
+                }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            var applied = resolved
+            var autoRestNeedsPersist: [(Date, WorkoutCheckInStatus)] = []
+
+            for (idx, status) in resolved.enumerated() {
+                // If this date was recently updated locally, preserve the local value
+                let key = self.dateKey(for: weekDates[idx])
+                if self.locallyUpdatedDayKeys.contains(key) {
+                    // keep existing weeklyCheckInStatuses value if available
+                    if self.weeklyCheckInStatuses.indices.contains(idx) {
+                        applied[idx] = self.weeklyCheckInStatuses[idx]
+                    } else {
+                        applied[idx] = status
+                    }
+                    continue
+                }
+
+                if autoRestDayIndices.contains(idx) && status == .notLogged {
+                    applied[idx] = .rest
+                    autoRestNeedsPersist.append((weekDates[idx], .rest))
+                } else {
+                    applied[idx] = status
+                }
+            }
+
+            weeklyCheckInStatuses = applied
+
+            for (date, status) in autoRestNeedsPersist {
+                updateCheckInStatus(status, for: date, shouldRefresh: false)
+            }
+        }
+    }
+
+    func updateCheckInStatus(_ status: WorkoutCheckInStatus, for date: Date, shouldRefresh: Bool = true) {
+        Task {
+            let key = dateKey(for: date)
+            // Mark as locally updated to avoid quick remote refresh overwrite
+            DispatchQueue.main.async {
+                self.locallyUpdatedDayKeys.insert(key)
+            }
+            // Remove the local lock after a short debounce window
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.locallyUpdatedDayKeys.remove(key)
+            }
+            let day = Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: trackedMacros)
+            day.workoutCheckInStatusRaw = status.rawValue
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save workout check-in status locally: \(error)")
+            }
+
+            dayFirestoreService.updateDayFields(["workoutCheckInStatus": status.rawValue], for: day) { success in
+                if !success {
+                    print("RootView: failed to sync workout check-in status to Firestore for date=\(date)")
+                }
+            }
+
+            DispatchQueue.main.async {
+                setWeeklyStatusInState(status, for: date)
+            }
+
+            if shouldRefresh {
+                refreshWeeklyCheckInStatuses(for: date)
+            }
+        }
+    }
+
+    func setWeeklyStatusInState(_ status: WorkoutCheckInStatus, for date: Date) {
+        let selectedWeekStart = startOfWeek(containing: selectedDate)
+        let targetWeekStart = startOfWeek(containing: date)
+        guard selectedWeekStart == targetWeekStart else { return }
+
+        let idx = weekdayIndex(for: date)
+        guard weeklyCheckInStatuses.indices.contains(idx) else { return }
+
+        var updated = weeklyCheckInStatuses
+        updated[idx] = status
+        weeklyCheckInStatuses = updated
+    }
+
+    func datesForWeek(containing date: Date) -> [Date] {
+        let start = startOfWeek(containing: date)
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2 // Monday
+        return (0..<7).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: start)
+        }
+    }
+
+    func startOfWeek(containing date: Date) -> Date {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2 // Monday
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+    }
+
+    func weekdayIndex(for date: Date) -> Int {
+        var calendar = Calendar.current
+        calendar.firstWeekday = 2 // Monday
+        let start = startOfWeek(containing: date)
+        let startOfDay = calendar.startOfDay(for: date)
+        let diff = calendar.dateComponents([.day], from: start, to: startOfDay).day ?? 0
+        return max(0, min(6, diff))
+    }
+
+    private func dateKey(for date: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = cal.startOfDay(for: date)
+        let fmt = DateFormatter()
+        fmt.calendar = cal
+        fmt.timeZone = cal.timeZone
+        fmt.dateFormat = "dd-MM-yyyy"
+        return fmt.string(from: dayStart)
     }
 
     func scheduleMealNotifications(_ reminders: [MealReminder]) {
@@ -832,6 +1164,7 @@ private extension RootView {
                     }
                 }
                 local.startWeekOn = fetched.startWeekOn
+                local.autoRestDayIndices = fetched.autoRestDayIndices
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings
                     // Persist weekly progress and supplements from server into local Account
@@ -840,7 +1173,12 @@ private extension RootView {
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 local.itineraryEvents = fetched.itineraryEvents
+                    local.caloriesBurnGoal = fetched.caloriesBurnGoal
+                    local.stepsGoal = fetched.stepsGoal
+                    local.distanceGoal = fetched.distanceGoal
+                local.weightGroups = fetched.weightGroups
                 try modelContext.save()
+                weightGroups = local.weightGroups
             } else {
                 let newAccount = Account(
                     id: fetched.id,
@@ -859,14 +1197,23 @@ private extension RootView {
                     unitSystem: fetched.unitSystem,
                     activityLevel: fetched.activityLevel,
                     startWeekOn: fetched.startWeekOn,
+                        autoRestDayIndices: fetched.autoRestDayIndices,
                         trackedMacros: fetched.trackedMacros,
                         cravings: fetched.cravings,
                         mealReminders: fetched.mealReminders,
                         weeklyProgress: fetched.weeklyProgress,
                         supplements: fetched.supplements,
                         dailyTasks: fetched.dailyTasks,
-                        itineraryEvents: fetched.itineraryEvents
+                        itineraryEvents: fetched.itineraryEvents,
+                        sports: fetched.sports,
+                        soloMetrics: fetched.soloMetrics,
+                        teamMetrics: fetched.teamMetrics,
+                        caloriesBurnGoal: fetched.caloriesBurnGoal,
+                        stepsGoal: fetched.stepsGoal,
+                        distanceGoal: fetched.distanceGoal,
+                        weightGroups: fetched.weightGroups
                 )
+                    weightGroups = newAccount.weightGroups
                 modelContext.insert(newAccount)
                 try modelContext.save()
             }
@@ -931,11 +1278,16 @@ private extension RootView {
                                         local.weight = newAccount.weight
                                         local.theme = newAccount.theme
                                         local.unitSystem = newAccount.unitSystem
+                                        local.autoRestDayIndices = newAccount.autoRestDayIndices
                                         local.startWeekOn = newAccount.startWeekOn
                                         local.trackedMacros = newAccount.trackedMacros
                                         local.cravings = newAccount.cravings
                                         local.mealReminders = newAccount.mealReminders
+                                        local.caloriesBurnGoal = newAccount.caloriesBurnGoal
+                                        local.stepsGoal = newAccount.stepsGoal
+                                        local.distanceGoal = newAccount.distanceGoal
                                         local.itineraryEvents = newAccount.itineraryEvents
+                                        local.weightGroups = newAccount.weightGroups
                                         try modelContext.save()
                                         mealReminders = newAccount.mealReminders
                                     }
@@ -977,7 +1329,40 @@ private extension RootView {
                                 systemImage: AppTab.workout.systemImage,
                                 value: AppTab.workout
                             ) {
-                                WorkoutTabView(account: accountBinding, selectedDate: $selectedDate)
+                                WorkoutTabView(
+                                    account: accountBinding,
+                                    selectedDate: $selectedDate,
+                                    weeklyProgress: $weeklyCheckInStatuses,
+                                    autoRestDayIndices: $autoRestDayIndices,
+                                    currentDayIndex: weekdayIndex(for: selectedDate),
+                                    onUpdateCheckInStatus: { status in
+                                        updateCheckInStatus(status, for: selectedDate)
+                                    },
+                                    onUpdateAutoRestDays: { indices in
+                                        persistAutoRestDays(indices)
+                                    },
+                                    caloriesBurnGoal: $caloriesBurnGoal,
+                                    stepsGoal: $stepsGoal,
+                                    distanceGoal: $distanceGoal,
+                                    caloriesBurnedToday: $caloriesBurnedToday,
+                                    stepsTakenToday: $stepsTakenToday,
+                                    distanceTravelledToday: $distanceTravelledToday,
+                                    weightGroups: $weightGroups,
+                                    weightEntries: $weightEntries,
+                                    lastWeightEntryByExerciseId: lastWeightEntryByExerciseId,
+                                    onUpdateDailyActivity: { calories, steps, distance in
+                                        persistDailyActivity(calories: calories, steps: steps, distance: distance)
+                                    },
+                                    onUpdateDailyGoals: { burnGoal, stepsGoal, distanceGoal in
+                                        persistDailyGoals(calorieGoalBurn: burnGoal, stepsGoal: stepsGoal, distanceGoal: distanceGoal)
+                                    },
+                                    onUpdateWeightGroups: { groups in
+                                        persistWeightGroups(groups)
+                                    },
+                                    onUpdateWeightEntries: { entries in
+                                        persistWeightEntries(entries, for: selectedDate)
+                                    }
+                                )
                             }
                             Tab(
                                 "Sports",

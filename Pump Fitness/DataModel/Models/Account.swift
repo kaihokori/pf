@@ -164,6 +164,89 @@ struct SportMetricConfig: Codable, Hashable, Identifiable {
     }
 }
 
+struct WeightExerciseDefinition: Codable, Hashable, Identifiable {
+    var id: UUID
+    var name: String
+
+    init(id: UUID = UUID(), name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let name = dictionary["name"] as? String else { return nil }
+        let idRaw = dictionary["id"] as? String
+        self.id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.name = name
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id.uuidString,
+            "name": name
+        ]
+    }
+}
+
+struct WeightGroupDefinition: Codable, Hashable, Identifiable {
+    var id: UUID
+    var name: String
+    var exercises: [WeightExerciseDefinition]
+
+    init(id: UUID = UUID(), name: String, exercises: [WeightExerciseDefinition]) {
+        self.id = id
+        self.name = name
+        self.exercises = exercises
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let name = dictionary["name"] as? String else { return nil }
+        let idRaw = dictionary["id"] as? String
+        self.id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.name = name
+        let exerciseDicts = dictionary["exercises"] as? [[String: Any]] ?? []
+        let exercises = exerciseDicts.compactMap { WeightExerciseDefinition(dictionary: $0) }
+        self.exercises = exercises.isEmpty ? WeightGroupDefinition.defaults.first?.exercises ?? [] : exercises
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id.uuidString,
+            "name": name,
+            "exercises": exercises.map { $0.asDictionary }
+        ]
+    }
+
+    static var defaults: [WeightGroupDefinition] {
+        let chestId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
+        let benchId = UUID(uuidString: "22222222-2222-2222-2222-222222222222") ?? UUID()
+        let chestAccessoryId = UUID(uuidString: "33333333-3333-3333-3333-333333333333") ?? UUID()
+
+        let backId = UUID(uuidString: "44444444-4444-4444-4444-444444444444") ?? UUID()
+        let pullDownId = UUID(uuidString: "55555555-5555-5555-5555-555555555555") ?? UUID()
+        let backAccessoryId = UUID(uuidString: "66666666-6666-6666-6666-666666666666") ?? UUID()
+
+        return [
+            .init(
+                id: chestId,
+                name: "Chest",
+                exercises: [
+                    WeightExerciseDefinition(id: benchId, name: "Bench Press"),
+                    WeightExerciseDefinition(id: chestAccessoryId, name: "")
+                ]
+            ),
+            .init(
+                id: backId,
+                name: "Back",
+                exercises: [
+                    WeightExerciseDefinition(id: pullDownId, name: "Pull Down"),
+                    WeightExerciseDefinition(id: backAccessoryId, name: "")
+                ]
+            )
+        ]
+    }
+}
+
 struct SportConfig: Codable, Hashable, Identifiable {
     var id: UUID
     var name: String
@@ -769,6 +852,10 @@ class Account: ObservableObject {
     var unitSystem: String? = nil
     var activityLevel: String? = nil
     var startWeekOn: String? = nil
+    var autoRestDayIndices: [Int] = []
+    var caloriesBurnGoal: Int = 800
+    var stepsGoal: Int = 10_000
+    var distanceGoal: Double = 3_000 // meters
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
     var supplements: [Supplement] = []
@@ -778,6 +865,8 @@ class Account: ObservableObject {
     var itineraryEvents: [ItineraryEvent] = []
     var sports: [SportConfig] = []
     var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
+    var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
+    var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
 
     init(
         id: String? = UUID().uuidString,
@@ -796,6 +885,7 @@ class Account: ObservableObject {
         unitSystem: String? = nil,
         activityLevel: String? = nil,
         startWeekOn: String? = nil,
+        autoRestDayIndices: [Int] = [],
         trackedMacros: [TrackedMacro] = [],
         cravings: [CravingItem] = [],
         mealReminders: [MealReminder] = MealReminder.defaults,
@@ -805,6 +895,11 @@ class Account: ObservableObject {
         ,itineraryEvents: [ItineraryEvent] = []
         ,sports: [SportConfig] = []
         ,soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
+        ,teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
+        ,caloriesBurnGoal: Int = 800
+        ,stepsGoal: Int = 10_000
+        ,distanceGoal: Double = 3_000
+        ,weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -822,6 +917,10 @@ class Account: ObservableObject {
         self.unitSystem = unitSystem
         self.activityLevel = activityLevel
         self.startWeekOn = startWeekOn
+        self.autoRestDayIndices = autoRestDayIndices
+        self.caloriesBurnGoal = caloriesBurnGoal
+        self.stepsGoal = stepsGoal
+        self.distanceGoal = distanceGoal
         self.trackedMacros = trackedMacros
         self.cravings = cravings
         self.mealReminders = mealReminders
@@ -831,6 +930,8 @@ class Account: ObservableObject {
         self.itineraryEvents = itineraryEvents
         self.sports = sports
         self.soloMetrics = soloMetrics
+        self.teamMetrics = teamMetrics
+        self.weightGroups = weightGroups
         
     }
 }

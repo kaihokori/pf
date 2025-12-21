@@ -1,10 +1,13 @@
 import SwiftUI
+import FirebaseFirestore
 
 public struct CoachingInquiryCTA: View {
     @State private var name: String = ""
     @State private var email: String = ""
     @State private var instagram: String = ""
     @State private var submitted: Bool = false
+    @State private var isSubmitting: Bool = false
+    @State private var submissionError: String? = nil
     
     public init() {}
     
@@ -58,10 +61,9 @@ public struct CoachingInquiryCTA: View {
                     }
                     .padding(.vertical, 4)
                     Button(action: {
-                        submitted = true
-                        // TODO: Hook up backend submission
+                        submitInquiry()
                     }) {
-                        Label(submitted ? "Submitted!" : "Submit", systemImage: "paperplane.fill")
+                        Label(submitted ? "Submitted!" : (isSubmitting ? "Submitting..." : "Submit"), systemImage: "paperplane.fill")
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding()
@@ -69,7 +71,13 @@ public struct CoachingInquiryCTA: View {
                             .foregroundStyle(.white)
                             .cornerRadius(12)
                     }
-                    .disabled(submitted || name.isEmpty || email.isEmpty)
+                    .disabled(submitted || isSubmitting || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if let submissionError {
+                        Text(submissionError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
                 .padding(20)
                 .background(
@@ -88,6 +96,35 @@ public struct CoachingInquiryCTA: View {
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 24)
+    }
+
+    private func submitInquiry() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedInstagram = instagram.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedEmail.isEmpty else { return }
+
+        submissionError = nil
+        isSubmitting = true
+
+        let data: [String: Any] = [
+            "name": trimmedName,
+            "email": trimmedEmail.lowercased(),
+            "instagram": trimmedInstagram,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+
+        Firestore.firestore().collection("coachingInquiries").addDocument(data: data) { error in
+            DispatchQueue.main.async {
+                isSubmitting = false
+                if let error {
+                    submissionError = "Failed to submit. Please try again."
+                    print("CoachingInquiryCTA: failed to submit inquiry: \(error)")
+                } else {
+                    submitted = true
+                }
+            }
+        }
     }
 }
 

@@ -87,6 +87,21 @@ class DayFirestoreService {
         }
     }
 
+    private func encodeTeamMetricValues(_ values: [TeamMetricValue]) -> [[String: Any]] {
+        values.map { value in
+            [
+                "id": value.id,
+                "metricId": value.metricId,
+                "metricName": value.metricName,
+                "value": value.value
+            ]
+        }
+    }
+
+    private func encodeWeightEntries(_ entries: [WeightExerciseValue]) -> [[String: Any]] {
+        entries.map { $0.asDictionary }
+    }
+
 
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
@@ -107,6 +122,14 @@ class DayFirestoreService {
 
     private func decodeSoloMetricValue(_ raw: [String: Any]) -> SoloMetricValue? {
         SoloMetricValue(dictionary: raw)
+    }
+
+    private func decodeTeamMetricValue(_ raw: [String: Any]) -> TeamMetricValue? {
+        TeamMetricValue(dictionary: raw)
+    }
+
+    private func decodeWeightEntry(_ raw: [String: Any]) -> WeightExerciseValue? {
+        WeightExerciseValue(dictionary: raw)
     }
 
     private func decodeSportActivity(_ raw: [String: Any]) -> SportActivityRecord? {
@@ -140,6 +163,15 @@ class DayFirestoreService {
         if !day.dailyTaskCompletions.isEmpty { return true }
         if !day.sportActivities.isEmpty { return true }
         if day.soloMetricValues.contains(where: { $0.value != 0 }) { return true }
+        if day.teamMetricValues.contains(where: { $0.value != 0 }) { return true }
+        if day.teamHomeScore != 0 { return true }
+        if day.teamAwayScore != 0 { return true }
+        if day.weightEntries.contains(where: { $0.hasContent }) { return true }
+        if let raw = day.workoutCheckInStatusRaw,
+           let status = WorkoutCheckInStatus(rawValue: raw),
+           status != .notLogged {
+            return true
+        }
         return false
     }
 
@@ -149,7 +181,14 @@ class DayFirestoreService {
     ///   - date: date to fetch (normalized to start-of-day)
     ///   - context: optional `ModelContext` used to insert/find local model instances
     ///   - completion: returns the `Day` (local instance) or `nil` on unrecoverable errors
-    func fetchDay(for date: Date, in context: ModelContext?, trackedMacros: [TrackedMacro]? = nil, completion: @escaping (Day?) -> Void) {
+    func fetchDay(
+        for date: Date,
+        in context: ModelContext?,
+        trackedMacros: [TrackedMacro]? = nil,
+        soloMetrics: [SoloMetric]? = nil,
+        teamMetrics: [TeamMetric]? = nil,
+        completion: @escaping (Day?) -> Void
+    ) {
         let key = dateKey(for: date)
 
         // Choose docRef: user-scoped `accounts/{userID}/days/{dayDate}` when signed in, otherwise legacy `days/{dayDate}`
@@ -182,6 +221,7 @@ class DayFirestoreService {
                 let caloriesBurnedRemote = (data["caloriesBurned"] as? NSNumber)?.doubleValue
                 let stepsTakenRemote = (data["stepsTaken"] as? NSNumber)?.doubleValue
                 let distanceRemote = (data["distanceTravelled"] as? NSNumber)?.doubleValue
+                let workoutStatusRaw = data["workoutCheckInStatus"] as? String
                 let macroConsumptionsRemote = (data["macroConsumptions"] as? [[String: Any]] ?? []).compactMap { self.decodeMacroConsumption($0) }
                 let takenSupplementsRemote = data["takenSupplements"] as? [String]
                 let completedMealsRemote = data["completedMeals"] as? [String]
@@ -189,8 +229,12 @@ class DayFirestoreService {
                 let dailyTaskCompletionsRemote = (data["dailyTaskCompletions"] as? [[String: Any]] ?? []).compactMap { self.decodeDailyTaskCompletion($0) }
                 let sportActivitiesRemote = (data["sportActivities"] as? [[String: Any]] ?? []).compactMap { self.decodeSportActivity($0) }
                 let soloMetricValuesRemote = (data["soloPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
+                let teamMetricValuesRemote = (data["teamPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeTeamMetricValue($0) }
+                let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
+                let teamHomeScoreRemote = data["teamHomeScore"] as? Int ?? 0
+                let teamAwayScoreRemote = data["teamAwayScore"] as? Int ?? 0
                 if let ctx = context {
-                    let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
+                    let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros, soloMetrics: soloMetrics, teamMetrics: teamMetrics)
                     // Merge remote values into local without wiping newer local data.
                     if let calories = caloriesOpt {
                         day.caloriesConsumed = max(day.caloriesConsumed, calories)
@@ -226,6 +270,10 @@ class DayFirestoreService {
                         let merged = Array(Set(day.takenWorkoutSupplements).union(Set(takenWorkoutRemote)))
                         day.takenWorkoutSupplements = merged
                     }
+                    if !weightEntriesRemote.isEmpty {
+                        let mergedWeights = self.mergeWeightEntries(local: day.weightEntries, remote: weightEntriesRemote)
+                        day.weightEntries = mergedWeights
+                    }
 
                     let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
                     day.mealIntakes = mergedIntakes
@@ -239,6 +287,22 @@ class DayFirestoreService {
                     let mergedSoloValues = self.mergeSoloMetricValues(local: day.soloMetricValues, remote: soloMetricValuesRemote)
                     if !mergedSoloValues.isEmpty {
                         day.soloMetricValues = mergedSoloValues
+                    }
+
+                    let mergedTeamValues = self.mergeTeamMetricValues(local: day.teamMetricValues, remote: teamMetricValuesRemote)
+                    if !mergedTeamValues.isEmpty {
+                        day.teamMetricValues = mergedTeamValues
+                    }
+
+                    day.teamHomeScore = max(day.teamHomeScore, teamHomeScoreRemote)
+                    day.teamAwayScore = max(day.teamAwayScore, teamAwayScoreRemote)
+
+                    if let statusRaw = workoutStatusRaw {
+                        day.workoutCheckInStatusRaw = statusRaw
+                    }
+
+                    if day.workoutCheckInStatusRaw == nil {
+                        day.workoutCheckInStatusRaw = WorkoutCheckInStatus.notLogged.rawValue
                     }
 
                     // Recalculate aggregates from merged meal intakes so we don't lose entries when syncing.
@@ -292,7 +356,7 @@ class DayFirestoreService {
                         calorieGoal: 0,
                         maintenanceCalories: 0,
                         macroFocusRaw: nil,
-                        macroConsumptions: macroConsumptionsRemote,
+                        workoutCheckInStatusRaw: workoutStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue, macroConsumptions: macroConsumptionsRemote,
                         completedMeals: completedMealsRemote ?? [],
                         takenSupplements: takenSupplementsRemote ?? [],
                         takenWorkoutSupplements: data["takenWorkoutSupplements"] as? [String] ?? [],
@@ -300,9 +364,13 @@ class DayFirestoreService {
                         dailyTaskCompletions: dailyTaskCompletionsRemote,
                         sportActivities: sportActivitiesRemote,
                         soloMetricValues: soloMetricValuesRemote,
+                        teamMetricValues: teamMetricValuesRemote,
+                        teamHomeScore: teamHomeScoreRemote,
+                        teamAwayScore: teamAwayScoreRemote,
                         caloriesBurned: caloriesBurnedRemote ?? 0,
                         stepsTaken: stepsTakenRemote ?? 0,
-                        distanceTravelled: distanceRemote ?? 0
+                        distanceTravelled: distanceRemote ?? 0,
+                        weightEntries: weightEntriesRemote
                     )
                     completion(day)
                     return
@@ -311,7 +379,7 @@ class DayFirestoreService {
                 // Remote doc missing — ensure local exists and upload it
                 // Create local default
                 if let ctx = context {
-                    let day = Day.fetchOrCreate(for: date, in: ctx, trackedMacros: trackedMacros)
+                    let day = Day.fetchOrCreate(for: date, in: ctx, trackedMacros: trackedMacros, soloMetrics: soloMetrics, teamMetrics: teamMetrics)
                     // If user is signed in, attempt immediate upload; otherwise mark for later
                     if Auth.auth().currentUser != nil {
                         if self.dayHasMeaningfulData(day) {
@@ -374,6 +442,10 @@ class DayFirestoreService {
             "date": Timestamp(date: dayStart)
         ]
 
+        if let statusRaw = day.workoutCheckInStatusRaw {
+            data["workoutCheckInStatus"] = statusRaw
+        }
+
         if day.caloriesConsumed != 0 {
             data["caloriesConsumed"] = day.caloriesConsumed
         }
@@ -409,6 +481,18 @@ class DayFirestoreService {
         }
         if !day.soloMetricValues.isEmpty {
             data["soloPlayEntries"] = encodeSoloMetricValues(day.soloMetricValues)
+        }
+        if !day.teamMetricValues.isEmpty {
+            data["teamPlayEntries"] = encodeTeamMetricValues(day.teamMetricValues)
+        }
+        if day.teamHomeScore != 0 {
+            data["teamHomeScore"] = day.teamHomeScore
+        }
+        if day.teamAwayScore != 0 {
+            data["teamAwayScore"] = day.teamAwayScore
+        }
+        if day.weightEntries.contains(where: { $0.hasContent }) {
+            data["weightEntries"] = encodeWeightEntries(day.weightEntries.filter { $0.hasContent })
         }
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
@@ -545,6 +629,53 @@ class DayFirestoreService {
         return Array(mergedByMetricId.values)
     }
 
+    private func mergeTeamMetricValues(local: [TeamMetricValue], remote: [TeamMetricValue]) -> [TeamMetricValue] {
+        if remote.isEmpty { return local }
+
+        var mergedByMetricId: [String: TeamMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricId, $0) })
+        let localByName: [String: TeamMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricName.lowercased(), $0) })
+
+        for remoteValue in remote {
+            if var existing = mergedByMetricId[remoteValue.metricId] {
+                existing.value = max(existing.value, remoteValue.value)
+                existing.metricName = remoteValue.metricName
+                mergedByMetricId[remoteValue.metricId] = existing
+            } else if var existingByName = localByName[remoteValue.metricName.lowercased()] {
+                existingByName.metricId = remoteValue.metricId
+                existingByName.metricName = remoteValue.metricName
+                existingByName.value = max(existingByName.value, remoteValue.value)
+                mergedByMetricId[remoteValue.metricId] = existingByName
+            } else {
+                mergedByMetricId[remoteValue.metricId] = remoteValue
+            }
+        }
+
+        return Array(mergedByMetricId.values)
+    }
+
+    private func mergeWeightEntries(local: [WeightExerciseValue], remote: [WeightExerciseValue]) -> [WeightExerciseValue] {
+        if remote.isEmpty { return local }
+
+        var merged: [WeightExerciseValue] = []
+        var seenExercises: Set<UUID> = []
+        let localByExercise = Dictionary(uniqueKeysWithValues: local.map { ($0.exerciseId, $0) })
+
+        for remoteEntry in remote {
+            seenExercises.insert(remoteEntry.exerciseId)
+            if let localEntry = localByExercise[remoteEntry.exerciseId], localEntry.hasContent {
+                merged.append(localEntry)
+            } else {
+                merged.append(remoteEntry)
+            }
+        }
+
+        for localEntry in local where !seenExercises.contains(localEntry.exerciseId) {
+            merged.append(localEntry)
+        }
+
+        return merged
+    }
+
     private func mergeSportActivity(existing: SportActivityRecord, remote: SportActivityRecord) -> SportActivityRecord {
         var merged = existing
         merged.sportName = remote.sportName
@@ -565,6 +696,10 @@ class DayFirestoreService {
         // Avoid writing defaults back to Firestore; filter out empty/zero values.
         var filtered: [String: Any] = [:]
         for (key, value) in fields {
+            if key == "weightEntries", let arr = value as? [WeightExerciseValue] {
+                filtered[key] = arr
+                continue
+            }
             switch value {
             case let int as Int where int == 0:
                 continue
@@ -590,6 +725,13 @@ class DayFirestoreService {
         }
         if let soloEntries = filtered["soloPlayEntries"] as? [SoloMetricValue] {
             fieldsToWrite["soloPlayEntries"] = encodeSoloMetricValues(soloEntries)
+        }
+        if let teamEntries = filtered["teamPlayEntries"] as? [TeamMetricValue] {
+            fieldsToWrite["teamPlayEntries"] = encodeTeamMetricValues(teamEntries)
+        }
+        if let weightEntries = filtered["weightEntries"] as? [WeightExerciseValue] {
+            let cleaned = weightEntries.filter { $0.hasContent }
+            fieldsToWrite["weightEntries"] = encodeWeightEntries(cleaned)
         }
 
         // Use UTC-normalized start-of-day so the key matches document IDs

@@ -123,6 +123,171 @@ struct DailyTaskDefinition: Codable, Hashable, Identifiable {
     }
 }
 
+// MARK: - Sports configuration
+
+struct SportMetricConfig: Codable, Hashable, Identifiable {
+    var id: UUID
+    var key: String
+    var label: String
+    var unit: String
+    var colorHex: String
+
+    init(id: UUID = UUID(), key: String, label: String, unit: String, colorHex: String) {
+        self.id = id
+        self.key = key
+        self.label = label
+        self.unit = unit
+        self.colorHex = colorHex
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let key = dictionary["key"] as? String,
+              let label = dictionary["label"] as? String,
+              let unit = dictionary["unit"] as? String,
+              let colorHex = dictionary["colorHex"] as? String else { return nil }
+        let idRaw = dictionary["id"] as? String
+        self.id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.key = key
+        self.label = label
+        self.unit = unit
+        self.colorHex = colorHex
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id.uuidString,
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "colorHex": colorHex
+        ]
+    }
+}
+
+struct SportConfig: Codable, Hashable, Identifiable {
+    var id: UUID
+    var name: String
+    var colorHex: String
+    var metrics: [SportMetricConfig]
+
+    init(id: UUID = UUID(), name: String, colorHex: String, metrics: [SportMetricConfig]) {
+        self.id = id
+        self.name = name
+        self.colorHex = colorHex
+        self.metrics = metrics
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let name = dictionary["name"] as? String,
+              let colorHex = dictionary["colorHex"] as? String else { return nil }
+        let idRaw = dictionary["id"] as? String
+        self.id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.name = name
+        self.colorHex = colorHex
+        let metricDicts = dictionary["metrics"] as? [[String: Any]] ?? []
+        self.metrics = metricDicts.compactMap { SportMetricConfig(dictionary: $0) }
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id.uuidString,
+            "name": name,
+            "colorHex": colorHex,
+            "metrics": metrics.map { $0.asDictionary }
+        ]
+    }
+
+    static var defaults: [SportConfig] {
+        [
+            SportConfig(
+                name: "Running",
+                colorHex: "#007AFF",
+                metrics: [
+                    SportMetricConfig(key: "distanceKm", label: "Distance", unit: "km", colorHex: "#0A84FF"),
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "speedKmhComputed", label: "Speed (calc)", unit: "km/h", colorHex: "#FF9500")
+                ]
+            ),
+            SportConfig(
+                name: "Cycling",
+                colorHex: "#34C759",
+                metrics: [
+                    SportMetricConfig(key: "distanceKm", label: "Distance", unit: "km", colorHex: "#0A84FF"),
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "speedKmhComputed", label: "Speed (calc)", unit: "km/h", colorHex: "#FF9500")
+                ]
+            ),
+            SportConfig(
+                name: "Swimming",
+                colorHex: "#AF52DE",
+                metrics: [
+                    SportMetricConfig(key: "distanceKm", label: "Distance", unit: "km", colorHex: "#0A84FF"),
+                    SportMetricConfig(key: "laps", label: "Laps", unit: "laps", colorHex: "#AF52DE"),
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759")
+                ]
+            ),
+            SportConfig(
+                name: "Team Sports",
+                colorHex: "#30B0C7",
+                metrics: [
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "attemptsMade", label: "Attempts Made", unit: "count", colorHex: "#30B0C7"),
+                    SportMetricConfig(key: "attemptsMissed", label: "Attempts Missed", unit: "count", colorHex: "#FF3B30"),
+                    SportMetricConfig(key: "accuracyComputed", label: "Accuracy (calc)", unit: "%", colorHex: "#FFD60A")
+                ]
+            ),
+            SportConfig(
+                name: "Martial Arts",
+                colorHex: "#5856D6",
+                metrics: [
+                    SportMetricConfig(key: "rounds", label: "Rounds", unit: "rounds", colorHex: "#5856D6"),
+                    SportMetricConfig(key: "roundDuration", label: "Round Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "points", label: "Points", unit: "pts", colorHex: "#FF2D55")
+                ]
+            ),
+            SportConfig(
+                name: "Pilates/Yoga",
+                colorHex: "#8E8E93",
+                metrics: [
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "holdTime", label: "Hold Time", unit: "sec", colorHex: "#5AC8FA"),
+                    SportMetricConfig(key: "poses", label: "Poses", unit: "poses", colorHex: "#A2845E")
+                ]
+            ),
+            SportConfig(
+                name: "Climbing",
+                colorHex: "#8E8E93",
+                metrics: [
+                    SportMetricConfig(key: "altitude", label: "Altitude", unit: "m", colorHex: "#8E8E93"),
+                    SportMetricConfig(key: "timeToPeak", label: "Time to Peak", unit: "min", colorHex: "#0A84FF"),
+                    SportMetricConfig(key: "restTime", label: "Rest Time", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759")
+                ]
+            ),
+            SportConfig(
+                name: "Padel",
+                colorHex: "#FF2D55",
+                metrics: [
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "attemptsMade", label: "Attempts Made", unit: "count", colorHex: "#30B0C7"),
+                    SportMetricConfig(key: "points", label: "Points", unit: "pts", colorHex: "#FF2D55")
+                ]
+            ),
+            SportConfig(
+                name: "Tennis",
+                colorHex: "#FF9500",
+                metrics: [
+                    SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
+                    SportMetricConfig(key: "attemptsMade", label: "Attempts Made", unit: "count", colorHex: "#30B0C7"),
+                    SportMetricConfig(key: "attemptsMissed", label: "Attempts Missed", unit: "count", colorHex: "#FF3B30"),
+                    SportMetricConfig(key: "accuracy", label: "Accuracy", unit: "%", colorHex: "#FFD60A"),
+                    SportMetricConfig(key: "points", label: "Points", unit: "pts", colorHex: "#FF2D55")
+                ]
+            )
+        ]
+    }
+}
+
 enum MealType: String, Codable, CaseIterable, Identifiable {
     case breakfast
     case lunch
@@ -611,6 +776,8 @@ class Account: ObservableObject {
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
     var itineraryEvents: [ItineraryEvent] = []
+    var sports: [SportConfig] = []
+    var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
 
     init(
         id: String? = UUID().uuidString,
@@ -636,6 +803,8 @@ class Account: ObservableObject {
         ,supplements: [Supplement] = []
         ,dailyTasks: [DailyTaskDefinition] = []
         ,itineraryEvents: [ItineraryEvent] = []
+        ,sports: [SportConfig] = []
+        ,soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -660,6 +829,8 @@ class Account: ObservableObject {
         self.supplements = supplements
         self.dailyTasks = dailyTasks
         self.itineraryEvents = itineraryEvents
+        self.sports = sports
+        self.soloMetrics = soloMetrics
         
     }
 }

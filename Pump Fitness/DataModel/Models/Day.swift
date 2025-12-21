@@ -9,13 +9,7 @@ struct MacroConsumption: Codable, Hashable, Identifiable {
     var unit: String
     var consumed: Double
 
-    init(
-        id: String = UUID().uuidString,
-        trackedMacroId: String,
-        name: String,
-        unit: String,
-        consumed: Double = 0
-    ) {
+    init(id: String = UUID().uuidString, trackedMacroId: String, name: String, unit: String, consumed: Double) {
         self.id = id
         self.trackedMacroId = trackedMacroId
         self.name = name
@@ -31,13 +25,7 @@ struct MealMacroEntry: Codable, Hashable, Identifiable {
     var unit: String
     var amount: Double
 
-    init(
-        id: String = UUID().uuidString,
-        trackedMacroId: String,
-        name: String,
-        unit: String,
-        amount: Double = 0
-    ) {
+    init(id: String = UUID().uuidString, trackedMacroId: String, name: String, unit: String, amount: Double) {
         self.id = id
         self.trackedMacroId = trackedMacroId
         self.name = name
@@ -46,10 +34,10 @@ struct MealMacroEntry: Codable, Hashable, Identifiable {
     }
 
     init?(dictionary: [String: Any]) {
-        guard let trackedMacroId = dictionary["trackedMacroId"] as? String else { return nil }
+        guard let trackedMacroId = dictionary["trackedMacroId"] as? String,
+              let name = dictionary["name"] as? String,
+              let unit = dictionary["unit"] as? String else { return nil }
         let id = dictionary["id"] as? String ?? UUID().uuidString
-        let name = dictionary["name"] as? String ?? ""
-        let unit = dictionary["unit"] as? String ?? "g"
         let amount = (dictionary["amount"] as? NSNumber)?.doubleValue ?? dictionary["amount"] as? Double ?? 0
         self.init(id: id, trackedMacroId: trackedMacroId, name: name, unit: unit, amount: amount)
     }
@@ -73,14 +61,7 @@ struct MealIntakeEntry: Codable, Hashable, Identifiable {
     var calories: Int
     var macros: [MealMacroEntry]
 
-    init(
-        id: String = UUID().uuidString,
-        mealType: MealType,
-        itemName: String,
-        quantityPerServing: String,
-        calories: Int,
-        macros: [MealMacroEntry]
-    ) {
+    init(id: String = UUID().uuidString, mealType: MealType, itemName: String, quantityPerServing: String, calories: Int, macros: [MealMacroEntry]) {
         self.id = id
         self.mealType = mealType
         self.itemName = itemName
@@ -90,26 +71,15 @@ struct MealIntakeEntry: Codable, Hashable, Identifiable {
     }
 
     init?(dictionary: [String: Any]) {
-        guard
-            let rawType = dictionary["mealType"] as? String,
-            let mealType = MealType(rawValue: rawType)
-        else { return nil }
-
+        guard let mealTypeRaw = dictionary["mealType"] as? String,
+              let mealType = MealType(rawValue: mealTypeRaw),
+              let itemName = dictionary["itemName"] as? String,
+              let quantityPerServing = dictionary["quantityPerServing"] as? String else { return nil }
         let id = dictionary["id"] as? String ?? UUID().uuidString
-        let itemName = dictionary["itemName"] as? String ?? ""
-        let quantity = dictionary["quantityPerServing"] as? String ?? ""
         let calories = dictionary["calories"] as? Int ?? (dictionary["calories"] as? NSNumber)?.intValue ?? 0
         let macrosRaw = dictionary["macros"] as? [[String: Any]] ?? []
         let macros = macrosRaw.compactMap { MealMacroEntry(dictionary: $0) }
-
-        self.init(
-            id: id,
-            mealType: mealType,
-            itemName: itemName,
-            quantityPerServing: quantity,
-            calories: calories,
-            macros: macros
-        )
+        self.init(id: id, mealType: mealType, itemName: itemName, quantityPerServing: quantityPerServing, calories: calories, macros: macros)
     }
 
     var asDictionary: [String: Any] {
@@ -128,15 +98,15 @@ struct DailyTaskCompletion: Codable, Hashable, Identifiable {
     var id: String
     var isCompleted: Bool
 
-    init(id: String, isCompleted: Bool = false) {
+    init(id: String = UUID().uuidString, isCompleted: Bool) {
         self.id = id
         self.isCompleted = isCompleted
     }
 
     init?(dictionary: [String: Any]) {
         guard let id = dictionary["id"] as? String else { return nil }
-        let completed = dictionary["isCompleted"] as? Bool ?? false
-        self.init(id: id, isCompleted: completed)
+        let isCompleted = dictionary["isCompleted"] as? Bool ?? false
+        self.init(id: id, isCompleted: isCompleted)
     }
 
     var asDictionary: [String: Any] {
@@ -147,50 +117,143 @@ struct DailyTaskCompletion: Codable, Hashable, Identifiable {
     }
 }
 
+struct SoloMetricValue: Codable, Hashable, Identifiable {
+    var id: String
+    var metricId: String
+    var metricName: String
+    var value: Double
+
+    init(id: String = UUID().uuidString, metricId: String, metricName: String, value: Double) {
+        self.id = id
+        self.metricId = metricId
+        self.metricName = metricName
+        self.value = value
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let metricId = dictionary["metricId"] as? String,
+              let metricName = dictionary["metricName"] as? String else { return nil }
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double ?? 0
+        self.init(id: id, metricId: metricId, metricName: metricName, value: value)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "metricId": metricId,
+            "metricName": metricName,
+            "value": value
+        ]
+    }
+}
+
+struct SportMetricValue: Codable, Hashable, Identifiable {
+    var id: String
+    var key: String
+    var label: String
+    var unit: String
+    var colorHex: String
+    var value: Double
+
+    init(id: String = UUID().uuidString, key: String, label: String, unit: String, colorHex: String, value: Double) {
+        self.id = id
+        self.key = key
+        self.label = label
+        self.unit = unit
+        self.colorHex = colorHex
+        self.value = value
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let key = dictionary["key"] as? String,
+              let label = dictionary["label"] as? String,
+              let unit = dictionary["unit"] as? String,
+              let colorHex = dictionary["colorHex"] as? String else { return nil }
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double ?? 0
+        self.init(id: id, key: key, label: label, unit: unit, colorHex: colorHex, value: value)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "colorHex": colorHex,
+            "value": value
+        ]
+    }
+}
+
+struct SportActivityRecord: Codable, Hashable, Identifiable {
+    var id: String
+    var sportName: String
+    var colorHex: String
+    var date: Date
+    var values: [SportMetricValue]
+
+    init(
+        id: String = UUID().uuidString,
+        sportName: String,
+        colorHex: String,
+        date: Date,
+        values: [SportMetricValue]
+    ) {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        self.id = id
+        self.sportName = sportName
+        self.colorHex = colorHex
+        self.date = cal.startOfDay(for: date)
+        self.values = values
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let sportName = dictionary["sportName"] as? String,
+              let colorHex = dictionary["colorHex"] as? String else { return nil }
+
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let rawDate = dictionary["date"] as? Date
+        let epochDate = (dictionary["date"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+        let date = rawDate ?? epochDate ?? Date()
+        let valuesRaw = dictionary["values"] as? [[String: Any]] ?? []
+        let values = valuesRaw.compactMap { SportMetricValue(dictionary: $0) }
+        self.init(id: id, sportName: sportName, colorHex: colorHex, date: date, values: values)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "sportName": sportName,
+            "colorHex": colorHex,
+            "date": date,
+            "values": values.map { $0.asDictionary }
+        ]
+    }
+}
+
 @Model
 class Day {
-    // normalized day id (optional string id like other models)
     var id: String? = UUID().uuidString
-
-    // the date representing this day (stored as start of day)
     var date: Date
-
-    // calories consumed for this day
     var caloriesConsumed: Int
-
-    // the user's calorie goal for this day (mirrors UI goal)
     var calorieGoal: Int
-
-    // the user's estimated maintenance calories for this day (RMR * activity)
     var maintenanceCalories: Int
-
-    // macro focus stored as rawValue (e.g. "leanCutting", "lowCarb", "balanced", "leanBulking", "custom")
     var macroFocusRaw: String?
-
-    // per-macro consumption for this day (mirrors tracked macros from Account)
     var macroConsumptions: [MacroConsumption]
-
-    // meal completion checklist (stores MealType raw values)
     var completedMeals: [String] = []
-
-    // list of supplement ids taken for this day (corresponds to Account.Supplement.id)
     var takenSupplements: [String] = []
-
-    // list of workout-specific supplement ids taken for this day
     var takenWorkoutSupplements: [String] = []
-
-    // logged meals/intakes for this day
     var mealIntakes: [MealIntakeEntry] = []
-
-    // per-task completion state for this day (by task id)
     var dailyTaskCompletions: [DailyTaskCompletion] = []
-
-    // activity metrics for this day
+    var sportActivities: [SportActivityRecord] = []
+    var soloMetricValues: [SoloMetricValue] = []
     var caloriesBurned: Double = 0
     var stepsTaken: Double = 0
     var distanceTravelled: Double = 0
 
-    // human friendly representation useful in previews / logs
     var dayString: String {
         let fmt = DateFormatter()
         fmt.dateStyle = .medium
@@ -210,13 +273,14 @@ class Day {
         takenSupplements: [String] = [],
         takenWorkoutSupplements: [String] = [],
         mealIntakes: [MealIntakeEntry] = [],
+        dailyTaskCompletions: [DailyTaskCompletion] = [],
+        sportActivities: [SportActivityRecord] = [],
+        soloMetricValues: [SoloMetricValue] = [],
         caloriesBurned: Double = 0,
         stepsTaken: Double = 0,
-        distanceTravelled: Double = 0,
-        dailyTaskCompletions: [DailyTaskCompletion] = []
+        distanceTravelled: Double = 0
     ) {
         self.id = id
-        // Normalize stored date to UTC start-of-day to match Firestore keys and syncing
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
         self.date = cal.startOfDay(for: date)
@@ -229,43 +293,39 @@ class Day {
         self.takenSupplements = takenSupplements
         self.takenWorkoutSupplements = takenWorkoutSupplements
         self.mealIntakes = mealIntakes
+        self.dailyTaskCompletions = dailyTaskCompletions
+        self.sportActivities = sportActivities
+        self.soloMetricValues = soloMetricValues
         self.caloriesBurned = caloriesBurned
         self.stepsTaken = stepsTaken
         self.distanceTravelled = distanceTravelled
-        self.dailyTaskCompletions = dailyTaskCompletions
     }
 
-    /// Fetch an existing `Day` for the provided date or create/insert one if missing.
-    /// - Parameters:
-    ///   - date: the date to find (normalizes to start-of-day)
-    ///   - context: the active `ModelContext` to perform fetch/insert
-    /// - Returns: an existing or newly created `Day` instance (inserted into `context` when created)
-    static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil) -> Day {
+    static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil, soloMetrics: [SoloMetric]? = nil) -> Day {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
         let dayStart = cal.startOfDay(for: date)
 
-        // Use a FetchDescriptor with a SwiftData predicate to find an exact match on the day date.
         let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == dayStart })
         do {
             let results = try context.fetch(request)
             if let existing = results.first {
+                if let tracked = trackedMacros { existing.ensureMacroConsumptions(for: tracked) }
+                if let solo = soloMetrics { existing.ensureSoloMetricValues(for: solo) }
                 return existing
             }
         } catch {
-            // If fetch fails, fall through to creating a new Day locally
             print("Failed to fetch Day from context: \(error)")
         }
 
-        // If no exact match was found, attempt a range match for the same calendar day to
-        // avoid creating duplicates when the stored date isn't perfectly normalized.
         do {
             let nextDay = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
             let rangeRequest = FetchDescriptor<Day>(predicate: #Predicate { $0.date >= dayStart && $0.date < nextDay })
             let rangeResults = try context.fetch(rangeRequest)
             if let existing = rangeResults.first {
-                // Normalize the stored date so subsequent lookups hit the exact match path
                 existing.date = dayStart
+                if let tracked = trackedMacros { existing.ensureMacroConsumptions(for: tracked) }
+                if let solo = soloMetrics { existing.ensureSoloMetricValues(for: solo) }
                 try? context.save()
                 return existing
             }
@@ -273,8 +333,6 @@ class Day {
             print("Failed range fetch for Day: \(error)")
         }
 
-        // If creating a new Day, prefer pulling goal/focus/maintenance from Account so
-        // those values are Account-scoped rather than day-scoped.
         var inheritedCalorieGoal: Int = 0
         var inheritedMacroFocusRaw: String? = nil
         var inheritedMaintenance: Int = 0
@@ -285,9 +343,7 @@ class Day {
                 inheritedCalorieGoal = acct.calorieGoal
                 inheritedMacroFocusRaw = acct.macroFocusRaw
                 inheritedMaintenance = acct.maintenanceCalories
-                // Attempt a Mifflin-St Jeor calculation using available account fields.
                 if let weight = acct.weight, let height = acct.height {
-                    // Compute age if dateOfBirth exists
                     let age: Int = {
                         if let dob = acct.dateOfBirth {
                             let comps = Calendar.current.dateComponents([.year], from: dob, to: Date())
@@ -303,15 +359,13 @@ class Day {
                     }()
 
                     let rmr = 10.0 * weight + 6.25 * height - 5.0 * Double(age) + genderFactor
-                    let tdee = rmr * 1.55 // moderate activity factor
+                    let tdee = rmr * 1.55
                     inheritedMaintenance = Int(round(tdee))
                 }
             }
         } catch {
-            // ignore and fall back to any previously stored values
         }
 
-        // If no Account values existed, fall back to last known Day values for maintenance.
         if inheritedCalorieGoal == 0 || inheritedMaintenance == 0 {
             do {
                 let allRequest = FetchDescriptor<Day>()
@@ -322,13 +376,16 @@ class Day {
                     if inheritedMaintenance == 0 { inheritedMaintenance = last.maintenanceCalories }
                 }
             } catch {
-                // ignore — defaults will be used
             }
         }
 
         var consumptions: [MacroConsumption] = []
         if let tracked = trackedMacros {
             consumptions = tracked.map { MacroConsumption(trackedMacroId: $0.id, name: $0.name, unit: $0.unit, consumed: 0) }
+        }
+
+        let soloValues: [SoloMetricValue] = (soloMetrics ?? []).map { metric in
+            SoloMetricValue(metricId: metric.id, metricName: metric.name, value: 0)
         }
 
         let newDay = Day(
@@ -343,6 +400,9 @@ class Day {
             takenSupplements: [],
             takenWorkoutSupplements: [],
             mealIntakes: [],
+            dailyTaskCompletions: [],
+            sportActivities: [],
+            soloMetricValues: soloValues,
             caloriesBurned: 0,
             stepsTaken: 0,
             distanceTravelled: 0
@@ -351,17 +411,12 @@ class Day {
         do {
             try context.save()
         } catch {
-            // best-effort save; callers may save again later
             print("Day.fetchOrCreate: failed to save new Day to context: \(error)")
         }
         return newDay
     }
 
-    /// Align this day's macro consumptions with the provided tracked macros.
-    /// Adds missing macros with zero consumption and removes any stale ones.
     func ensureMacroConsumptions(for trackedMacros: [TrackedMacro]) {
-        // Preserve consumed values when IDs change by matching on normalized names as a fallback.
-        // Use reduce(into:) so duplicate keys won't crash; last-wins for duplicates.
         let existingById: [String: MacroConsumption] = macroConsumptions.reduce(into: [:]) { acc, item in
             acc[item.trackedMacroId] = item
         }
@@ -399,5 +454,36 @@ class Day {
         }
 
         macroConsumptions = updated
+    }
+
+    func ensureSoloMetricValues(for metrics: [SoloMetric]) {
+        let existingById: [String: SoloMetricValue] = soloMetricValues.reduce(into: [:]) { acc, item in
+            acc[item.metricId] = item
+        }
+
+        let existingByName: [String: SoloMetricValue] = soloMetricValues.reduce(into: [:]) { acc, item in
+            acc[item.metricName.lowercased()] = item
+        }
+
+        var updated: [SoloMetricValue] = []
+
+        for metric in metrics {
+            if var match = existingById[metric.id] {
+                match.metricName = metric.name
+                updated.append(match)
+                continue
+            }
+
+            if var match = existingByName[metric.name.lowercased()] {
+                match.metricId = metric.id
+                match.metricName = metric.name
+                updated.append(match)
+                continue
+            }
+
+            updated.append(SoloMetricValue(metricId: metric.id, metricName: metric.name, value: 0))
+        }
+
+        soloMetricValues = updated
     }
 }

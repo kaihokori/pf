@@ -10,12 +10,18 @@ import SwiftUI
 import CoreLocation
 import WeatherKit
 import Charts
+import SwiftData
 
 struct SportsTabView: View {
     @Binding var account: Account
+    @Binding var sportConfigs: [SportConfig]
+    @Binding var sportActivities: [SportActivityRecord]
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("timetracking.config") private var storedTimeTrackingConfigJSON: String = ""
+    private let accountService = AccountFirestoreService()
+    private let dayService = DayFirestoreService()
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
@@ -28,7 +34,12 @@ struct SportsTabView: View {
     @State private var showSoloMetricsEditor = false
     @State private var showSportsEditor = false
     @State private var metricsEditorSportIndex: Int? = nil
+    @State private var dataEntrySportIndex: Int? = nil
     @State private var hasLoadedTimeTrackingConfig = false
+    @State private var hasLoadedSoloMetrics = false
+    @State private var hasLoadedSoloDay = false
+    @State private var currentDay: Day? = nil
+    @State private var soloMetricValuesStore: [String: String] = [:]
     // Track expanded state for each sport
     @State private var expandedSports: [Bool] = []
 
@@ -58,6 +69,9 @@ struct SportsTabView: View {
         var altitude: Double? = nil
         var timeToPeak: Double? = nil
         var restTime: Double? = nil
+
+        // Custom values keyed by metric key for user-defined metrics.
+        var customValues: [String: Double] = [:]
 
         // Computed properties
         var speedKmhComputed: Double? {
@@ -151,81 +165,7 @@ struct SportsTabView: View {
         .init(name: "Tennis", color: .orange, metrics: metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracy", "points"]))
     ]
 
-    // MARK: - Sample Data
-
-    @State private var sports: [SportType] = {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-
-        func presetColor(_ name: String, fallback: Color = .accentColor) -> Color {
-            Self.sportPresets.first { $0.name == name }?.color ?? fallback
-        }
-
-        let runningMetrics = Self.metrics(forKeys: ["distanceKm", "durationMin", "speedKmhComputed"])
-        let cyclingMetrics = Self.metrics(forKeys: ["distanceKm", "durationMin", "speedKmhComputed"])
-        let swimmingMetrics = Self.metrics(forKeys: ["distanceKm", "laps", "durationMin"])
-        let teamMetrics = Self.metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracyComputed"])
-        let martialMetrics = Self.metrics(forKeys: ["rounds", "roundDuration", "points"])
-        let pilatesMetrics = Self.metrics(forKeys: ["durationMin", "holdTime", "poses"])
-        let climbingMetrics = Self.metrics(forKeys: ["altitude", "timeToPeak", "restTime", "durationMin"])
-        let padelMetrics = Self.metrics(forKeys: ["durationMin", "attemptsMade", "points"])
-        let tennisMetrics = Self.metrics(forKeys: ["durationMin", "attemptsMade", "attemptsMissed", "accuracy", "points"])
-
-        // ...existing code for activities...
-        let runningActivities: [SportActivity] = [
-            SportActivity(date: today, distanceKm: 5.2, durationMin: 32),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, distanceKm: 7.0, durationMin: 45),
-            SportActivity(date: cal.date(byAdding: .day, value: -2, to: today)!, distanceKm: 3.5, durationMin: 22),
-            SportActivity(date: cal.date(byAdding: .day, value: -3, to: today)!, distanceKm: 10.0, durationMin: 65),
-            SportActivity(date: cal.date(byAdding: .day, value: -4, to: today)!, distanceKm: 4.0, durationMin: 28),
-            SportActivity(date: cal.date(byAdding: .day, value: -5, to: today)!, distanceKm: 6.3, durationMin: 38)
-        ]
-        let cyclingActivities: [SportActivity] = [
-            SportActivity(date: today, distanceKm: 15.0, durationMin: 50),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, distanceKm: 22.5, durationMin: 80),
-            SportActivity(date: cal.date(byAdding: .day, value: -2, to: today)!, distanceKm: 10.0, durationMin: 35)
-        ]
-        let swimmingActivities: [SportActivity] = [
-            SportActivity(date: today, distanceKm: 1.2, durationMin: 40, laps: 24),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, distanceKm: 0.8, durationMin: 28, laps: 16)
-        ]
-        let teamActivities: [SportActivity] = [
-            SportActivity(date: today, durationMin: 60, attemptsMade: 12, attemptsMissed: 5),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, durationMin: 45, attemptsMade: 8, attemptsMissed: 7)
-        ]
-        let martialActivities: [SportActivity] = [
-            SportActivity(date: today, rounds: 3, roundDuration: 5, points: 18),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, rounds: 5, roundDuration: 3, points: 22)
-        ]
-        let pilatesActivities: [SportActivity] = [
-            SportActivity(date: today, durationMin: 55, holdTime: 30, poses: 12),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, durationMin: 40, holdTime: 45, poses: 9)
-        ]
-        let climbingActivities: [SportActivity] = [
-            SportActivity(date: today, durationMin: 120, altitude: 1200, timeToPeak: 90, restTime: 20),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, durationMin: 90, altitude: 800, timeToPeak: 60, restTime: 15)
-        ]
-        let padelActivities: [SportActivity] = [
-            SportActivity(date: today, durationMin: 90, attemptsMade: 30, attemptsMissed: 12, accuracy: 71.4, points: 18),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, durationMin: 80, attemptsMade: 25, attemptsMissed: 15, accuracy: 62.5, points: 15)
-        ]
-        let tennisActivities: [SportActivity] = [
-            SportActivity(date: today, durationMin: 75, attemptsMade: 40, attemptsMissed: 20, accuracy: 66.7, points: 21),
-            SportActivity(date: cal.date(byAdding: .day, value: -1, to: today)!, durationMin: 60, attemptsMade: 32, attemptsMissed: 18, accuracy: 64.0, points: 17)
-        ]
-
-        return [
-            SportType(name: "Running", color: presetColor("Running", fallback: .blue), activities: runningActivities, metrics: runningMetrics),
-            SportType(name: "Cycling", color: presetColor("Cycling", fallback: .green), activities: cyclingActivities, metrics: cyclingMetrics),
-            SportType(name: "Swimming", color: presetColor("Swimming", fallback: .purple), activities: swimmingActivities, metrics: swimmingMetrics),
-            SportType(name: "Team Sports", color: presetColor("Team Sports", fallback: .teal), activities: teamActivities, metrics: teamMetrics),
-            SportType(name: "Martial Arts", color: presetColor("Martial Arts", fallback: .indigo), activities: martialActivities, metrics: martialMetrics),
-            SportType(name: "Pilates/Yoga", color: presetColor("Pilates/Yoga", fallback: .brown), activities: pilatesActivities, metrics: pilatesMetrics),
-            SportType(name: "Climbing", color: presetColor("Climbing", fallback: .gray), activities: climbingActivities, metrics: climbingMetrics),
-            SportType(name: "Padel", color: presetColor("Padel", fallback: .pink), activities: padelActivities, metrics: padelMetrics),
-            SportType(name: "Tennis", color: presetColor("Tennis", fallback: .orange), activities: tennisActivities, metrics: tennisMetrics)
-        ]
-    }()
+    @State private var sports: [SportType] = []
 
     private let historyDays: Int = 7
 
@@ -915,7 +855,12 @@ struct SportsTabView: View {
                             .padding(.top, 48)
                             .padding(.bottom, 8)
 
-                           SoloPlaySection(selectedDate: selectedDate, metrics: $soloMetrics)
+                           SoloPlaySection(
+                               selectedDate: selectedDate,
+                               metrics: $soloMetrics,
+                               metricValues: $soloMetricValuesStore,
+                               onValueChange: handleSoloMetricValueChange
+                           )
                                .padding(.horizontal, 18)
 
                             HStack {
@@ -993,7 +938,7 @@ struct SportsTabView: View {
                                                 .padding(.bottom, 8)
                                             }
                                             Button {
-                                                // 
+                                                dataEntrySportIndex = idx
                                             } label: {
                                                 Label("Submit Data", systemImage: "paperplane.fill")
                                                     .font(.callout.weight(.semibold))
@@ -1047,12 +992,13 @@ struct SportsTabView: View {
         }
         .sheet(isPresented: $showSoloMetricsEditor) {
             SoloPlayMetricsEditorSheet(metrics: $soloMetrics) { updated in
-                soloMetrics = updated
+                persistSoloMetrics(updated)
             }
         }
         .sheet(isPresented: $showSportsEditor) {
             SportsEditorSheet(sports: $sports, presets: Self.sportPresets) { updated in
                 sports = updated
+                sportConfigs = configs(from: updated)
                 expandedSports = Array(repeating: false, count: updated.count)
             }
         }
@@ -1070,21 +1016,53 @@ struct SportsTabView: View {
                     accent: sports[idx].color
                 ) { updated in
                     sports[idx].metrics = updated
+                    sportConfigs = configs(from: sports)
+                }
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { dataEntrySportIndex != nil },
+                set: { newValue in if !newValue { dataEntrySportIndex = nil } }
+            )
+        ) {
+            if let idx = dataEntrySportIndex, sports.indices.contains(idx) {
+                SportDataEntrySheet(
+                    sportName: sports[idx].name,
+                    metrics: sports[idx].metrics,
+                    defaultDate: selectedDate,
+                    accent: sports[idx].color
+                ) { activity in
+                    let record = record(from: activity, metrics: sports[idx].metrics, sportName: sports[idx].name, color: sports[idx].color)
+                    sportActivities.append(record)
+                    rebuildSports()
+                } onCancel: {
+                    dataEntrySportIndex = nil
                 }
             }
         }
         .onAppear {
-            // Ensure expandedSports matches the number of sports
-            if expandedSports.count != sports.count {
-                expandedSports = Array(repeating: false, count: sports.count)
-            }
+            rebuildSports()
             loadTimeTrackingConfigFromStorage()
+            loadSoloMetricsFromAccount()
+            loadDayForSelectedDate()
         }
         .task {
             await weatherModel.refresh(for: selectedDate)
         }
         .onChange(of: selectedDate) { _, newValue in
             Task { await weatherModel.refresh(for: newValue) }
+            currentDay = nil
+            hasLoadedSoloDay = false
+            soloMetricValuesStore = [:]
+            loadDayForSelectedDate()
+        }
+        .onChange(of: sportConfigs) { _, _ in rebuildSports() }
+        .onChange(of: sportActivities) { _, _ in rebuildSports() }
+        .onChange(of: soloMetrics) { _, _ in
+            syncSoloMetricStoreWithMetrics()
+            ensureCurrentDay().ensureSoloMetricValues(for: soloMetrics)
+            persistDayIfLoaded()
         }
     }
 }
@@ -1110,30 +1088,233 @@ private extension SportsTabView {
     }
 }
 
-// MARK: - Solo Play
+// MARK: - Solo metrics persistence
+private extension SportsTabView {
+    func loadSoloMetricsFromAccount() {
+        guard !hasLoadedSoloMetrics else { return }
+        let source = account.soloMetrics
+        soloMetrics = source.isEmpty ? SoloMetric.defaultMetrics : source
+        hasLoadedSoloMetrics = true
+        syncSoloMetricStoreWithMetrics()
+    }
 
-fileprivate struct SoloMetric: Identifiable, Equatable, Hashable {
-    let id = UUID()
-    var name: String
-}
+    func persistSoloMetrics(_ metrics: [SoloMetric]) {
+        soloMetrics = metrics
+        account.soloMetrics = metrics
+        syncSoloMetricStoreWithMetrics()
+        if hasLoadedSoloDay {
+            let day = ensureCurrentDay()
+            day.ensureSoloMetricValues(for: metrics)
+            persistDayIfLoaded()
+        }
+        accountService.saveAccount(account) { success in
+            if !success {
+                print("Failed to save solo metrics")
+            }
+        }
+    }
 
-fileprivate extension SoloMetric {
-    static var defaultMetrics: [SoloMetric] {
-        [
-            .init(name: "Distance"),
-            .init(name: "Laps"),
-            .init(name: "Speed"),
-            .init(name: "Rounds")
-        ]
+    func loadDayForSelectedDate() {
+        guard !hasLoadedSoloDay else { return }
+        dayService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros) { day in
+            DispatchQueue.main.async {
+                let resolved = day ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics)
+                resolved.ensureSoloMetricValues(for: soloMetrics)
+                currentDay = resolved
+                syncSoloMetricStoreWithMetrics()
+                hasLoadedSoloDay = true
+            }
+        }
+    }
+
+    func ensureCurrentDay() -> Day {
+        if let day = currentDay {
+            return day
+        }
+        let created = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics)
+        currentDay = created
+        hasLoadedSoloDay = true
+        return created
+    }
+
+    func syncSoloMetricStoreWithMetrics() {
+        let validIds = Set(soloMetrics.map { $0.id })
+        soloMetricValuesStore = soloMetricValuesStore.filter { validIds.contains($0.key) }
+
+        // Prefer existing day values when available
+        let dayValues: [String: Double] = {
+            guard let day = currentDay else { return [:] }
+            return Dictionary(uniqueKeysWithValues: day.soloMetricValues.map { ($0.metricId, $0.value) })
+        }()
+
+        for metric in soloMetrics where soloMetricValuesStore[metric.id] == nil {
+            if let value = dayValues[metric.id] {
+                soloMetricValuesStore[metric.id] = String(value)
+            } else {
+                soloMetricValuesStore[metric.id] = "0"
+            }
+        }
+    }
+
+    func handleSoloMetricValueChange(_ metric: SoloMetric, rawValue: String) {
+        let day = ensureCurrentDay()
+        day.ensureSoloMetricValues(for: soloMetrics)
+        let value = Double(rawValue) ?? 0
+        if let idx = day.soloMetricValues.firstIndex(where: { $0.metricId == metric.id }) {
+            day.soloMetricValues[idx].metricName = metric.name
+            day.soloMetricValues[idx].value = value
+        } else {
+            day.soloMetricValues.append(SoloMetricValue(metricId: metric.id, metricName: metric.name, value: value))
+        }
+        persistDayIfLoaded()
+    }
+
+    func persistDayIfLoaded() {
+        guard let day = currentDay else { return }
+        do {
+            try modelContext.save()
+        } catch {
+            print("SportsTabView: failed to save Day locally: \(error)")
+        }
+
+        dayService.saveDay(day) { success in
+            if !success {
+                print("SportsTabView: failed to sync Day solo metrics to Firestore")
+            }
+        }
     }
 }
+
+// MARK: - Activity hydration & persistence helpers
+
+private extension SportsTabView {
+    func rebuildSports() {
+        let grouped = Dictionary(grouping: sportActivities) { $0.sportName.lowercased() }
+        let baseTypes = sportsFromConfigs(sportConfigs, fallbackActivities: [])
+
+        var built: [SportType] = baseTypes.map { base in
+            let records = grouped[base.name.lowercased()] ?? []
+            let recordMetrics = metrics(from: records, fallbackColor: base.color)
+            let mergedMetrics = mergeMetrics(base: base.metrics, additional: recordMetrics)
+            let activities = records.map { activity(from: $0) }
+            return SportType(name: base.name, color: base.color, activities: activities, metrics: mergedMetrics)
+        }
+
+        for (nameLower, records) in grouped where !built.contains(where: { $0.name.lowercased() == nameLower }) {
+            guard let first = records.first else { continue }
+            let color = Color(hex: first.colorHex) ?? .accentColor
+            let recordMetrics = metrics(from: records, fallbackColor: color)
+            let activities = records.map { activity(from: $0) }
+            built.append(SportType(name: first.sportName, color: color, activities: activities, metrics: recordMetrics))
+        }
+
+        if built.isEmpty {
+            built = sportsFromConfigs(sportConfigs, fallbackActivities: [])
+        }
+
+        sports = built
+        expandedSports = Array(repeating: false, count: sports.count)
+    }
+
+    func metrics(from records: [SportActivityRecord], fallbackColor: Color) -> [SportMetric] {
+        var byKey: [String: SportMetric] = [:]
+        for record in records {
+            for value in record.values where byKey[value.key] == nil {
+                let color = Color(hex: value.colorHex) ?? fallbackColor
+                byKey[value.key] = SportMetric(
+                    key: value.key,
+                    label: value.label,
+                    unit: value.unit,
+                    color: color,
+                    valueTransform: Self.metricPresetByKey[value.key]?.valueTransform
+                )
+            }
+        }
+        return Array(byKey.values)
+    }
+
+    func mergeMetrics(base: [SportMetric], additional: [SportMetric]) -> [SportMetric] {
+        var merged = base
+        let existingKeys = Set(base.map { $0.key })
+        for metric in additional where !existingKeys.contains(metric.key) {
+            merged.append(metric)
+        }
+        return merged
+    }
+
+    func activity(from record: SportActivityRecord) -> SportActivity {
+        var activity = SportActivity(date: record.date)
+        for value in record.values {
+            switch value.key {
+            case "distanceKm": activity.distanceKm = value.value
+            case "durationMin": activity.durationMin = value.value
+            case "speedKmh", "speedKmhComputed": activity.speedKmh = value.value
+            case "laps": activity.laps = Int(value.value)
+            case "attemptsMade": activity.attemptsMade = Int(value.value)
+            case "attemptsMissed": activity.attemptsMissed = Int(value.value)
+            case "accuracy", "accuracyComputed": activity.accuracy = value.value
+            case "rounds": activity.rounds = Int(value.value)
+            case "roundDuration": activity.roundDuration = value.value
+            case "points": activity.points = Int(value.value)
+            case "holdTime": activity.holdTime = value.value
+            case "poses": activity.poses = Int(value.value)
+            case "altitude": activity.altitude = value.value
+            case "timeToPeak": activity.timeToPeak = value.value
+            case "restTime": activity.restTime = value.value
+            default:
+                activity.customValues[value.key] = value.value
+            }
+        }
+        return activity
+    }
+
+    func record(from activity: SportActivity, metrics: [SportMetric], sportName: String, color: Color) -> SportActivityRecord {
+        let values: [SportMetricValue] = metrics.map { metric in
+            let value = metricValue(metric, in: activity)
+            let colorHex = metric.color.toHexString(fallback: color.toHexString())
+            return SportMetricValue(key: metric.key, label: metric.label, unit: metric.unit, colorHex: colorHex, value: value)
+        }
+
+        return SportActivityRecord(
+            sportName: sportName,
+            colorHex: color.toHexString(),
+            date: activity.date,
+            values: values
+        )
+    }
+
+    func metricValue(_ metric: SportMetric, in activity: SportActivity) -> Double {
+        switch metric.key {
+        case "distanceKm": return activity.distanceKm ?? 0
+        case "durationMin": return activity.durationMin ?? 0
+        case "speedKmh": return activity.speedKmh ?? 0
+        case "speedKmhComputed": return activity.speedKmhComputed ?? activity.speedKmh ?? 0
+        case "laps": return Double(activity.laps ?? 0)
+        case "attemptsMade": return Double(activity.attemptsMade ?? 0)
+        case "attemptsMissed": return Double(activity.attemptsMissed ?? 0)
+        case "accuracy": return activity.accuracy ?? activity.accuracyComputed ?? 0
+        case "accuracyComputed": return activity.accuracyComputed ?? activity.accuracy ?? 0
+        case "rounds": return Double(activity.rounds ?? 0)
+        case "roundDuration": return activity.roundDuration ?? 0
+        case "points": return Double(activity.points ?? 0)
+        case "holdTime": return activity.holdTime ?? 0
+        case "poses": return Double(activity.poses ?? 0)
+        case "altitude": return activity.altitude ?? 0
+        case "timeToPeak": return activity.timeToPeak ?? 0
+        case "restTime": return activity.restTime ?? 0
+        default: return activity.customValues[metric.key] ?? 0
+        }
+    }
+}
+
+// MARK: - Solo Play
 
 fileprivate struct SoloPlaySection: View {
     let selectedDate: Date
 
     @Binding var metrics: [SoloMetric]
-
-    @State private var metricValues: [UUID: String] = [:]
+    @Binding var metricValues: [String: String]
+    var onValueChange: (SoloMetric, String) -> Void
 
     var body: some View {
         VStack(alignment: .center, spacing: 18) {
@@ -1151,7 +1332,8 @@ fileprivate struct SoloPlaySection: View {
                                     text: valueBinding(for: metric),
                                     prompt: Text("Enter value…").foregroundStyle(.secondary)
                                 )
-                                .textInputAutocapitalization(.words)
+                                .textInputAutocapitalization(.none)
+                                .keyboardType(.decimalPad)
                                 .padding()
                                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                             }
@@ -1175,7 +1357,10 @@ fileprivate struct SoloPlaySection: View {
     private func valueBinding(for metric: SoloMetric) -> Binding<String> {
         Binding(
             get: { metricValues[metric.id] ?? "" },
-            set: { metricValues[metric.id] = $0 }
+            set: {
+                metricValues[metric.id] = $0
+                onValueChange(metric, $0)
+            }
         )
     }
 
@@ -1221,8 +1406,7 @@ private struct SoloPlayMetricsEditorSheet: View {
                                 .font(.subheadline.weight(.semibold))
 
                             VStack(spacing: 12) {
-                                ForEach(Array(working.enumerated()), id: \.element.id) { idx, _ in
-                                    let binding = $working[idx]
+                                ForEach($working, id: \.id) { $metric in
                                     HStack(spacing: 12) {
                                         Circle()
                                             .fill(Color.accentColor.opacity(0.15))
@@ -1231,15 +1415,15 @@ private struct SoloPlayMetricsEditorSheet: View {
                                                 .foregroundStyle(Color.accentColor))
 
                                         VStack {
-                                            TextField("Metric name", text: binding.name)
+                                            TextField("Metric name", text: $metric.name)
                                                 .font(.subheadline.weight(.semibold))
 
                                             HStack {
                                                 Menu {
-                                                    Button("Top") { moveMetricToTop(idx) }
-                                                    Button("Up") { moveMetricUp(idx) }
-                                                    Button("Down") { moveMetricDown(idx) }
-                                                    Button("Bottom") { moveMetricToBottom(idx) }
+                                                    Button("Top") { moveMetricToTop(metric.id) }
+                                                    Button("Up") { moveMetricUp(metric.id) }
+                                                    Button("Down") { moveMetricDown(metric.id) }
+                                                    Button("Bottom") { moveMetricToBottom(metric.id) }
                                                 } label: {
                                                     Label("Reorder", systemImage: "arrow.up.arrow.down")
                                                         .font(.footnote.weight(.semibold))
@@ -1248,7 +1432,7 @@ private struct SoloPlayMetricsEditorSheet: View {
                                                 Spacer()
 
                                                 Button(role: .destructive) {
-                                                    removeMetric(binding.wrappedValue.id)
+                                                    removeMetric(metric.id)
                                                 } label: {
                                                     Image(systemName: "trash")
                                                         .font(.footnote.weight(.semibold))
@@ -1265,22 +1449,39 @@ private struct SoloPlayMetricsEditorSheet: View {
 
                     if !presets.filter({ !isPresetSelected($0) }).isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Presets")
+                            Text("Quick Add")
                                 .font(.subheadline.weight(.semibold))
 
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                            VStack(spacing: 12) {
                                 ForEach(presets.filter { !isPresetSelected($0) }, id: \.self) { preset in
-                                    Button {
-                                        togglePreset(preset)
-                                    } label: {
-                                        Text(preset)
-                                            .font(.callout.weight(.semibold))
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 12)
-                                            .glassEffect(in: .rect(cornerRadius: 12))
+                                    HStack(spacing: 14) {
+                                        Circle()
+                                            .fill(Color.accentColor.opacity(0.15))
+                                            .frame(width: 44, height: 44)
+                                            .overlay(
+                                                Image(systemName: "figure.walk.motion")
+                                                    .foregroundStyle(Color.accentColor)
+                                            )
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(preset)
+                                                .font(.subheadline.weight(.semibold))
+                                        }
+
+                                        Spacer()
+
+                                        Button(action: { togglePreset(preset) }) {
+                                            Image(systemName: "plus.circle.fill")
+                                                .font(.system(size: 24, weight: .semibold))
+                                                .foregroundStyle(Color.accentColor)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(!canAddMore)
+                                        .opacity(!canAddMore ? 0.3 : 1)
                                     }
-                                    .buttonStyle(.plain)
-                                    .disabled(!canAddMore)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
                                 }
                             }
                         }
@@ -1295,15 +1496,15 @@ private struct SoloPlayMetricsEditorSheet: View {
                                 .textInputAutocapitalization(.words)
                                 .padding()
                                 .surfaceCard(14)
-
+                            
                             Button(action: addCustomMetric) {
-                                Image(systemName: "plus")
-                                    .font(.callout.weight(.semibold))
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(in: .capsule)
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 28, weight: .semibold))
+                                    .foregroundStyle(Color.accentColor)
                             }
                             .buttonStyle(.plain)
                             .disabled(!canAddCustom)
+                            .opacity(!canAddCustom ? 0.4 : 1)
                         }
                     }
                 }
@@ -1350,28 +1551,28 @@ private struct SoloPlayMetricsEditorSheet: View {
         newName = ""
     }
 
-    private func removeMetric(_ id: UUID) {
+    private func removeMetric(_ id: String) {
         working.removeAll { $0.id == id }
     }
 
-    private func moveMetricUp(_ index: Int) {
-        guard working.indices.contains(index), index > 0 else { return }
+    private func moveMetricUp(_ id: String) {
+        guard let index = working.firstIndex(where: { $0.id == id }), index > 0 else { return }
         working.swapAt(index, index - 1)
     }
 
-    private func moveMetricDown(_ index: Int) {
-        guard working.indices.contains(index), index < working.count - 1 else { return }
+    private func moveMetricDown(_ id: String) {
+        guard let index = working.firstIndex(where: { $0.id == id }), index < working.count - 1 else { return }
         working.swapAt(index, index + 1)
     }
 
-    private func moveMetricToTop(_ index: Int) {
-        guard working.indices.contains(index), index > 0 else { return }
+    private func moveMetricToTop(_ id: String) {
+        guard let index = working.firstIndex(where: { $0.id == id }), index > 0 else { return }
         let item = working.remove(at: index)
         working.insert(item, at: 0)
     }
 
-    private func moveMetricToBottom(_ index: Int) {
-        guard working.indices.contains(index), index < working.count - 1 else { return }
+    private func moveMetricToBottom(_ id: String) {
+        guard let index = working.firstIndex(where: { $0.id == id }), index < working.count - 1 else { return }
         let item = working.remove(at: index)
         working.append(item)
     }
@@ -1758,6 +1959,8 @@ private struct SportsEditorSheet: View {
     @State private var newName: String = ""
     @State private var newColor: Color = .accentColor
     @State private var hasLoaded = false
+    @State private var showColorPickerSheet = false
+    @State private var colorPickerSportID: UUID? = nil
 
     private var availablePresets: [SportsTabView.SportPreset] {
         presets.filter { preset in
@@ -1769,23 +1972,31 @@ private struct SportsEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    // Tracked sports
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Sports")
                             VStack(spacing: 12) {
                                 ForEach(Array(working.enumerated()), id: \.element.id) { idx, sport in
                                     let binding = $working[idx]
-                                    HStack(spacing: 14) {
-                                        ColorPicker("", selection: binding.color, supportsOpacity: false)
-                                            .labelsHidden()
-                                            .frame(width: 42)
+                                    HStack(spacing: 12) {
+                                        Button(action: {
+                                            colorPickerSportID = sport.id
+                                            showColorPickerSheet = true
+                                        }) {
+                                            Circle()
+                                                .fill(binding.color.wrappedValue.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "sportscourt")
+                                                        .foregroundStyle(binding.color.wrappedValue)
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
 
                                         VStack(alignment: .leading, spacing: 6) {
                                             TextField("Name", text: binding.name)
                                                 .font(.subheadline.weight(.semibold))
-                                            Text("ID: \(sport.id.uuidString.prefix(6))…")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
                                         }
 
                                         Spacer()
@@ -1800,12 +2011,13 @@ private struct SportsEditorSheet: View {
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 14)
-                                    .surfaceCard(14)
+                                    .surfaceCard(12)
                                 }
                             }
                         }
                     }
 
+                    // Quick Add
                     if !availablePresets.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Quick Add")
@@ -1820,7 +2032,7 @@ private struct SportsEditorSheet: View {
                                                     .foregroundStyle(preset.color)
                                             )
 
-                                        VStack(alignment: .leading, spacing: 4) {
+                                        VStack(alignment: .leading) {
                                             Text(preset.name)
                                                 .font(.subheadline.weight(.semibold))
                                             Text("\(preset.metrics.count) default values")
@@ -1847,34 +2059,23 @@ private struct SportsEditorSheet: View {
                         }
                     }
 
+                    // Custom composer
                     VStack(alignment: .leading, spacing: 12) {
                         MacroEditorSectionHeader(title: "Custom Sports")
-                        VStack(spacing: 12) {
+                        HStack(spacing: 12) {
                             TextField("Sport name", text: $newName)
                                 .textInputAutocapitalization(.words)
                                 .padding()
                                 .surfaceCard(16)
 
-                            HStack(spacing: 12) {
-                                ColorPicker("", selection: $newColor, supportsOpacity: false)
-                                    .labelsHidden()
-                                    .frame(width: 44)
-
-                                Button(action: addCustomSport) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(newColor)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!canAddCustomSport)
-                                .opacity(!canAddCustomSport ? 0.4 : 1)
-
-                                Spacer()
-
-                                Text("New sports get a fresh ID")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            Button(action: addCustomSport) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 28, weight: .semibold))
+                                    .foregroundStyle(newColor)
                             }
+                            .buttonStyle(.plain)
+                            .disabled(!canAddCustomSport)
+                            .opacity(!canAddCustomSport ? 0.4 : 1)
                         }
                     }
                 }
@@ -1894,6 +2095,16 @@ private struct SportsEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var canAddCustomSport: Bool {
@@ -1935,6 +2146,14 @@ private struct SportsEditorSheet: View {
         working.removeAll { $0.id == id }
     }
 
+    private func applyColor(hex: String) {
+        guard let target = colorPickerSportID else { return }
+        guard let idx = working.firstIndex(where: { $0.id == target }) else { return }
+        if let col = Color(hex: hex) {
+            working[idx].color = col
+        }
+    }
+
     private func donePressed() {
         sports = working
         onSave(working)
@@ -1955,6 +2174,8 @@ private struct SportMetricsEditorSheet: View {
     @State private var newUnit: String = ""
     @State private var newColor: Color = .accentColor
     @State private var hasLoaded = false
+    @State private var showColorPickerSheet = false
+    @State private var colorPickerMetricID: UUID? = nil
 
     private var availablePresets: [SportsTabView.SportMetricPreset] {
         let existingKeys = Set(working.map { $0.key })
@@ -1975,10 +2196,20 @@ private struct SportMetricsEditorSheet: View {
                             VStack(spacing: 12) {
                                 ForEach(Array(working.enumerated()), id: \.element.id) { idx, metric in
                                     let binding = $working[idx]
-                                    HStack(spacing: 14) {
-                                        ColorPicker("", selection: binding.color, supportsOpacity: false)
-                                            .labelsHidden()
-                                            .frame(width: 42)
+                                    HStack(spacing: 12) {
+                                        Button(action: {
+                                            colorPickerMetricID = metric.id
+                                            showColorPickerSheet = true
+                                        }) {
+                                            Circle()
+                                                .fill(binding.color.wrappedValue.opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "chart.bar.fill")
+                                                        .foregroundStyle(binding.color.wrappedValue)
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
 
                                         VStack(alignment: .leading, spacing: 6) {
                                             TextField("Name", text: binding.label)
@@ -2054,16 +2285,11 @@ private struct SportMetricsEditorSheet: View {
                                 .textInputAutocapitalization(.words)
                                 .padding()
                                 .surfaceCard(16)
-
-                            TextField("Unit (e.g. pts, km)", text: $newUnit)
-                                .padding()
-                                .surfaceCard(16)
-
                             HStack(spacing: 12) {
-                                ColorPicker("", selection: $newColor, supportsOpacity: false)
-                                    .labelsHidden()
-                                    .frame(width: 44)
-
+                                TextField("Unit (e.g. pts, km)", text: $newUnit)
+                                    .padding()
+                                    .surfaceCard(16)
+                                
                                 Button(action: addCustomMetric) {
                                     Image(systemName: "plus.circle.fill")
                                         .font(.system(size: 28, weight: .semibold))
@@ -2072,8 +2298,6 @@ private struct SportMetricsEditorSheet: View {
                                 .buttonStyle(.plain)
                                 .disabled(!canAddCustomMetric)
                                 .opacity(!canAddCustomMetric ? 0.4 : 1)
-
-                                Spacer()
                             }
                         }
                     }
@@ -2094,6 +2318,16 @@ private struct SportMetricsEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showColorPickerSheet) {
+            ColorPickerSheet { hex in
+                applyColor(hex: hex)
+                showColorPickerSheet = false
+            } onCancel: {
+                showColorPickerSheet = false
+            }
+            .presentationDetents([.height(180)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private func loadInitial() {
@@ -2123,6 +2357,14 @@ private struct SportMetricsEditorSheet: View {
         newUnit = ""
     }
 
+    private func applyColor(hex: String) {
+        guard let target = colorPickerMetricID else { return }
+        guard let idx = working.firstIndex(where: { $0.id == target }) else { return }
+        if let col = Color(hex: hex) {
+            working[idx].color = col
+        }
+    }
+
     private func removeMetric(_ id: UUID) {
         working.removeAll { $0.id == id }
     }
@@ -2131,6 +2373,343 @@ private struct SportMetricsEditorSheet: View {
         metrics = working
         onSave(working)
         dismiss()
+    }
+}
+
+private struct SportDataEntrySheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let sportName: String
+    let metrics: [SportsTabView.SportMetric]
+    let defaultDate: Date
+    let accent: Color
+    var onSave: (SportsTabView.SportActivity) -> Void
+    var onCancel: () -> Void
+
+    @State private var selectedDate: Date
+    @State private var currentMonth: Date
+    @State private var valueInputs: [UUID: String]
+    @State private var showMonthPicker: Bool = false
+    @State private var showYearPicker: Bool = false
+
+    private let calendar = Calendar.current
+    private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
+
+    init(
+        sportName: String,
+        metrics: [SportsTabView.SportMetric],
+        defaultDate: Date,
+        accent: Color,
+        onSave: @escaping (SportsTabView.SportActivity) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.sportName = sportName
+        self.metrics = metrics
+        self.defaultDate = defaultDate
+        self.accent = accent
+        self.onSave = onSave
+        self.onCancel = onCancel
+
+        let baseDate = Calendar.current.startOfDay(for: defaultDate)
+        _selectedDate = State(initialValue: baseDate)
+        _currentMonth = State(initialValue: baseDate)
+        _valueInputs = State(initialValue: Dictionary(uniqueKeysWithValues: metrics.map { ($0.id, "") }))
+    }
+
+    private var canSave: Bool {
+        metrics.allSatisfy { metric in
+            if let text = valueInputs[metric.id]?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                return Double(text) != nil
+            }
+            return false
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    dateSection
+                    valuesSection
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Submit \(sportName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                        .opacity(canSave ? 1 : 0.4)
+                }
+            }
+        }
+    }
+
+    private var dateSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Date")
+                .font(.subheadline.weight(.semibold))
+
+            VStack(spacing: 0) {
+                HStack {
+                    Button(action: { withAnimation(.easeInOut) { shiftMonth(-1) } }) {
+                        Image(systemName: "chevron.left")
+                    }
+                    .padding(.leading, 12)
+
+                    Spacer()
+
+                    Text(monthYearString(currentMonth))
+                        .font(.headline)
+                        .onTapGesture { toggleMonthYearPickers() }
+
+                    Spacer()
+
+                    Button(action: { withAnimation(.easeInOut) { shiftMonth(1) } }) {
+                        Image(systemName: "chevron.right")
+                    }
+                    .padding(.trailing, 12)
+                }
+                .padding(.vertical, 10)
+
+                if showYearPicker {
+                    yearPicker
+                } else if showMonthPicker {
+                    monthPicker
+                } else {
+                    calendarGrid
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.secondary.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(accent.opacity(0.15), lineWidth: 1)
+            )
+        }
+    }
+
+    private var valuesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Values")
+                .font(.subheadline.weight(.semibold))
+
+            VStack(spacing: 12) {
+                ForEach(metrics) { metric in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(metric.label)
+                                .font(.subheadline.weight(.semibold))
+                            TextField("Enter \(metric.unit)", text: binding(for: metric))
+                                .keyboardType(.decimalPad)
+                                .textInputAutocapitalization(.none)
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color.secondary.opacity(0.08))
+                                )
+                        }
+
+                        Text(metric.unit)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.secondary.opacity(0.06))
+                    )
+                }
+            }
+        }
+    }
+
+    private var calendarGrid: some View {
+        VStack(spacing: 0) {
+            HStack {
+                ForEach(daysOfWeek, id: \.self) { dow in
+                    Text(dow)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+
+            let days = daysInMonth(currentMonth)
+            let firstWeekday = calendar.component(.weekday, from: firstOfMonth(currentMonth)) - 1
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                ForEach(0..<(days + firstWeekday), id: \.self) { i in
+                    if i < firstWeekday {
+                        Color.clear.frame(height: 32)
+                    } else {
+                        let dayNum = i - firstWeekday + 1
+                        let date = dateForDay(dayNum, in: currentMonth)
+                        Button(action: { select(date) }) {
+                            Text("\(dayNum)")
+                                .frame(maxWidth: .infinity, minHeight: 32)
+                                .background(calendar.isDate(date, inSameDayAs: selectedDate) ? accent.opacity(0.2) : Color.clear)
+                                .clipShape(Circle())
+                        }
+                        .foregroundColor(calendar.isDate(date, inSameDayAs: selectedDate) ? accent : .primary)
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
+        }
+    }
+
+    private var monthPicker: some View {
+        let months = DateFormatter().monthSymbols ?? []
+        return ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 16) {
+                ForEach(months.indices, id: \.self) { idx in
+                    Button(action: {
+                        var comps = calendar.dateComponents([.year, .day], from: currentMonth)
+                        comps.month = idx + 1
+                        if let newDate = calendar.date(from: comps) {
+                            currentMonth = newDate
+                        }
+                        showMonthPicker = false
+                    }) {
+                        Text(months[idx])
+                            .font(.body)
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                            .background(calendar.component(.month, from: currentMonth) == idx + 1 ? accent.opacity(0.2) : Color.clear)
+                            .cornerRadius(8)
+                    }
+                }
+            }
+            .padding()
+        }
+        .frame(maxHeight: 340)
+    }
+
+    private var yearPicker: some View {
+        let currentYear = calendar.component(.year, from: currentMonth)
+        let years = (currentYear - 50...currentYear + 10).map { $0 }
+        return ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 16) {
+                ForEach(years, id: \.self) { year in
+                    Button(action: {
+                        var comps = calendar.dateComponents([.month, .day], from: currentMonth)
+                        comps.year = year
+                        if let newDate = calendar.date(from: comps) {
+                            currentMonth = newDate
+                        }
+                        showYearPicker = false
+                    }) {
+                        Text("\(year)")
+                            .font(.body)
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                            .background(calendar.component(.year, from: currentMonth) == year ? accent.opacity(0.2) : Color.clear)
+                            .cornerRadius(8)
+                    }
+                }
+            }
+            .padding()
+        }
+        .frame(maxHeight: 340)
+    }
+
+    private func binding(for metric: SportsTabView.SportMetric) -> Binding<String> {
+        Binding(
+            get: { valueInputs[metric.id] ?? "" },
+            set: { valueInputs[metric.id] = $0 }
+        )
+    }
+
+    private func select(_ date: Date) {
+        selectedDate = calendar.startOfDay(for: date)
+    }
+
+    private func shiftMonth(_ delta: Int) {
+        if let newMonth = calendar.date(byAdding: .month, value: delta, to: currentMonth) {
+            currentMonth = newMonth
+        }
+    }
+
+    private func toggleMonthYearPickers() {
+        if showMonthPicker {
+            showMonthPicker = false
+            showYearPicker = true
+        } else if showYearPicker {
+            showYearPicker = false
+        } else {
+            showMonthPicker = true
+        }
+    }
+
+    private func save() {
+        guard let activity = buildActivity() else { return }
+        onSave(activity)
+        dismiss()
+    }
+
+    private func buildActivity() -> SportsTabView.SportActivity? {
+        var activity = SportsTabView.SportActivity(date: selectedDate)
+
+        for metric in metrics {
+            guard let text = valueInputs[metric.id]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  let value = Double(text) else { return nil }
+
+            switch metric.key {
+            case "distanceKm": activity.distanceKm = value
+            case "durationMin": activity.durationMin = value
+            case "speedKmh": activity.speedKmh = value
+            case "speedKmhComputed": activity.speedKmh = value
+            case "laps": activity.laps = Int(value)
+            case "attemptsMade": activity.attemptsMade = Int(value)
+            case "attemptsMissed": activity.attemptsMissed = Int(value)
+            case "accuracy": activity.accuracy = value
+            case "accuracyComputed": activity.accuracy = value
+            case "rounds": activity.rounds = Int(value)
+            case "roundDuration": activity.roundDuration = value
+            case "points": activity.points = Int(value)
+            case "holdTime": activity.holdTime = value
+            case "poses": activity.poses = Int(value)
+            case "altitude": activity.altitude = value
+            case "timeToPeak": activity.timeToPeak = value
+            case "restTime": activity.restTime = value
+            default:
+                activity.customValues[metric.key] = value
+            }
+        }
+
+        return activity
+    }
+
+    private func monthYearString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func firstOfMonth(_ date: Date) -> Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
+    }
+
+    private func daysInMonth(_ date: Date) -> Int {
+        calendar.range(of: .day, in: .month, for: date)?.count ?? 30
+    }
+
+    private func dateForDay(_ day: Int, in month: Date) -> Date {
+        var comps = calendar.dateComponents([.year, .month], from: month)
+        comps.day = day
+        return calendar.date(from: comps) ?? month
     }
 }
 
@@ -2159,12 +2738,12 @@ struct SportMetricGraph: View {
         case "distanceKm": return activity.distanceKm ?? 0
         case "durationMin": return activity.durationMin ?? 0
         case "speedKmh": return activity.speedKmh ?? 0
-        case "speedKmhComputed": return activity.speedKmhComputed ?? 0
+        case "speedKmhComputed": return activity.speedKmhComputed ?? activity.speedKmh ?? 0
         case "laps": return Double(activity.laps ?? 0)
         case "attemptsMade": return Double(activity.attemptsMade ?? 0)
         case "attemptsMissed": return Double(activity.attemptsMissed ?? 0)
         case "accuracy": return activity.accuracy ?? activity.accuracyComputed ?? 0
-        case "accuracyComputed": return activity.accuracyComputed ?? 0
+        case "accuracyComputed": return activity.accuracyComputed ?? activity.accuracy ?? 0
         case "rounds": return Double(activity.rounds ?? 0)
         case "roundDuration": return activity.roundDuration ?? 0
         case "points": return Double(activity.points ?? 0)
@@ -2173,7 +2752,7 @@ struct SportMetricGraph: View {
         case "altitude": return activity.altitude ?? 0
         case "timeToPeak": return activity.timeToPeak ?? 0
         case "restTime": return activity.restTime ?? 0
-        default: return 0
+        default: return activity.customValues[metric.key] ?? 0
         }
     }
 
@@ -2242,6 +2821,47 @@ private extension SportsTabView {
     var accentOverride: Color? {
         guard themeManager.selectedTheme != .multiColour else { return nil }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    func configs(from sports: [SportType]) -> [SportConfig] {
+        sports.map { sport in
+            SportConfig(
+                id: sport.id,
+                name: sport.name,
+                colorHex: sport.color.toHexString(),
+                metrics: sport.metrics.map { metric in
+                    SportMetricConfig(
+                        id: metric.id,
+                        key: metric.key,
+                        label: metric.label,
+                        unit: metric.unit,
+                        colorHex: metric.color.toHexString()
+                    )
+                }
+            )
+        }
+    }
+
+    func sportsFromConfigs(_ configs: [SportConfig], fallbackActivities: [SportType]) -> [SportType] {
+        let fallbackByName = Dictionary(uniqueKeysWithValues: fallbackActivities.map { ($0.name.lowercased(), $0.activities) })
+        return configs.map { config in
+            let color = Color(hex: config.colorHex) ?? .accentColor
+            let activities = fallbackByName[config.name.lowercased()] ?? []
+            return SportType(
+                name: config.name,
+                color: color,
+                activities: activities,
+                metrics: config.metrics.map { metric in
+                    SportMetric(
+                        key: metric.key,
+                        label: metric.label,
+                        unit: metric.unit,
+                        color: Color(hex: metric.colorHex) ?? color,
+                        valueTransform: Self.metricPresetByKey[metric.key]?.valueTransform
+                    )
+                }
+            )
+        }
     }
 }
 

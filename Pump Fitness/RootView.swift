@@ -28,6 +28,8 @@ struct RootView: View {
     @State private var macroConsumptions: [MacroConsumption] = []
     @State private var cravings: [CravingItem] = []
     @State private var itineraryEvents: [ItineraryEvent] = []
+    @State private var sportsConfigs: [SportConfig] = []
+    @State private var sportActivities: [SportActivityRecord] = []
     @State private var checkedMeals: Set<String> = []
     @State private var mealReminders: [MealReminder] = MealReminder.defaults
     @State private var isHydratingTrackedMacros: Bool = false
@@ -40,165 +42,206 @@ struct RootView: View {
     private let accountFirestoreService = AccountFirestoreService()
 
     var body: some View {
-        Group {
-            if isSignedIn, hasCompletedOnboarding {
-                mainAppContent
+        rootContent
+            .environmentObject(authViewModel)
+            .onAppear(perform: handleOnAppear)
+            .task { handleInitialTask() }
+            .onChange(of: selectedDate) { _, newValue in handleSelectedDateChange(newValue) }
+            .onChange(of: consumedCalories) { _, newValue in handleConsumedCaloriesChange(newValue) }
+            .onChange(of: calorieGoal) { _, newValue in handleCalorieGoalChange(newValue) }
+            .onChange(of: selectedMacroFocus) { _, newValue in handleMacroFocusChange(newValue) }
+            .onChange(of: trackedMacros) { _, newValue in handleTrackedMacrosChange(newValue) }
+            .onChange(of: macroConsumptions) { _, newValue in handleMacroConsumptionsChange(newValue) }
+            .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
+            .onChange(of: sportsConfigs) { _, newValue in handleSportsConfigsChange(newValue) }
+            .onChange(of: sportActivities) { _, newValue in handleSportActivitiesChange(newValue) }
+            .onChange(of: mealReminders) { _, newValue in handleMealRemindersChange(newValue) }
+            .onChange(of: itineraryEvents) { _, newValue in handleItineraryEventsChange(newValue) }
+            .onChange(of: checkedMeals) { _, newValue in handleCheckedMealsChange(newValue) }
+            .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in handleMaintenanceCaloriesChange(newValue) }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        if isSignedIn, hasCompletedOnboarding {
+            mainAppContent
+        } else {
+            WelcomeFlowView {
+                handleWelcomeCompletion()
+            }
+            .environmentObject(authViewModel)
+        }
+    }
+
+    private func handleWelcomeCompletion() {
+        hasCompletedOnboarding = true
+        selectedTab = .nutrition
+        DispatchQueue.main.async {
+            if isSignedIn {
+                hasCompletedOnboarding = true
+                selectedTab = .nutrition
+            }
+        }
+    }
+
+    private func handleOnAppear() {
+        let didForceSignOutOnceKey = "didForceSignOutOnce"
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: didForceSignOutOnceKey) {
+            do {
+                try Auth.auth().signOut()
+            } catch {
+                print("Error signing out: \(error)")
+            }
+            hasCompletedOnboarding = false
+            defaults.set(true, forKey: didForceSignOutOnceKey)
+        }
+        authStateHandle = Auth.auth().addStateDidChangeListener { _, user in
+            if let _ = user {
+                isCheckingOnboarding = true
+                checkOnboardingStatus()
+                // Upload any days that were created locally while the user was unauthenticated.
+                dayFirestoreService.uploadPendingDays(in: modelContext) { success in
+                    if !success {
+                        print("DayFirestoreService: some pending days failed to upload; they remain queued.")
+                    }
+                }
             } else {
-                WelcomeFlowView {
-                    hasCompletedOnboarding = true
-                    selectedTab = .nutrition
-                    DispatchQueue.main.async {
-                        if isSignedIn {
-                            hasCompletedOnboarding = true
-                            selectedTab = .nutrition
-                        }
-                    }
-                }
-                .environmentObject(authViewModel)
-            }
-        }
-        .environmentObject(authViewModel)
-        .onAppear {
-            let didForceSignOutOnceKey = "didForceSignOutOnce"
-            let defaults = UserDefaults.standard
-            if !defaults.bool(forKey: didForceSignOutOnceKey) {
-                do {
-                    try Auth.auth().signOut()
-                } catch {
-                    print("Error signing out: \(error)")
-                }
                 hasCompletedOnboarding = false
-                defaults.set(true, forKey: didForceSignOutOnceKey)
-            }
-            authStateHandle = Auth.auth().addStateDidChangeListener { _, user in
-                if let _ = user {
-                    isCheckingOnboarding = true
-                    checkOnboardingStatus()
-                    // Upload any days that were created locally while the user was unauthenticated.
-                    dayFirestoreService.uploadPendingDays(in: modelContext) { success in
-                        if !success {
-                            print("DayFirestoreService: some pending days failed to upload; they remain queued.")
-                        }
-                    }
-                } else {
-                    hasCompletedOnboarding = false
-                }
             }
         }
-        .task {
-            ensureAccountExists()
-            initializeTrackedMacrosFromLocal()
-            initializeItineraryEventsFromLocal()
-            initializeMealRemindersFromLocal()
-            printSignedInUserDetails()
-            // Ensure onboarding status is evaluated on startup
-            checkOnboardingStatus()
-            // Ensure today's Day exists locally and attempt to sync to Firestore
-            loadDay(for: selectedDate)
-        }
-        .onChange(of: selectedDate) { _, newDate in
-            loadDay(for: newDate)
-        }
-        .onChange(of: consumedCalories) { _, newValue in
-            // Persist the updated calories to the local SwiftData Day and attempt to sync to Firestore
-            Task {
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-                day.caloriesConsumed = newValue
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("RootView: failed to save local Day: \(error)")
-                }
+    }
 
-                // Attempt to upload only the changed field to Firestore so we don't
-                // overwrite other values that may be stale in-memory.
-                if newValue != 0 {
-                    dayFirestoreService.updateDayFields(["caloriesConsumed": newValue], for: day) { success in
-                        if success {
-                        } else {
-                            print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
-                        }
-                    }
-                }
-            }
-        }
+    private func handleInitialTask() {
+        ensureAccountExists()
+        initializeTrackedMacrosFromLocal()
+        initializeItineraryEventsFromLocal()
+        initializeMealRemindersFromLocal()
+        printSignedInUserDetails()
+        // Ensure onboarding status is evaluated on startup
+        checkOnboardingStatus()
+        // Ensure today's Day exists locally and attempt to sync to Firestore
+        loadDay(for: selectedDate)
+    }
 
-        .onChange(of: calorieGoal) { _, newValue in
-            guard let account = fetchAccount() else { return }
-            account.calorieGoal = newValue
+    private func handleSelectedDateChange(_ newDate: Date) {
+        loadDay(for: newDate)
+    }
 
+    private func handleConsumedCaloriesChange(_ newValue: Int) {
+        // Persist the updated calories to the local SwiftData Day and attempt to sync to Firestore
+        Task {
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.caloriesConsumed = newValue
             do {
                 try modelContext.save()
             } catch {
-                print("RootView: failed to save calorieGoal to local Account: \(error)")
+                print("RootView: failed to save local Day: \(error)")
+            }
+
+            // Attempt to upload only the changed field to Firestore so we don't
+            // overwrite other values that may be stale in-memory.
+            if newValue != 0 {
+                dayFirestoreService.updateDayFields(["caloriesConsumed": newValue], for: day) { success in
+                    if success {
+                    } else {
+                        print("RootView: failed to sync caloriesConsumed to Firestore for date=\(selectedDate)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func handleCalorieGoalChange(_ newValue: Int) {
+        guard let account = fetchAccount() else { return }
+        account.calorieGoal = newValue
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save calorieGoal to local Account: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+            } else {
+                print("RootView: failed to sync calorieGoal to Firestore via Account")
+            }
+        }
+
+        // Keep local Day in sync for offline UI, but do not upload via DayFirestoreService.
+        Task {
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.calorieGoal = newValue
+            try? modelContext.save()
+        }
+    }
+
+    private func handleMacroFocusChange(_ newValue: MacroFocusOption?) {
+        Task {
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.macroFocusRaw = newValue?.rawValue
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save local Day (macroFocus): \(error)")
+            }
+        }
+
+        if let account = fetchAccount() {
+            account.macroFocusRaw = newValue?.rawValue
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save macroFocus to Account locally: \(error)")
             }
 
             accountFirestoreService.saveAccount(account) { success in
                 if success {
                 } else {
-                    print("RootView: failed to sync calorieGoal to Firestore via Account")
-                }
-            }
-
-            // Keep local Day in sync for offline UI, but do not upload via DayFirestoreService.
-            Task {
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-                day.calorieGoal = newValue
-                try? modelContext.save()
-            }
-        }
-
-        .onChange(of: selectedMacroFocus) { _, newValue in
-            Task {
-                let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-                day.macroFocusRaw = newValue?.rawValue
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("RootView: failed to save local Day (macroFocus): \(error)")
-                }
-            }
-
-            if let account = fetchAccount() {
-                account.macroFocusRaw = newValue?.rawValue
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("RootView: failed to save macroFocus to Account locally: \(error)")
-                }
-
-                accountFirestoreService.saveAccount(account) { success in
-                    if success {
-                    } else {
-                        print("RootView: failed to sync macroFocus to Firestore via Account")
-                    }
+                    print("RootView: failed to sync macroFocus to Firestore via Account")
                 }
             }
         }
-        .onChange(of: trackedMacros) { _, newValue in
-            persistTrackedMacros(newValue, syncWithRemote: !isHydratingTrackedMacros)
-        }
-        .onChange(of: macroConsumptions) { _, newValue in
-            persistMacroConsumptions(newValue)
-        }
-        .onChange(of: cravings) { _, newValue in
-            persistCravings(newValue)
-        }
-        .onChange(of: mealReminders) { _, newValue in
-            persistMealReminders(newValue)
-        }
-        .onChange(of: itineraryEvents) { _, newValue in
-            persistItineraryEvents(newValue)
-        }
-        .onChange(of: checkedMeals) { _, newValue in
-            persistCheckedMeals(newValue)
-        }
-        .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in
-            // Keep the UI's maintenanceCalories in sync with the local Account entity
-            if let updated = newValue {
-                DispatchQueue.main.async {
-                    maintenanceCalories = updated
-                }
+    }
+
+    private func handleTrackedMacrosChange(_ newValue: [TrackedMacro]) {
+        persistTrackedMacros(newValue, syncWithRemote: !isHydratingTrackedMacros)
+    }
+
+    private func handleMacroConsumptionsChange(_ newValue: [MacroConsumption]) {
+        persistMacroConsumptions(newValue)
+    }
+
+    private func handleCravingsChange(_ newValue: [CravingItem]) {
+        persistCravings(newValue)
+    }
+
+    private func handleSportsConfigsChange(_ newValue: [SportConfig]) {
+        persistSports(newValue)
+    }
+
+    private func handleSportActivitiesChange(_ newValue: [SportActivityRecord]) {
+        persistSportActivities(newValue)
+    }
+
+    private func handleMealRemindersChange(_ newValue: [MealReminder]) {
+        persistMealReminders(newValue)
+    }
+
+    private func handleItineraryEventsChange(_ newValue: [ItineraryEvent]) {
+        persistItineraryEvents(newValue)
+    }
+
+    private func handleCheckedMealsChange(_ newValue: Set<String>) {
+        persistCheckedMeals(newValue)
+    }
+
+    private func handleMaintenanceCaloriesChange(_ newValue: Int?) {
+        // Keep the UI's maintenanceCalories in sync with the local Account entity
+        if let updated = newValue {
+            DispatchQueue.main.async {
+                maintenanceCalories = updated
             }
         }
     }
@@ -333,6 +376,7 @@ private extension RootView {
             cravings = []
             maintenanceCalories = 0
             calorieGoal = 0
+                sportsConfigs = SportConfig.defaults
             return
         }
 
@@ -347,6 +391,16 @@ private extension RootView {
         } else {
             hydrateTrackedMacros(account.trackedMacros)
         }
+
+            sportsConfigs = account.sports.isEmpty ? SportConfig.defaults : account.sports
+            if account.sports.isEmpty {
+                account.sports = sportsConfigs
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("RootView: failed to save default sports configs: \(error)")
+                }
+            }
 
         cravings = account.cravings
         maintenanceCalories = account.maintenanceCalories
@@ -396,6 +450,8 @@ private extension RootView {
         let validMeals = Set(MealType.allCases.map { $0.rawValue })
         let completed = Set(day.completedMeals.map { $0.lowercased() }).intersection(validMeals)
         checkedMeals = completed
+
+        sportActivities = day.sportActivities
 
         var fieldsToUpdate: [String: Any] = [:]
         if day.calorieGoal == 0 && calorieGoal > 0 {
@@ -547,6 +603,44 @@ private extension RootView {
             if success {
             } else {
                 print("RootView: failed to sync cravings to Firestore")
+            }
+        }
+    }
+
+    func persistSports(_ configs: [SportConfig]) {
+        guard let account = fetchAccount() else { return }
+
+        account.sports = configs
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save sports locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync sports to Firestore")
+            }
+        }
+    }
+
+    func persistSportActivities(_ activities: [SportActivityRecord]) {
+        Task {
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.sportActivities = activities
+
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save sport activities locally: \(error)")
+            }
+
+            guard !activities.isEmpty else { return }
+
+            dayFirestoreService.saveDay(day) { success in
+                if !success {
+                    print("RootView: failed to sync sport activities to Firestore for date=\(selectedDate)")
+                }
             }
         }
     }
@@ -890,7 +984,12 @@ private extension RootView {
                                 systemImage: AppTab.sports.systemImage,
                                 value: AppTab.sports
                             ) {
-                                SportsTabView(account: accountBinding, selectedDate: $selectedDate)
+                                SportsTabView(
+                                    account: accountBinding,
+                                    sportConfigs: $sportsConfigs,
+                                    sportActivities: $sportActivities,
+                                    selectedDate: $selectedDate
+                                )
                             }
                             Tab(
                                 "Travel",

@@ -12,6 +12,8 @@ class AccountFirestoreService {
                 return
             }
 
+            let soloMetricDefs = (data["soloMetrics"] as? [[String: Any]] ?? []).compactMap { SoloMetric(dictionary: $0) }
+
             let account = Account(
                 id: id,
                 profileImage: nil, // Handle image separately
@@ -35,7 +37,9 @@ class AccountFirestoreService {
                 weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
                 supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) },
                 dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) },
-                itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) }
+                itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) },
+                sports: (data["sports"] as? [[String: Any]] ?? []).compactMap { SportConfig(dictionary: $0) },
+                soloMetrics: soloMetricDefs.isEmpty ? SoloMetric.defaultMetrics : soloMetricDefs
             )
 
             // Debug: print parsed weeklyProgress records
@@ -50,7 +54,8 @@ class AccountFirestoreService {
     }
 
     func saveAccount(_ account: Account, completion: @escaping (Bool) -> Void) {
-        guard let id = account.id else {
+        guard let id = account.id, !id.isEmpty else {
+            print("AccountFirestoreService.saveAccount: missing account id")
             completion(false)
             return
         }
@@ -151,6 +156,10 @@ class AccountFirestoreService {
         if !account.dailyTasks.isEmpty {
             data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
         }
+        if !account.sports.isEmpty {
+            data["sports"] = account.sports.map { $0.asDictionary }
+        }
+        data["soloMetrics"] = account.soloMetrics.map { $0.asDictionary }
         // Persist itinerary events even when empty so deletions propagate.
         data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
 
@@ -160,6 +169,9 @@ class AccountFirestoreService {
         }
 
         self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
+            if let error {
+                print("AccountFirestoreService.saveAccount error: \(error.localizedDescription)")
+            }
             completion(error == nil)
         }
     }

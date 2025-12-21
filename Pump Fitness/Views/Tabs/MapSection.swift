@@ -928,172 +928,171 @@ struct ItineraryEventEditorView: View {
         }
     }
 
-private struct PlaceLookupView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var query: String = ""
-    @State private var results: [MKMapItem] = []
-    @FocusState private var isQueryFocused: Bool
-    @State private var hasSearched: Bool = false
-    var onSelect: (MKMapItem, String) -> Void
+    private struct PlaceLookupView: View {
+        @Environment(\.dismiss) private var dismiss
+        @State private var query: String = ""
+        @State private var results: [MKMapItem] = []
+        @FocusState private var isQueryFocused: Bool
+        @State private var hasSearched: Bool = false
+        var onSelect: (MKMapItem, String) -> Void
 
-    var body: some View {
-        NavigationStack {
-            VStack {
-                HStack {
-                    TextField("Search places", text: $query)
-                        .textInputAutocapitalization(.words)
-                        .padding()
-                        .textFieldStyle(.plain)
-                        .background(
-                          RoundedRectangle(cornerRadius: 14, style: .continuous)
-                              .fill(Color.secondary.opacity(0.08))
-                        )
-                        .focused($isQueryFocused)
-                        .submitLabel(.search)
-                        .onSubmit {
-                            Task { await performSearch() }
-                        }
-
-                    Button(action: {
-                        Task { await performSearch() }
-                    }) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.title2.weight(.semibold))
-                            .frame(minWidth: 64, minHeight: 44)
-                            .padding(.vertical, 6)
+        var body: some View {
+            NavigationStack {
+                VStack {
+                    HStack {
+                        TextField("Search places", text: $query)
+                            .textInputAutocapitalization(.words)
+                            .padding()
+                            .textFieldStyle(.plain)
                             .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color.secondary.opacity(0.08))
+                              RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                  .fill(Color.secondary.opacity(0.08))
                             )
-                    }
-                    .buttonStyle(.plain)
-                }
-                .onAppear {
-                    DispatchQueue.main.async { isQueryFocused = true }
-                }
-                .padding()
-                .onChange(of: query) {
-                    hasSearched = false
-                    results = []
-                }
+                            .focused($isQueryFocused)
+                            .submitLabel(.search)
+                            .onSubmit {
+                                Task { await performSearch() }
+                            }
 
-                List {
-                    // Custom top result: allow adding the typed name only
-                    if hasSearched && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button(action: {
-                            // Create a map item with only the name (no coordinate)
-                            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if #available(iOS 26, *) {
-                                let location = CLLocation(latitude: 0, longitude: 0)
-                                let item = MKMapItem(location: location, address: nil)
-                                item.name = trimmed
-                                onSelect(item, "")
-                            } else {
-                                let coord = CLLocationCoordinate2D(latitude: 0, longitude: 0)
-                                let placemark = MKPlacemark(coordinate: coord)
-                                let item = MKMapItem(placemark: placemark)
-                                item.name = trimmed
-                                onSelect(item, "")
-                            }
-                            dismiss()
+                            Task { await performSearch() }
                         }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "mappin")
-                                    .frame(width: 20, height: 20)
-                                    .foregroundColor(.white)
-                                    .padding(10)
-                                    .background(Color.accentColor)
-                                    .clipShape(Circle())
+                            Image(systemName: "magnifyingglass")
+                                .font(.title2.weight(.semibold))
+                                .frame(minWidth: 64, minHeight: 44)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(Color.secondary.opacity(0.08))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .onAppear {
+                        DispatchQueue.main.async { isQueryFocused = true }
+                    }
+                    .padding()
+                    .onChange(of: query) {
+                        hasSearched = false
+                        results = []
+                    }
 
-                                VStack(alignment: .leading) {
-                                    Text("Can't find what you're looking for?")
-                                        .font(.body)
-                                    Text("Tap to add the name only")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                    List {
+                        // Custom top result: allow adding the typed name only
+                        if hasSearched && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button(action: {
+                                // Create a map item with only the name (no coordinate)
+                                let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if #available(iOS 26, *) {
+                                    let location = CLLocation(latitude: 0, longitude: 0)
+                                    let item = MKMapItem(location: location, address: nil)
+                                    item.name = trimmed
+                                    onSelect(item, "")
+                                } else {
+                                    let coord = CLLocationCoordinate2D(latitude: 0, longitude: 0)
+                                    let placemark = MKPlacemark(coordinate: coord)
+                                    let item = MKMapItem(placemark: placemark)
+                                    item.name = trimmed
+                                    onSelect(item, "")
                                 }
+                                dismiss()
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "mappin")
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(.white)
+                                        .padding(10)
+                                        .background(Color.accentColor)
+                                        .clipShape(Circle())
+
+                                    VStack(alignment: .leading) {
+                                        Text("Can't find what you're looking for?")
+                                            .font(.body)
+                                        Text("Tap to add the name only")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 6)
                             }
-                            .padding(.vertical, 6)
+                        }
+
+                        ForEach(results.indices, id: \.self) { idx in
+                            let item = results[idx]
+                            Button(action: {
+                                onSelect(item, subtitle(for: item))
+                                dismiss()
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "mappin")
+                                        .frame(width: 20, height: 20)
+                                        .foregroundColor(.white)
+                                        .padding(10)
+                                        .background(Color.accentColor)
+                                        .clipShape(Circle())
+
+                                    VStack(alignment: .leading) {
+                                        Text(item.name ?? "Unnamed Place")
+                                            .font(.body)
+                                        Text(subtitle(for: item))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                            }
                         }
                     }
-
-                    ForEach(results.indices, id: \.self) { idx in
-                        let item = results[idx]
-                        Button(action: {
-                            onSelect(item, subtitle(for: item))
-                            dismiss()
-                        }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "mappin")
-                                    .frame(width: 20, height: 20)
-                                    .foregroundColor(.white)
-                                    .padding(10)
-                                    .background(Color.accentColor)
-                                    .clipShape(Circle())
-
-                                VStack(alignment: .leading) {
-                                    Text(item.name ?? "Unnamed Place")
-                                        .font(.body)
-                                    Text(subtitle(for: item))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.vertical, 6)
-                        }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
                     }
                 }
             }
-            .navigationTitle("Find a place")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+        }
+
+        private func performSearch() async {
+            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                results = []
+                return
+            }
+
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = query
+            // Leave region nil to search broadly; could be improved by passing a region
+
+            let search = MKLocalSearch(request: request)
+            do {
+                let resp = try await search.start()
+                results = resp.mapItems
+                hasSearched = true
+            } catch {
+                results = []
+                hasSearched = true
+            }
+        }
+
+        private func formattedCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
+            String(format: "Lat %.4f, Lon %.4f", coordinate.latitude, coordinate.longitude)
+        }
+        
+        private func subtitle(for item: MKMapItem) -> String {
+            if #available(iOS 26, *) {
+                if let address = item.address {
+                    let full = address.fullAddress
+                    if !full.isEmpty { return full }
+
+                    let short = address.shortAddress ?? ""
+                    if !short.isEmpty { return short }
                 }
+                let loc = item.location
+                return formattedCoordinate(loc.coordinate)
+            } else {
+                return item.placemark.title ?? item.name ?? ""
             }
         }
     }
-
-    private func performSearch() async {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            results = []
-            return
-        }
-
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = query
-        // Leave region nil to search broadly; could be improved by passing a region
-
-        let search = MKLocalSearch(request: request)
-        do {
-            let resp = try await search.start()
-            results = resp.mapItems
-            hasSearched = true
-        } catch {
-            results = []
-            hasSearched = true
-        }
-    }
-
-    private func formattedCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
-        String(format: "Lat %.4f, Lon %.4f", coordinate.latitude, coordinate.longitude)
-    }
-    
-    private func subtitle(for item: MKMapItem) -> String {
-        if #available(iOS 26, *) {
-            if let address = item.address {
-                let full = address.fullAddress
-                if !full.isEmpty { return full }
-
-                let short = address.shortAddress ?? ""
-                if !short.isEmpty { return short }
-            }
-            let loc = item.location
-            return formattedCoordinate(loc.coordinate)
-        } else {
-            return item.placemark.title ?? item.name ?? ""
-        }
-    }
-}
 
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {

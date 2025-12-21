@@ -52,6 +52,41 @@ class DayFirestoreService {
         completions.map { $0.asDictionary }
     }
 
+    private func encodeSportActivities(_ activities: [SportActivityRecord]) -> [[String: Any]] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        return activities.map { activity in
+            let dayStart = cal.startOfDay(for: activity.date)
+            return [
+                "id": activity.id,
+                "sportName": activity.sportName,
+                "colorHex": activity.colorHex,
+                "date": Timestamp(date: dayStart),
+                "values": activity.values.map { value in
+                    [
+                        "id": value.id,
+                        "key": value.key,
+                        "label": value.label,
+                        "unit": value.unit,
+                        "colorHex": value.colorHex,
+                        "value": value.value
+                    ]
+                }
+            ]
+        }
+    }
+
+    private func encodeSoloMetricValues(_ values: [SoloMetricValue]) -> [[String: Any]] {
+        values.map { value in
+            [
+                "id": value.id,
+                "metricId": value.metricId,
+                "metricName": value.metricName,
+                "value": value.value
+            ]
+        }
+    }
+
 
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
@@ -70,6 +105,27 @@ class DayFirestoreService {
         DailyTaskCompletion(dictionary: raw)
     }
 
+    private func decodeSoloMetricValue(_ raw: [String: Any]) -> SoloMetricValue? {
+        SoloMetricValue(dictionary: raw)
+    }
+
+    private func decodeSportActivity(_ raw: [String: Any]) -> SportActivityRecord? {
+        guard let sportName = raw["sportName"] as? String else { return nil }
+        let id = raw["id"] as? String ?? UUID().uuidString
+        let colorHex = raw["colorHex"] as? String ?? "#007AFF"
+        let date = (raw["date"] as? Timestamp)?.dateValue() ?? (raw["date"] as? Date) ?? Date()
+        let values = (raw["values"] as? [[String: Any]] ?? []).compactMap { rawValue -> SportMetricValue? in
+            guard let key = rawValue["key"] as? String,
+                  let label = rawValue["label"] as? String,
+                  let unit = rawValue["unit"] as? String,
+                  let colorHex = rawValue["colorHex"] as? String else { return nil }
+            let valueId = rawValue["id"] as? String ?? UUID().uuidString
+            let value = (rawValue["value"] as? NSNumber)?.doubleValue ?? rawValue["value"] as? Double ?? 0
+            return SportMetricValue(id: valueId, key: key, label: label, unit: unit, colorHex: colorHex, value: value)
+        }
+        return SportActivityRecord(id: id, sportName: sportName, colorHex: colorHex, date: date, values: values)
+    }
+
     // Determine whether a Day instance contains any non-default data that should be uploaded.
     private func dayHasMeaningfulData(_ day: Day) -> Bool {
         if day.caloriesConsumed != 0 { return true }
@@ -82,6 +138,8 @@ class DayFirestoreService {
         if day.macroConsumptions.contains(where: { $0.consumed != 0 }) { return true }
         if !day.mealIntakes.isEmpty { return true }
         if !day.dailyTaskCompletions.isEmpty { return true }
+        if !day.sportActivities.isEmpty { return true }
+        if day.soloMetricValues.contains(where: { $0.value != 0 }) { return true }
         return false
     }
 
@@ -129,6 +187,8 @@ class DayFirestoreService {
                 let completedMealsRemote = data["completedMeals"] as? [String]
                 let mealIntakesRemote = (data["mealIntakes"] as? [[String: Any]] ?? []).compactMap { self.decodeMealIntake($0) }
                 let dailyTaskCompletionsRemote = (data["dailyTaskCompletions"] as? [[String: Any]] ?? []).compactMap { self.decodeDailyTaskCompletion($0) }
+                let sportActivitiesRemote = (data["sportActivities"] as? [[String: Any]] ?? []).compactMap { self.decodeSportActivity($0) }
+                let soloMetricValuesRemote = (data["soloPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
                 if let ctx = context {
                     let day = Day.fetchOrCreate(for: remoteDate, in: ctx, trackedMacros: trackedMacros)
                     // Merge remote values into local without wiping newer local data.
@@ -172,6 +232,14 @@ class DayFirestoreService {
 
                     let mergedCompletions = self.mergeDailyTaskCompletions(local: day.dailyTaskCompletions, remote: dailyTaskCompletionsRemote)
                     day.dailyTaskCompletions = mergedCompletions
+
+                    let mergedSportActivities = self.mergeSportActivities(local: day.sportActivities, remote: sportActivitiesRemote)
+                    day.sportActivities = mergedSportActivities
+
+                    let mergedSoloValues = self.mergeSoloMetricValues(local: day.soloMetricValues, remote: soloMetricValuesRemote)
+                    if !mergedSoloValues.isEmpty {
+                        day.soloMetricValues = mergedSoloValues
+                    }
 
                     // Recalculate aggregates from merged meal intakes so we don't lose entries when syncing.
                     let aggregatedCalories = mergedIntakes.reduce(0) { $0 + $1.calories }
@@ -221,15 +289,20 @@ class DayFirestoreService {
                     let day = Day(
                         date: remoteDate,
                         caloriesConsumed: calories,
+                        calorieGoal: 0,
+                        maintenanceCalories: 0,
+                        macroFocusRaw: nil,
                         macroConsumptions: macroConsumptionsRemote,
                         completedMeals: completedMealsRemote ?? [],
                         takenSupplements: takenSupplementsRemote ?? [],
                         takenWorkoutSupplements: data["takenWorkoutSupplements"] as? [String] ?? [],
                         mealIntakes: mealIntakesRemote,
+                        dailyTaskCompletions: dailyTaskCompletionsRemote,
+                        sportActivities: sportActivitiesRemote,
+                        soloMetricValues: soloMetricValuesRemote,
                         caloriesBurned: caloriesBurnedRemote ?? 0,
                         stepsTaken: stepsTakenRemote ?? 0,
-                        distanceTravelled: distanceRemote ?? 0,
-                        dailyTaskCompletions: dailyTaskCompletionsRemote
+                        distanceTravelled: distanceRemote ?? 0
                     )
                     completion(day)
                     return
@@ -331,6 +404,12 @@ class DayFirestoreService {
         if !day.dailyTaskCompletions.isEmpty {
             data["dailyTaskCompletions"] = encodeDailyTaskCompletions(day.dailyTaskCompletions)
         }
+        if !day.sportActivities.isEmpty {
+            data["sportActivities"] = encodeSportActivities(day.sportActivities)
+        }
+        if !day.soloMetricValues.isEmpty {
+            data["soloPlayEntries"] = encodeSoloMetricValues(day.soloMetricValues)
+        }
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
             let path = "accounts/\(uid)/days/\(key)"
@@ -426,6 +505,60 @@ class DayFirestoreService {
         return Array(mergedById.values)
     }
 
+    private func mergeSportActivities(local: [SportActivityRecord], remote: [SportActivityRecord]) -> [SportActivityRecord] {
+        if remote.isEmpty { return local }
+
+        var mergedById: [String: SportActivityRecord] = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
+
+        for remoteActivity in remote {
+            if let existing = mergedById[remoteActivity.id] {
+                mergedById[remoteActivity.id] = mergeSportActivity(existing: existing, remote: remoteActivity)
+            } else {
+                mergedById[remoteActivity.id] = remoteActivity
+            }
+        }
+
+        return Array(mergedById.values)
+    }
+
+    private func mergeSoloMetricValues(local: [SoloMetricValue], remote: [SoloMetricValue]) -> [SoloMetricValue] {
+        if remote.isEmpty { return local }
+
+        var mergedByMetricId: [String: SoloMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricId, $0) })
+        let localByName: [String: SoloMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricName.lowercased(), $0) })
+
+        for remoteValue in remote {
+            if var existing = mergedByMetricId[remoteValue.metricId] {
+                existing.value = max(existing.value, remoteValue.value)
+                existing.metricName = remoteValue.metricName
+                mergedByMetricId[remoteValue.metricId] = existing
+            } else if var existingByName = localByName[remoteValue.metricName.lowercased()] {
+                existingByName.metricId = remoteValue.metricId
+                existingByName.metricName = remoteValue.metricName
+                existingByName.value = max(existingByName.value, remoteValue.value)
+                mergedByMetricId[remoteValue.metricId] = existingByName
+            } else {
+                mergedByMetricId[remoteValue.metricId] = remoteValue
+            }
+        }
+
+        return Array(mergedByMetricId.values)
+    }
+
+    private func mergeSportActivity(existing: SportActivityRecord, remote: SportActivityRecord) -> SportActivityRecord {
+        var merged = existing
+        merged.sportName = remote.sportName
+        merged.colorHex = remote.colorHex
+        merged.date = remote.date
+
+        var valuesById: [String: SportMetricValue] = Dictionary(uniqueKeysWithValues: existing.values.map { ($0.id, $0) })
+        for value in remote.values {
+            valuesById[value.id] = value
+        }
+        merged.values = Array(valuesById.values)
+        return merged
+    }
+
     /// Update only specific fields of a Day document in Firestore. This avoids
     /// accidentally overwriting other fields when only a single property changed.
     func updateDayFields(_ fields: [String: Any], for day: Day, completion: @escaping (Bool) -> Void) {
@@ -450,7 +583,14 @@ class DayFirestoreService {
             completion(true)
             return
         }
-        let fieldsToWrite = filtered
+        var fieldsToWrite = filtered
+
+        if let activities = filtered["sportActivities"] as? [SportActivityRecord] {
+            fieldsToWrite["sportActivities"] = encodeSportActivities(activities)
+        }
+        if let soloEntries = filtered["soloPlayEntries"] as? [SoloMetricValue] {
+            fieldsToWrite["soloPlayEntries"] = encodeSoloMetricValues(soloEntries)
+        }
 
         // Use UTC-normalized start-of-day so the key matches document IDs
         var cal = Calendar(identifier: .gregorian)

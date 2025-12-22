@@ -36,7 +36,7 @@ struct TrackedMacro: Codable, Hashable, Identifiable {
             TrackedMacro(name: "Protein", target: 150, unit: "g", colorHex: "#FF3B30"),
             TrackedMacro(name: "Carbs", target: 200, unit: "g", colorHex: "#34C759"),
             TrackedMacro(name: "Fats", target: 70, unit: "g", colorHex: "#FF9500"),
-            TrackedMacro(name: "Water", target: 2.5, unit: "L", colorHex: "#32ADE6")
+            TrackedMacro(name: "Water", target: 2500, unit: "mL", colorHex: "#32ADE6")
         ]
     }
 
@@ -56,6 +56,46 @@ struct TrackedMacro: Codable, Hashable, Identifiable {
             "target": target,
             "unit": unit,
             "colorHex": colorHex
+        ]
+    }
+}
+
+// MARK: - Expense tracking
+
+struct ExpenseCategory: Codable, Hashable, Identifiable {
+    var id: Int
+    var name: String
+    var colorHex: String
+
+    init(id: Int, name: String, colorHex: String) {
+        self.id = id
+        self.name = name
+        self.colorHex = colorHex
+    }
+
+    init?(dictionary: [String: Any]) {
+        guard let id = dictionary["id"] as? Int,
+              let name = dictionary["name"] as? String else { return nil }
+        let colorHex = dictionary["colorHex"] as? String ?? "#FF3B30"
+        self.init(id: id, name: name, colorHex: colorHex)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id,
+            "name": name,
+            "colorHex": colorHex
+        ]
+    }
+
+    static func defaultCategories() -> [ExpenseCategory] {
+        [
+            ExpenseCategory(id: 0, name: "Food", colorHex: "#E39A3B"),
+            ExpenseCategory(id: 1, name: "Groceries", colorHex: "#4CAF6A"),
+            ExpenseCategory(id: 2, name: "Transport", colorHex: "#4FB6C6"),
+            ExpenseCategory(id: 3, name: "Bills", colorHex: "#7A5FD1"),
+            ExpenseCategory(id: 4, name: "Entertainment", colorHex: "#FF6B6B"),
+            ExpenseCategory(id: 5, name: "Health", colorHex: "#FFD166")
         ]
     }
 }
@@ -813,8 +853,17 @@ struct WeeklyProgressRecord: Codable, Hashable, Identifiable {
 
 @Model
 class Account: ObservableObject {
-        // MARK: - Avatar Helpers
-        var avatarGradient: LinearGradient {
+    static var deviceCurrencySymbol: String {
+        if let symbol = Locale.current.currencySymbol, !symbol.isEmpty {
+            return symbol
+        }
+        if let identifier = Locale.current.currency?.identifier, !identifier.isEmpty {
+            return identifier
+        }
+        return "$"
+    }
+    // MARK: - Avatar Helpers
+    var avatarGradient: LinearGradient {
             LinearGradient(
                 gradient: Gradient(colors: [
                     Color.purple.opacity(0.18),
@@ -860,7 +909,11 @@ class Account: ObservableObject {
     var cravings: [CravingItem] = []
     var supplements: [Supplement] = []
     var dailyTasks: [DailyTaskDefinition] = []
+    var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
+    var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
+    var expenseCurrencySymbol: String = Account.deviceCurrencySymbol
     var goals: [GoalItem] = GoalItem.sampleDefaults()
+    var habits: [HabitDefinition] = HabitDefinition.defaults
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
     var itineraryEvents: [ItineraryEvent] = []
@@ -890,7 +943,11 @@ class Account: ObservableObject {
         autoRestDayIndices: [Int] = [],
         trackedMacros: [TrackedMacro] = [],
         cravings: [CravingItem] = [],
+        groceryItems: [GroceryItem] = GroceryItem.sampleItems(),
+        expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories(),
+        expenseCurrencySymbol: String = Account.deviceCurrencySymbol,
         goals: [GoalItem] = GoalItem.sampleDefaults(),
+        habits: [HabitDefinition] = HabitDefinition.defaults,
         mealReminders: [MealReminder] = MealReminder.defaults,
         weeklyProgress: [WeeklyProgressRecord] = []
         ,supplements: [Supplement] = []
@@ -927,7 +984,11 @@ class Account: ObservableObject {
         self.distanceGoal = distanceGoal
         self.trackedMacros = trackedMacros
         self.cravings = cravings
+        self.groceryItems = groceryItems
+        self.expenseCategories = expenseCategories
+        self.expenseCurrencySymbol = expenseCurrencySymbol
         self.goals = goals
+        self.habits = habits
         self.mealReminders = mealReminders
         self.weeklyProgress = weeklyProgress
         self.supplements = supplements

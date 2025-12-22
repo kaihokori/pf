@@ -94,31 +94,6 @@ struct GroceryListSection: View {
     }
 }
 
-struct GroceryItem: Identifiable, Equatable {
-    let id: UUID
-    var title: String
-    var note: String
-    var isChecked: Bool
-
-    init(id: UUID = UUID(), title: String, note: String = "", isChecked: Bool = false) {
-        self.id = id
-        self.title = title
-        self.note = note
-        self.isChecked = isChecked
-    }
-
-    static func sampleItems() -> [GroceryItem] {
-        [
-            GroceryItem(title: "Apples", note: "6 ct"),
-            GroceryItem(title: "Bananas", note: "6 ct"),
-            GroceryItem(title: "Chicken Breast", note: "2 lbs"),
-            GroceryItem(title: "Spinach", note: "1 bag"),
-            GroceryItem(title: "Oats", note: "1 canister"),
-            GroceryItem(title: "Almond Milk", note: "2 cartons")
-        ]
-    }
-}
-
 #if DEBUG
 struct GroceryListSection_Previews: PreviewProvider {
     @State static var items = GroceryItem.sampleItems()

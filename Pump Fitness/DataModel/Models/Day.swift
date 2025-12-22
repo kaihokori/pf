@@ -340,6 +340,50 @@ struct WeightExerciseValue: Codable, Hashable, Identifiable {
     }
 }
 
+struct ExpenseEntry: Codable, Hashable, Identifiable {
+    var id: UUID
+    var date: Date
+    var name: String
+    var amount: Double
+    var categoryId: Int
+
+    init(id: UUID = UUID(), date: Date, name: String, amount: Double, categoryId: Int) {
+        self.id = id
+        self.date = date
+        self.name = name
+        self.amount = amount
+        self.categoryId = categoryId
+    }
+
+    init?(dictionary: [String: Any]) {
+        let idString = dictionary["id"] as? String
+        let resolvedId = idString.flatMap(UUID.init(uuidString:)) ?? UUID()
+        let dateValue: Date = {
+            if let ts = dictionary["date"] as? Date {
+                return ts
+            }
+            if let raw = dictionary["date"] as? NSNumber {
+                return Date(timeIntervalSince1970: raw.doubleValue)
+            }
+            return Date()
+        }()
+        guard let name = dictionary["name"] as? String else { return nil }
+        let amount = (dictionary["amount"] as? NSNumber)?.doubleValue ?? dictionary["amount"] as? Double ?? 0
+        let categoryId = dictionary["categoryId"] as? Int ?? 0
+        self.init(id: resolvedId, date: dateValue, name: name, amount: amount, categoryId: categoryId)
+    }
+
+    var asDictionary: [String: Any] {
+        [
+            "id": id.uuidString,
+            "date": date,
+            "name": name,
+            "amount": amount,
+            "categoryId": categoryId
+        ]
+    }
+}
+
 @Model
 class Day {
     var id: String? = UUID().uuidString
@@ -355,6 +399,7 @@ class Day {
     var takenWorkoutSupplements: [String] = []
     var mealIntakes: [MealIntakeEntry] = []
     var dailyTaskCompletions: [DailyTaskCompletion] = []
+    var habitCompletions: [HabitCompletion] = []
     var sportActivities: [SportActivityRecord] = []
     var soloMetricValues: [SoloMetricValue] = []
     var teamMetricValues: [TeamMetricValue] = []
@@ -364,6 +409,7 @@ class Day {
     var stepsTaken: Double = 0
     var distanceTravelled: Double = 0
     var weightEntries: [WeightExerciseValue] = []
+    var expenses: [ExpenseEntry] = []
 
     var dayString: String {
         let fmt = DateFormatter()
@@ -386,6 +432,7 @@ class Day {
         takenWorkoutSupplements: [String] = [],
         mealIntakes: [MealIntakeEntry] = [],
         dailyTaskCompletions: [DailyTaskCompletion] = [],
+        habitCompletions: [HabitCompletion] = [],
         sportActivities: [SportActivityRecord] = [],
         soloMetricValues: [SoloMetricValue] = [],
         teamMetricValues: [TeamMetricValue] = [],
@@ -394,7 +441,8 @@ class Day {
         caloriesBurned: Double = 0,
         stepsTaken: Double = 0,
         distanceTravelled: Double = 0,
-        weightEntries: [WeightExerciseValue] = []
+        weightEntries: [WeightExerciseValue] = [],
+        expenses: [ExpenseEntry] = []
     ) {
         self.id = id
         var cal = Calendar(identifier: .gregorian)
@@ -411,6 +459,7 @@ class Day {
         self.takenWorkoutSupplements = takenWorkoutSupplements
         self.mealIntakes = mealIntakes
         self.dailyTaskCompletions = dailyTaskCompletions
+        self.habitCompletions = habitCompletions
         self.sportActivities = sportActivities
         self.soloMetricValues = soloMetricValues
         self.teamMetricValues = teamMetricValues
@@ -420,6 +469,7 @@ class Day {
         self.stepsTaken = stepsTaken
         self.distanceTravelled = distanceTravelled
         self.weightEntries = weightEntries
+        self.expenses = expenses
     }
 
     static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil, soloMetrics: [SoloMetric]? = nil, teamMetrics: [TeamMetric]? = nil) -> Day {
@@ -534,6 +584,7 @@ class Day {
             takenWorkoutSupplements: [],
             mealIntakes: [],
             dailyTaskCompletions: [],
+            habitCompletions: [],
             sportActivities: [],
             soloMetricValues: soloValues,
             teamMetricValues: teamValues,

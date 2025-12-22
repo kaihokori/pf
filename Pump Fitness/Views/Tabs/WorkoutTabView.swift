@@ -685,6 +685,7 @@ struct WorkoutTabView: View {
                 showWeightsEditor = false
             }
         }
+        .keyboardDismissToolbar()
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: lastWeightPlaceholderVersion) { _, _ in rebuildBodyPartsFromModel() }
@@ -789,13 +790,15 @@ struct ActivityAdjustSheet: View {
                 Spacer()
             }
             .padding(20)
-            .navigationTitle("\(activityName) Progress")
+            .navigationTitle("Update Progress")
             .navigationBarTitleDisplayMode(.inline)
+            .presentationDetents([.fraction(0.42), .medium])
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
             }
+            .keyboardDismissToolbar()
         }
     }
 }
@@ -1816,6 +1819,7 @@ private struct DailySummaryGoalSheet: View {
             }
         }
         .tint(tint)
+        .keyboardDismissToolbar()
         .onAppear(perform: loadInitial)
     }
 
@@ -1995,6 +1999,7 @@ private struct WeightsGroupEditorSheet: View {
                 }
             }
         }
+        .keyboardDismissToolbar()
         .onAppear(perform: loadInitial)
     }
 

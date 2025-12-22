@@ -52,6 +52,10 @@ class DayFirestoreService {
         completions.map { $0.asDictionary }
     }
 
+    private func encodeHabitCompletions(_ completions: [HabitCompletion]) -> [[String: Any]] {
+        completions.map { $0.asDictionary }
+    }
+
     private func encodeSportActivities(_ activities: [SportActivityRecord]) -> [[String: Any]] {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -102,6 +106,18 @@ class DayFirestoreService {
         entries.map { $0.asDictionary }
     }
 
+    private func encodeExpenses(_ entries: [ExpenseEntry]) -> [[String: Any]] {
+        entries.map { entry in
+            [
+                "id": entry.id.uuidString,
+                "date": Timestamp(date: entry.date),
+                "name": entry.name,
+                "amount": entry.amount,
+                "categoryId": entry.categoryId
+            ]
+        }
+    }
+
 
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
@@ -120,6 +136,10 @@ class DayFirestoreService {
         DailyTaskCompletion(dictionary: raw)
     }
 
+    private func decodeHabitCompletion(_ raw: [String: Any]) -> HabitCompletion? {
+        HabitCompletion(dictionary: raw)
+    }
+
     private func decodeSoloMetricValue(_ raw: [String: Any]) -> SoloMetricValue? {
         SoloMetricValue(dictionary: raw)
     }
@@ -130,6 +150,14 @@ class DayFirestoreService {
 
     private func decodeWeightEntry(_ raw: [String: Any]) -> WeightExerciseValue? {
         WeightExerciseValue(dictionary: raw)
+    }
+
+    private func decodeExpenseEntry(_ raw: [String: Any]) -> ExpenseEntry? {
+        var dict = raw
+        if let ts = raw["date"] as? Timestamp {
+            dict["date"] = ts.dateValue()
+        }
+        return ExpenseEntry(dictionary: dict)
     }
 
     private func decodeSportActivity(_ raw: [String: Any]) -> SportActivityRecord? {
@@ -161,12 +189,16 @@ class DayFirestoreService {
         if day.macroConsumptions.contains(where: { $0.consumed != 0 }) { return true }
         if !day.mealIntakes.isEmpty { return true }
         if !day.dailyTaskCompletions.isEmpty { return true }
+        // Consider habit completions meaningful even when all are false so
+        // clearing the last tracked habit is uploaded to Firestore.
+        if !day.habitCompletions.isEmpty { return true }
         if !day.sportActivities.isEmpty { return true }
         if day.soloMetricValues.contains(where: { $0.value != 0 }) { return true }
         if day.teamMetricValues.contains(where: { $0.value != 0 }) { return true }
         if day.teamHomeScore != 0 { return true }
         if day.teamAwayScore != 0 { return true }
         if day.weightEntries.contains(where: { $0.hasContent }) { return true }
+        if !day.expenses.isEmpty { return true }
         if let raw = day.workoutCheckInStatusRaw,
            let status = WorkoutCheckInStatus(rawValue: raw),
            status != .notLogged {
@@ -227,10 +259,12 @@ class DayFirestoreService {
                 let completedMealsRemote = data["completedMeals"] as? [String]
                 let mealIntakesRemote = (data["mealIntakes"] as? [[String: Any]] ?? []).compactMap { self.decodeMealIntake($0) }
                 let dailyTaskCompletionsRemote = (data["dailyTaskCompletions"] as? [[String: Any]] ?? []).compactMap { self.decodeDailyTaskCompletion($0) }
+                let habitCompletionsRemote = (data["habitCompletions"] as? [[String: Any]] ?? []).compactMap { self.decodeHabitCompletion($0) }
                 let sportActivitiesRemote = (data["sportActivities"] as? [[String: Any]] ?? []).compactMap { self.decodeSportActivity($0) }
                 let soloMetricValuesRemote = (data["soloPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
                 let teamMetricValuesRemote = (data["teamPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeTeamMetricValue($0) }
                 let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
+                let expensesRemote = (data["expenses"] as? [[String: Any]] ?? []).compactMap { self.decodeExpenseEntry($0) }
                 let teamHomeScoreRemote = data["teamHomeScore"] as? Int ?? 0
                 let teamAwayScoreRemote = data["teamAwayScore"] as? Int ?? 0
                 if let ctx = context {
@@ -275,11 +309,19 @@ class DayFirestoreService {
                         day.weightEntries = mergedWeights
                     }
 
+                    if !expensesRemote.isEmpty || !day.expenses.isEmpty {
+                        let mergedExpenses = self.mergeExpenses(local: day.expenses, remote: expensesRemote)
+                        day.expenses = mergedExpenses
+                    }
+
                     let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
                     day.mealIntakes = mergedIntakes
 
                     let mergedCompletions = self.mergeDailyTaskCompletions(local: day.dailyTaskCompletions, remote: dailyTaskCompletionsRemote)
                     day.dailyTaskCompletions = mergedCompletions
+
+                    let mergedHabitCompletions = self.mergeHabitCompletions(local: day.habitCompletions, remote: habitCompletionsRemote)
+                    day.habitCompletions = mergedHabitCompletions
 
                     let mergedSportActivities = self.mergeSportActivities(local: day.sportActivities, remote: sportActivitiesRemote)
                     day.sportActivities = mergedSportActivities
@@ -362,6 +404,7 @@ class DayFirestoreService {
                         takenWorkoutSupplements: data["takenWorkoutSupplements"] as? [String] ?? [],
                         mealIntakes: mealIntakesRemote,
                         dailyTaskCompletions: dailyTaskCompletionsRemote,
+                        habitCompletions: habitCompletionsRemote,
                         sportActivities: sportActivitiesRemote,
                         soloMetricValues: soloMetricValuesRemote,
                         teamMetricValues: teamMetricValuesRemote,
@@ -476,6 +519,11 @@ class DayFirestoreService {
         if !day.dailyTaskCompletions.isEmpty {
             data["dailyTaskCompletions"] = encodeDailyTaskCompletions(day.dailyTaskCompletions)
         }
+        // Always include habit completions when present so toggles (including
+        // clearing all completions) are persisted to Firestore.
+        if !day.habitCompletions.isEmpty {
+            data["habitCompletions"] = encodeHabitCompletions(day.habitCompletions)
+        }
         if !day.sportActivities.isEmpty {
             data["sportActivities"] = encodeSportActivities(day.sportActivities)
         }
@@ -494,6 +542,7 @@ class DayFirestoreService {
         if day.weightEntries.contains(where: { $0.hasContent }) {
             data["weightEntries"] = encodeWeightEntries(day.weightEntries.filter { $0.hasContent })
         }
+        data["expenses"] = encodeExpenses(day.expenses)
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
             let path = "accounts/\(uid)/days/\(key)"
@@ -589,6 +638,22 @@ class DayFirestoreService {
         return Array(mergedById.values)
     }
 
+    private func mergeHabitCompletions(local: [HabitCompletion], remote: [HabitCompletion]) -> [HabitCompletion] {
+        if remote.isEmpty { return local }
+
+        var mergedByHabit: [UUID: HabitCompletion] = Dictionary(uniqueKeysWithValues: local.map { ($0.habitId, $0) })
+
+        for remoteItem in remote {
+            if let existing = mergedByHabit[remoteItem.habitId] {
+                mergedByHabit[remoteItem.habitId] = HabitCompletion(id: remoteItem.id, habitId: remoteItem.habitId, isCompleted: existing.isCompleted || remoteItem.isCompleted)
+            } else {
+                mergedByHabit[remoteItem.habitId] = remoteItem
+            }
+        }
+
+        return Array(mergedByHabit.values)
+    }
+
     private func mergeSportActivities(local: [SportActivityRecord], remote: [SportActivityRecord]) -> [SportActivityRecord] {
         if remote.isEmpty { return local }
 
@@ -676,6 +741,18 @@ class DayFirestoreService {
         return merged
     }
 
+    private func mergeExpenses(local: [ExpenseEntry], remote: [ExpenseEntry]) -> [ExpenseEntry] {
+        if remote.isEmpty { return local }
+
+        var mergedById: [UUID: ExpenseEntry] = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
+
+        for remoteEntry in remote {
+            mergedById[remoteEntry.id] = remoteEntry
+        }
+
+        return Array(mergedById.values)
+    }
+
     private func mergeSportActivity(existing: SportActivityRecord, remote: SportActivityRecord) -> SportActivityRecord {
         var merged = existing
         merged.sportName = remote.sportName
@@ -698,6 +775,14 @@ class DayFirestoreService {
         for (key, value) in fields {
             if key == "weightEntries", let arr = value as? [WeightExerciseValue] {
                 filtered[key] = arr
+                continue
+            }
+            if key == "expenses" {
+                if let entries = value as? [ExpenseEntry] {
+                    filtered[key] = encodeExpenses(entries)
+                } else if let encoded = value as? [[String: Any]] {
+                    filtered[key] = encoded
+                }
                 continue
             }
             switch value {

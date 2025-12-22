@@ -2249,7 +2249,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .carbs: return "110g"
         case .fats: return "38g"
         case .fibre: return "22g"
-        case .water: return "2.0L"
+        case .water: return "2000mL"
         case .sodium: return "1.8g"
         case .potassium: return "3.1g"
         case .sugar: return "35g"
@@ -2263,7 +2263,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .carbs: return "200g"
         case .fats: return "70g"
         case .fibre: return "30g"
-        case .water: return "2.5L"
+        case .water: return "2500mL"
         case .sodium: return "2.3g"
         case .potassium: return "4.7g"
         case .sugar: return "50g"
@@ -2295,7 +2295,7 @@ enum MacroPreset: String, CaseIterable, Identifiable {
             case .sodium: return Color(hex: "#4FB6C6") ?? .cyan
             case .potassium: return Color(hex: "#7A5FD1") ?? .purple
             case .sugar: return Color(hex: "#C85FA8") ?? .pink
-            case .cholesterol: return Color(hex: "#2C2C2E") ?? .black
+            case .cholesterol: return Color(hex: "#2a65edff") ?? .indigo
         }
     }
 }
@@ -3703,13 +3703,21 @@ private struct MacroIndicatorRow: View {
     var unit: String = "g"
 
     private var displayText: String {
-        switch unit {
-        case "L":
+        let trimmedUnit = unit.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercasedUnit = trimmedUnit.lowercased()
+
+        switch lowercasedUnit {
+        case "l":
             return String(format: "%.1fL", value)
+        case "ml":
+            return "\(Int(value.rounded()))mL"
         case "cal":
-            return "\(Int(value))cal"
+            return "\(Int(value.rounded()))cal"
         default:
-            return "\(Int(value))g"
+            let isWhole = value.truncatingRemainder(dividingBy: 1) == 0
+            let formatted = isWhole ? String(format: "%.0f", value) : String(format: "%.1f", value)
+            let suffix = trimmedUnit.isEmpty ? "g" : trimmedUnit
+            return "\(formatted)\(suffix)"
         }
     }
 
@@ -3739,7 +3747,7 @@ private struct MacroDayColumn: View {
     var protein: Int
     var carbs: Int
     var fats: Int
-    var waterLitres: Double
+    var waterMilliliters: Double
     var isFuture: Bool = false
 
     private var dayLabel: String {
@@ -3774,7 +3782,7 @@ private struct MacroDayColumn: View {
                     MacroIndicatorRow(label: "Protein", color: .red, value: Double(protein), maxValue: 200)
                     MacroIndicatorRow(label: "Carbs", color: Color(.systemTeal), value: Double(carbs), maxValue: 400)
                     MacroIndicatorRow(label: "Fats", color: .orange, value: Double(fats), maxValue: 150)
-                    MacroIndicatorRow(label: "Water", color: .cyan, value: waterLitres, maxValue: 4.0, unit: "L")
+                    MacroIndicatorRow(label: "Water", color: .cyan, value: waterMilliliters, maxValue: 4000, unit: "mL")
                 }
                 Spacer()
             }

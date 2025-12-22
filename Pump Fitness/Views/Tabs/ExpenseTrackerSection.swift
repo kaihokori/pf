@@ -11,29 +11,6 @@ private func currentCurrencySymbol() -> String {
     return "$"
 }
 
-struct ExpenseCategory: Identifiable, Equatable {
-    let id: Int
-    var name: String
-    var colorHex: String
-
-    static func defaultCategories() -> [ExpenseCategory] {
-        [
-            ExpenseCategory(id: 0, name: "Food", colorHex: "#E39A3B"),
-            ExpenseCategory(id: 1, name: "Groceries", colorHex: "#4CAF6A"),
-            ExpenseCategory(id: 2, name: "Transport", colorHex: "#4FB6C6"),
-            ExpenseCategory(id: 3, name: "Bills", colorHex: "#7A5FD1")
-        ]
-    }
-}
-
-struct ExpenseEntry: Identifiable {
-    let id = UUID()
-    var date: Date
-    var name: String
-    var amount: Double
-    var categoryId: Int
-}
-
 private struct DailyCategoryTotal: Identifiable {
     let id = UUID()
     let date: Date
@@ -41,35 +18,18 @@ private struct DailyCategoryTotal: Identifiable {
     let total: Double
 }
 
-private struct DailyTotal: Identifiable {
-    let id = UUID()
-    let date: Date
-    let total: Double
-}
-
 struct ExpenseTrackerSection: View {
     var accentColorOverride: Color?
-    var categories: [ExpenseCategory]
-
-    @State private var entries: [ExpenseEntry] = {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        return [
-            ExpenseEntry(date: today, name: "Coffee", amount: 4.5, categoryId: 0),
-            ExpenseEntry(date: today, name: "Lunch", amount: 12.0, categoryId: 0),
-            ExpenseEntry(date: cal.date(byAdding: .day, value: -1, to: today)!, name: "Groceries", amount: 45.2, categoryId: 1),
-            ExpenseEntry(date: cal.date(byAdding: .day, value: -1, to: today)!, name: "Taxi", amount: 8.0, categoryId: 2),
-            ExpenseEntry(date: cal.date(byAdding: .day, value: -2, to: today)!, name: "Subscription", amount: 9.99, categoryId: 3),
-            ExpenseEntry(date: cal.date(byAdding: .day, value: -4, to: today)!, name: "Dinner", amount: 26.35, categoryId: 0),
-            ExpenseEntry(date: cal.date(byAdding: .day, value: -5, to: today)!, name: "Snacks", amount: 6.2, categoryId: 1)
-        ]
-    }()
+    var currencySymbol: String
+    @Binding var categories: [ExpenseCategory]
+    @Binding var weekEntries: [ExpenseEntry]
+    var anchorDate: Date
+    var onSaveEntry: (ExpenseEntry) -> Void
+    var onDeleteEntry: (UUID) -> Void
 
     @State private var editingEntry: ExpenseEntry? = nil
     @State private var showingAddSheet: Bool = false
     @State private var addSheetDate: Date? = nil
-
-    @State private var currencyOverride: String = "$"
 
     private let historyDays: Int = 7
 
@@ -78,41 +38,14 @@ struct ExpenseTrackerSection: View {
     }
 
     private var displayedCurrencySymbol: String {
-        let trimmed = currencyOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = currencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? currentCurrencySymbol() : trimmed
     }
 
-    private var dailyCategoryTotals: [DailyCategoryTotal] {
+    private var weekDisplayDates: [Date] {
         let cal = Calendar.current
-
-        // compute current week starting Monday
-        let today = Date()
-        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
-        comps.weekday = 2 // Monday
-        guard let startOfWeek = cal.date(from: comps) else { return [] }
-        let displayDates: [Date] = (0..<historyDays).compactMap { offset in
-            cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: startOfWeek))
-        }
-
-        var results: [DailyCategoryTotal] = []
-
-        for date in displayDates {
-            let dayEntries = entries.filter { cal.isDate($0.date, inSameDayAs: date) }
-            for category in orderedCategories {
-                let total = dayEntries.filter { $0.categoryId == category.id }.reduce(0) { $0 + $1.amount }
-                let categoryName = categoryName(for: category.id)
-                // include zero totals so every day/category has a bar (keeps adjacency consistent)
-                results.append(DailyCategoryTotal(date: date, category: categoryName, total: total))
-            }
-        }
-
-        return results.sorted { $0.date < $1.date }
-    }
-
-    private var displayDates: [Date] {
-        let cal = Calendar.current
-        let today = Date()
-        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        let anchor = cal.startOfDay(for: anchorDate)
+        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: anchor)
         comps.weekday = 2 // Monday
         guard let startOfWeek = cal.date(from: comps) else { return [] }
         return (0..<historyDays).compactMap { offset in
@@ -120,27 +53,48 @@ struct ExpenseTrackerSection: View {
         }
     }
 
-    // Adaptive label step: show roughly `targetLabels` labels across the history window
+    private var dailyCategoryTotals: [DailyCategoryTotal] {
+        let cal = Calendar.current
+        var results: [DailyCategoryTotal] = []
+
+        for date in weekDisplayDates {
+            let dayEntries = weekEntries.filter { cal.isDate($0.date, inSameDayAs: date) }
+            for category in orderedCategories {
+                let total = dayEntries.filter { $0.categoryId == category.id }.reduce(0.0) { $0 + $1.amount }
+                if total > 0 {
+                    results.append(
+                        DailyCategoryTotal(
+                            date: date,
+                            category: categoryName(for: category.id),
+                            total: total
+                        )
+                    )
+                }
+            }
+        }
+
+        return results.sorted { $0.date < $1.date }
+    }
+
     private var labelStep: Int {
         let targetLabels = 6
         return max(1, historyDays / targetLabels)
     }
 
-    private var dailyTotals: [DailyTotal] {
-        let cal = Calendar.current
-        let grouped = Dictionary(grouping: entries) { (entry) -> Date in
-            cal.startOfDay(for: entry.date)
-        }
-        // return totals for the displayDates (last `historyDays` days)
-        let dates = displayDates
-        return dates.map { day in
-            let items = grouped[day] ?? []
-            return DailyTotal(date: day, total: items.reduce(0) { $0 + $1.amount })
-        }
-    }
-
     private var orderedCategories: [ExpenseCategory] {
-        categories.sorted { $0.id < $1.id }
+        // Merge provided categories with defaults so we always have the full set
+        let defaults = ExpenseCategory.defaultCategories()
+        var normalized: [ExpenseCategory] = []
+        for idx in 0..<defaults.count {
+            if let existing = categories.first(where: { $0.id == idx }) {
+                let name = existing.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaults[idx].name : existing.name
+                let color = existing.colorHex.isEmpty ? defaults[idx].colorHex : existing.colorHex
+                normalized.append(ExpenseCategory(id: idx, name: name, colorHex: color))
+            } else {
+                normalized.append(defaults[idx])
+            }
+        }
+        return normalized
     }
 
     private var categoryDomain: [String] {
@@ -153,7 +107,7 @@ struct ExpenseTrackerSection: View {
 
     private func categoryName(for id: Int) -> String {
         let defaultName = "Category \(id + 1)"
-        guard let category = categories.first(where: { $0.id == id }) else { return defaultName }
+        guard let category = orderedCategories.first(where: { $0.id == id }) else { return defaultName }
         let trimmed = category.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? defaultName : trimmed
     }
@@ -162,23 +116,40 @@ struct ExpenseTrackerSection: View {
         let fmt = NumberFormatter()
         fmt.numberStyle = .currency
         fmt.locale = Locale.current
+        fmt.currencySymbol = displayedCurrencySymbol
         if let s = fmt.string(from: NSNumber(value: value)) {
             return s
         }
-        return String(format: "%@%.2f", currentCurrencySymbol(), value)
+        return String(format: "%@%.2f", displayedCurrencySymbol, value)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Chart {
-                ForEach(dailyCategoryTotals) { item in
-                    BarMark(
-                        x: .value("Day", DateFormatter.shortDate.string(from: item.date)),
-                        y: .value("Amount (\(displayedCurrencySymbol))", item.total)
-                    )
-                    .foregroundStyle(by: .value("Category", item.category))
-                    .position(by: .value("Category", item.category), axis: .horizontal)
-                    .cornerRadius(4)
+                if orderedCategories.isEmpty {
+                    // No categories configured: render empty bars for each day so x-axis shows 7 days
+                    ForEach(weekDisplayDates, id: \.self) { day in
+                        BarMark(
+                            x: .value("Day", DateFormatter.shortDate.string(from: day)),
+                            y: .value("Amount (\(displayedCurrencySymbol))", 0.0)
+                        )
+                        .foregroundStyle(Color.primary.opacity(0.08))
+                        .cornerRadius(4)
+                    }
+                } else {
+                    ForEach(orderedCategories, id: \.id) { cat in
+                        ForEach(weekDisplayDates, id: \.self) { day in
+                            let total = weekEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: day) && $0.categoryId == cat.id }
+                                .reduce(0.0) { $0 + $1.amount }
+                            BarMark(
+                                x: .value("Day", DateFormatter.shortDate.string(from: day)),
+                                y: .value("Amount (\(displayedCurrencySymbol))", total)
+                            )
+                            .foregroundStyle(by: .value("Category", categoryName(for: cat.id)))
+                            .position(by: .value("Category", categoryName(for: cat.id)), axis: .horizontal)
+                            .cornerRadius(4)
+                        }
+                    }
                 }
             }
             .chartForegroundStyleScale(domain: categoryDomain, range: categoryColors)
@@ -186,12 +157,11 @@ struct ExpenseTrackerSection: View {
                 AxisMarks(position: .leading)
             }
             .chartXAxis {
-                let labels = displayDates.enumerated().compactMap { idx, d in
-                    (idx % labelStep == 0) ? DateFormatter.shortDate.string(from: d) : nil
-                }
+                // Always show all 7 day ticks (short date labels)
+                let labels = weekDisplayDates.map { DateFormatter.shortDate.string(from: $0) }
                 AxisMarks(values: labels) { value in
                     AxisGridLine()
-                    AxisValueLabel() {
+                    AxisValueLabel {
                         if let label = value.as(String.self) {
                             Text(label)
                                 .font(.caption2)
@@ -201,10 +171,9 @@ struct ExpenseTrackerSection: View {
             }
             .frame(height: 140)
 
-            // Detailed entries for this week (Monday - Sunday)
             VStack(spacing: 0) {
-                ForEach(displayDates, id: \.self) { day in
-                    let dayEntries = entries.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+                ForEach(weekDisplayDates, id: \.self) { day in
+                    let dayEntries = entries(for: day)
                     Section(header:
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -257,14 +226,17 @@ struct ExpenseTrackerSection: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
 
-                                    Button {
-                                        editingEntry = entry
+                                    Menu {
+                                        Button("Edit") { editingEntry = entry }
+                                        Button("Delete", role: .destructive) {
+                                            onDeleteEntry(entry.id)
+                                        }
                                     } label: {
-                                        Image(systemName: "pencil")
+                                        Image(systemName: "ellipsis.circle")
                                             .font(.callout)
                                             .foregroundStyle(.primary)
                                     }
-                                    .buttonStyle(.plain)
+                                    .menuStyle(.borderlessButton)
                                     .padding(.leading, 8)
                                 }
                                 .padding(.vertical, 8)
@@ -284,9 +256,10 @@ struct ExpenseTrackerSection: View {
         .padding(.top, 12)
         .sheet(item: $editingEntry) { entry in
             ExpenseEntryEditorView(categories: categories, day: entry.date, entry: entry, currencySymbol: displayedCurrencySymbol) { updated in
-                if let idx = entries.firstIndex(where: { $0.id == updated.id }) {
-                    entries[idx] = updated
-                }
+                onSaveEntry(updated)
+                editingEntry = nil
+            } onDelete: { id in
+                onDeleteEntry(id)
                 editingEntry = nil
             } onCancel: {
                 editingEntry = nil
@@ -295,13 +268,21 @@ struct ExpenseTrackerSection: View {
         .sheet(isPresented: $showingAddSheet) {
             if let targetDay = addSheetDate {
                 ExpenseEntryEditorView(categories: categories, day: targetDay, entry: nil, currencySymbol: displayedCurrencySymbol) { newEntry in
-                    entries.append(newEntry)
+                    onSaveEntry(newEntry)
+                    showingAddSheet = false
+                } onDelete: { _ in
                     showingAddSheet = false
                 } onCancel: {
                     showingAddSheet = false
                 }
             }
         }
+        .keyboardDismissToolbar()
+    }
+
+    private func entries(for day: Date) -> [ExpenseEntry] {
+        let cal = Calendar.current
+        return weekEntries.filter { cal.isDate($0.date, inSameDayAs: day) }.sorted { $0.date < $1.date }
     }
 }
 
@@ -312,6 +293,7 @@ private struct ExpenseEntryEditorView: View {
     var day: Date
     var entry: ExpenseEntry?
     var onSave: (ExpenseEntry) -> Void
+    var onDelete: (UUID) -> Void
     var onCancel: () -> Void
     var currencySymbol: String
 
@@ -326,14 +308,27 @@ private struct ExpenseEntryEditorView: View {
     }
 
     private var orderedCategories: [ExpenseCategory] {
-        categories.sorted { $0.id < $1.id }
+        // Merge provided categories with defaults so we always have the full set
+        let defaults = ExpenseCategory.defaultCategories()
+        var normalized: [ExpenseCategory] = []
+        for idx in 0..<defaults.count {
+            if let existing = categories.first(where: { $0.id == idx }) {
+                let name = existing.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaults[idx].name : existing.name
+                let color = existing.colorHex.isEmpty ? defaults[idx].colorHex : existing.colorHex
+                normalized.append(ExpenseCategory(id: idx, name: name, colorHex: color))
+            } else {
+                normalized.append(defaults[idx])
+            }
+        }
+        return normalized
     }
 
-    init(categories: [ExpenseCategory], day: Date, entry: ExpenseEntry?, currencySymbol: String, onSave: @escaping (ExpenseEntry) -> Void, onCancel: @escaping () -> Void) {
+    init(categories: [ExpenseCategory], day: Date, entry: ExpenseEntry?, currencySymbol: String, onSave: @escaping (ExpenseEntry) -> Void, onDelete: @escaping (UUID) -> Void, onCancel: @escaping () -> Void) {
         self.categories = categories
         self.day = Calendar.current.startOfDay(for: day)
         self.entry = entry
         self.onSave = onSave
+        self.onDelete = onDelete
         self.onCancel = onCancel
         self.currencySymbol = currencySymbol
 
@@ -394,16 +389,16 @@ private struct ExpenseEntryEditorView: View {
                                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
 
                             HStack(spacing: 12) {
-                                TextField("Amount (\(currencySymbol))", text: $amount)
+                                TextField("Amount", text: $amount)
                                     .keyboardType(.decimalPad)
                                     .padding()
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
 
-                                DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
-                                    .labelsHidden()
+                                DatePicker("Time", selection: $time, displayedComponents: [.hourAndMinute])
                                     .datePickerStyle(.compact)
+                                    .labelsHidden()
                                     .padding(.horizontal)
-                                    .padding(.vertical, 10)
+                                    .padding(.vertical, 12)
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                             }
                         }
@@ -416,66 +411,63 @@ private struct ExpenseEntryEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        onCancel()
-                        dismiss()
-                    }
+                    Button("Cancel") { onCancel(); dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        save()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!isValid)
-                    .opacity(isValid ? 1 : 0.4)
+                    Button("Save") { savePressed() }
+                        .fontWeight(.semibold)
+                        .disabled(!isValid)
                 }
             }
         }
+        .keyboardDismissToolbar()
     }
 
-    private func save() {
+    private func savePressed() {
+        guard isValid else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let amt = Double(amount) else { return }
-        let finalDate = combinedDate(day: day, time: time)
-        var updated = entry ?? ExpenseEntry(date: finalDate, name: name, amount: amt, categoryId: selectedCategoryId)
-        updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.amount = amt
-        updated.categoryId = selectedCategoryId
-        updated.date = finalDate
-        onSave(updated)
-        dismiss()
-    }
 
-    private func combinedDate(day: Date, time: Date) -> Date {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.hour, .minute, .second], from: time)
-        return cal.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: comps.second ?? 0, of: day) ?? day
+        var comps = Calendar.current.dateComponents([.hour, .minute], from: time)
+        let baseDay = Calendar.current.startOfDay(for: day)
+        comps.year = Calendar.current.component(.year, from: baseDay)
+        comps.month = Calendar.current.component(.month, from: baseDay)
+        comps.day = Calendar.current.component(.day, from: baseDay)
+        let finalDate = Calendar.current.date(from: comps) ?? baseDay
+
+        if let existing = entry {
+            let updated = ExpenseEntry(id: existing.id, date: finalDate, name: trimmed, amount: amt, categoryId: selectedCategoryId)
+            onSave(updated)
+        } else {
+            let newEntry = ExpenseEntry(date: finalDate, name: trimmed, amount: amt, categoryId: selectedCategoryId)
+            onSave(newEntry)
+        }
+        dismiss()
     }
 }
 
 private extension DateFormatter {
-    static var shortDate: DateFormatter = {
+    static let shortDate: DateFormatter = {
         let df = DateFormatter()
-            df.dateFormat = "EEE" // weekday short (Mon, Tue)
+        df.dateFormat = "EEE d"
         return df
     }()
 
-    static var longDate: DateFormatter = {
+    static let weekdayFull: DateFormatter = {
         let df = DateFormatter()
-        df.dateStyle = .medium
-        df.timeStyle = .none
+        df.dateFormat = "EEEE"
         return df
     }()
 
-    static var weekdayFull: DateFormatter = {
+    static let longDate: DateFormatter = {
         let df = DateFormatter()
-        df.dateFormat = "EEEE" // full weekday name
+        df.dateFormat = "MMMM d"
         return df
     }()
 
-    static var time: DateFormatter = {
+    static let time: DateFormatter = {
         let df = DateFormatter()
         df.timeStyle = .short
-        df.dateStyle = .none
         return df
     }()
 }
@@ -483,8 +475,16 @@ private extension DateFormatter {
 #if DEBUG
 struct ExpenseTrackerSection_Previews: PreviewProvider {
     static var previews: some View {
-        ExpenseTrackerSection(accentColorOverride: .accentColor, categories: ExpenseCategory.defaultCategories())
-            .previewLayout(.sizeThatFits)
+        ExpenseTrackerSection(
+            accentColorOverride: .accentColor,
+            currencySymbol: "$",
+            categories: .constant(ExpenseCategory.defaultCategories()),
+            weekEntries: .constant([]),
+            anchorDate: Date(),
+            onSaveEntry: { _ in },
+            onDeleteEntry: { _ in }
+        )
+        .previewLayout(.sizeThatFits)
     }
 }
 #endif

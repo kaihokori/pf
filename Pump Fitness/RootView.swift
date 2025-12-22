@@ -42,6 +42,11 @@ struct RootView: View {
     @State private var distanceTravelledToday: Double = 0
     @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
+    @State private var habits: [HabitDefinition] = HabitDefinition.defaults
+    @State private var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
+    @State private var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
+    @State private var expenseEntries: [ExpenseEntry] = []
+    @State private var expenseCurrencySymbol: String = Account.deviceCurrencySymbol
     @State private var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
     @State private var weightEntries: [WeightExerciseValue] = []
     @State private var lastWeightEntryByExerciseId: [UUID: WeightExerciseValue] = [:]
@@ -134,6 +139,9 @@ struct RootView: View {
         initializeWeightTrackingFromLocal()
         initializeActivityTimersFromLocal()
         initializeGoalsFromLocal()
+        initializeGroceryListFromLocal()
+        initializeExpenseCategoriesFromLocal()
+        initializeHabitsFromLocal()
         initializeTrackedMacrosFromLocal()
         initializeItineraryEventsFromLocal()
         initializeMealRemindersFromLocal()
@@ -144,12 +152,14 @@ struct RootView: View {
         // Ensure today's Day exists locally and attempt to sync to Firestore
         loadDay(for: selectedDate)
         refreshWeeklyCheckInStatuses(for: selectedDate)
+        loadExpensesForWeek(anchorDate: selectedDate)
     }
 
     private func handleSelectedDateChange(_ newDate: Date) {
         loadDay(for: newDate)
         refreshWeeklyCheckInStatuses(for: newDate)
         refreshWeightHistoryCache()
+        loadExpensesForWeek(anchorDate: newDate)
     }
 
     private func handleConsumedCaloriesChange(_ newValue: Int) {
@@ -471,6 +481,31 @@ private extension RootView {
         activityTimers = account.activityTimers.isEmpty ? ActivityTimerItem.defaultTimers : account.activityTimers
     }
 
+    func initializeHabitsFromLocal() {
+        guard let account = fetchAccount() else {
+            habits = HabitDefinition.defaults
+            return
+        }
+
+        let resolved = account.habits.isEmpty ? HabitDefinition.defaults : account.habits
+        habits = resolved
+
+        if account.habits.isEmpty {
+            account.habits = resolved
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save default habits to local account: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if !success {
+                    print("RootView: failed to sync default habits to Firestore")
+                }
+            }
+        }
+    }
+
     func initializeGoalsFromLocal() {
         guard let account = fetchAccount() else {
             goals = GoalItem.sampleDefaults()
@@ -496,6 +531,72 @@ private extension RootView {
         }
     }
 
+    func initializeGroceryListFromLocal() {
+        guard let account = fetchAccount() else {
+            groceryItems = GroceryItem.sampleItems()
+            return
+        }
+
+        let resolved = account.groceryItems.isEmpty ? GroceryItem.sampleItems() : account.groceryItems
+        groceryItems = resolved
+
+        if account.groceryItems.isEmpty {
+            account.groceryItems = resolved
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save default grocery items locally: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if !success {
+                    print("RootView: failed to sync default grocery items to Firestore")
+                }
+            }
+        }
+    }
+
+    func initializeExpenseCategoriesFromLocal() {
+        let deviceCurrency = Account.deviceCurrencySymbol
+
+        guard let account = fetchAccount() else {
+            expenseCategories = ExpenseCategory.defaultCategories()
+            expenseCurrencySymbol = deviceCurrency
+            return
+        }
+
+        let resolvedCategories = account.expenseCategories.isEmpty ? ExpenseCategory.defaultCategories() : account.expenseCategories
+        expenseCategories = resolvedCategories
+
+        let storedCurrency = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCurrency = storedCurrency.isEmpty ? deviceCurrency : storedCurrency
+        expenseCurrencySymbol = resolvedCurrency
+
+        var shouldPersist = false
+        if account.expenseCategories.isEmpty {
+            account.expenseCategories = resolvedCategories
+            shouldPersist = true
+        }
+        if storedCurrency.isEmpty {
+            account.expenseCurrencySymbol = resolvedCurrency
+            shouldPersist = true
+        }
+
+        if shouldPersist {
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save default expense settings locally: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if !success {
+                    print("RootView: failed to sync default expense settings to Firestore")
+                }
+            }
+        }
+    }
+
     func initializeWeightTrackingFromLocal() {
         if let account = fetchAccount() {
             weightGroups = account.weightGroups.isEmpty ? WeightGroupDefinition.defaults : account.weightGroups
@@ -512,6 +613,27 @@ private extension RootView {
             } else {
                 print("RootView: failed to fetch/create local Day for selectedDate=\(date)")
             }
+        }
+    }
+
+    func loadExpensesForWeek(anchorDate: Date) {
+        let dates = datesForWeek(containing: anchorDate)
+        let group = DispatchGroup()
+        var collected: [ExpenseEntry] = []
+
+        for date in dates {
+            group.enter()
+            dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
+                DispatchQueue.main.async {
+                    let resolvedDay = day ?? Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: trackedMacros)
+                    collected.append(contentsOf: resolvedDay.expenses)
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            self.expenseEntries = collected.sorted { $0.date < $1.date }
         }
     }
 
@@ -542,6 +664,7 @@ private extension RootView {
         checkedMeals = completed
 
         sportActivities = day.sportActivities
+        updateExpenseEntriesState(forDay: day.date, with: day.expenses)
 
         let resolvedStatus = WorkoutCheckInStatus(rawValue: day.workoutCheckInStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue) ?? .notLogged
         let idx = weekdayIndex(for: targetDate)
@@ -581,6 +704,18 @@ private extension RootView {
             }
         }
         isHydratingDailyActivity = false
+    }
+
+    private func updateExpenseEntriesState(forDay dayDate: Date, with entries: [ExpenseEntry]) {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: dayDate)
+        let weekStarts = datesForWeek(containing: selectedDate).map { calendar.startOfDay(for: $0) }
+        guard weekStarts.contains(dayStart) else { return }
+
+        var filtered = expenseEntries.filter { calendar.startOfDay(for: $0.date) != dayStart }
+        filtered.append(contentsOf: entries)
+        filtered.sort { $0.date < $1.date }
+        expenseEntries = filtered
     }
 
     func persistTrackedMacros(_ macros: [TrackedMacro], syncWithRemote: Bool = true) {
@@ -821,6 +956,116 @@ private extension RootView {
         accountFirestoreService.saveAccount(account) { success in
             if !success {
                 print("RootView: failed to sync daily goals to Firestore")
+            }
+        }
+    }
+
+    func persistGroceryItems(_ items: [GroceryItem]) {
+        guard let account = fetchAccount() else { return }
+
+        groceryItems = items
+        account.groceryItems = items
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save grocery items locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync grocery items to Firestore")
+            }
+        }
+    }
+
+    func persistExpenseSettings(_ categories: [ExpenseCategory], currencySymbol: String) {
+        guard let account = fetchAccount() else { return }
+
+        let trimmedCurrency = currencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCurrency = trimmedCurrency.isEmpty ? Account.deviceCurrencySymbol : trimmedCurrency
+
+        expenseCategories = categories
+        expenseCurrencySymbol = resolvedCurrency
+        account.expenseCategories = categories
+        account.expenseCurrencySymbol = resolvedCurrency
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save expense settings locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync expense settings to Firestore")
+            }
+        }
+    }
+
+    func persistExpenseEntry(_ entry: ExpenseEntry) {
+        Task {
+            let day = Day.fetchOrCreate(for: entry.date, in: modelContext, trackedMacros: trackedMacros)
+            var updated = day.expenses.filter { $0.id != entry.id }
+            updated.append(entry)
+            updated.sort { $0.date < $1.date }
+            day.expenses = updated
+
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save expense entry locally: \(error)")
+            }
+
+            updateExpenseEntriesState(forDay: day.date, with: updated)
+
+            dayFirestoreService.updateDayFields(["expenses": updated], for: day) { success in
+                if !success {
+                    print("RootView: failed to sync expense entry to Firestore for date=\(day.date)")
+                }
+            }
+        }
+    }
+
+    func deleteExpenseEntry(_ id: UUID) {
+        guard let existing = expenseEntries.first(where: { $0.id == id }) else { return }
+        let targetDate = existing.date
+
+        Task {
+            let day = Day.fetchOrCreate(for: targetDate, in: modelContext, trackedMacros: trackedMacros)
+            day.expenses.removeAll { $0.id == id }
+
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to remove expense entry locally: \(error)")
+            }
+
+            updateExpenseEntriesState(forDay: day.date, with: day.expenses)
+
+            dayFirestoreService.updateDayFields(["expenses": day.expenses], for: day) { success in
+                if !success {
+                    print("RootView: failed to sync expense removal to Firestore for date=\(day.date)")
+                }
+            }
+        }
+    }
+
+    func persistHabits(_ updated: [HabitDefinition]) {
+        guard let account = fetchAccount() else { return }
+
+        habits = updated
+        account.habits = updated
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save habits locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("RootView: failed to sync habits to Firestore")
             }
         }
     }
@@ -1239,10 +1484,14 @@ private extension RootView {
                 local.autoRestDayIndices = fetched.autoRestDayIndices
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings
+                local.groceryItems = fetched.groceryItems
+                local.expenseCategories = fetched.expenseCategories
+                local.expenseCurrencySymbol = fetched.expenseCurrencySymbol
                     // Persist weekly progress and supplements from server into local Account
                     local.weeklyProgress = fetched.weeklyProgress
                     local.supplements = fetched.supplements
                 local.goals = fetched.goals
+                local.habits = fetched.habits
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 local.itineraryEvents = fetched.itineraryEvents
@@ -1254,6 +1503,10 @@ private extension RootView {
                 try modelContext.save()
                 weightGroups = local.weightGroups
                 goals = local.goals
+                habits = local.habits
+                groceryItems = local.groceryItems
+                expenseCategories = local.expenseCategories
+                expenseCurrencySymbol = local.expenseCurrencySymbol
             } else {
                 let newAccount = Account(
                     id: fetched.id,
@@ -1275,7 +1528,8 @@ private extension RootView {
                         autoRestDayIndices: fetched.autoRestDayIndices,
                         trackedMacros: fetched.trackedMacros,
                         cravings: fetched.cravings,
-                    goals: fetched.goals, mealReminders: fetched.mealReminders,
+                    groceryItems: fetched.groceryItems,
+                    expenseCategories: fetched.expenseCategories, expenseCurrencySymbol: fetched.expenseCurrencySymbol, goals: fetched.goals, habits: fetched.habits, mealReminders: fetched.mealReminders,
                     weeklyProgress: fetched.weeklyProgress,
                     supplements: fetched.supplements,
                     dailyTasks: fetched.dailyTasks,
@@ -1291,6 +1545,10 @@ private extension RootView {
                 )
                     weightGroups = newAccount.weightGroups
                 goals = newAccount.goals
+                habits = newAccount.habits
+                groceryItems = newAccount.groceryItems
+                expenseCategories = newAccount.expenseCategories
+                expenseCurrencySymbol = newAccount.expenseCurrencySymbol
                 modelContext.insert(newAccount)
                 try modelContext.save()
             }
@@ -1359,6 +1617,9 @@ private extension RootView {
                                         local.startWeekOn = newAccount.startWeekOn
                                         local.trackedMacros = newAccount.trackedMacros
                                         local.cravings = newAccount.cravings
+                                        local.groceryItems = newAccount.groceryItems
+                                        local.expenseCategories = newAccount.expenseCategories
+                                        local.expenseCurrencySymbol = newAccount.expenseCurrencySymbol
                                         local.mealReminders = newAccount.mealReminders
                                         local.caloriesBurnGoal = newAccount.caloriesBurnGoal
                                         local.stepsGoal = newAccount.stepsGoal
@@ -1366,10 +1627,15 @@ private extension RootView {
                                         local.itineraryEvents = newAccount.itineraryEvents
                                         local.weightGroups = newAccount.weightGroups
                                         local.goals = newAccount.goals
+                                        local.habits = newAccount.habits
                                         local.activityTimers = newAccount.activityTimers
                                         try modelContext.save()
                                         mealReminders = newAccount.mealReminders
                                         goals = newAccount.goals
+                                        habits = newAccount.habits
+                                        groceryItems = newAccount.groceryItems
+                                        expenseCategories = newAccount.expenseCategories
+                                        expenseCurrencySymbol = newAccount.expenseCurrencySymbol
                                     }
                                 } catch {
                                     print("RootView: failed to apply account binding set: \(error)")
@@ -1406,12 +1672,32 @@ private extension RootView {
                                     account: accountBinding,
                                     selectedDate: $selectedDate,
                                     goals: $goals,
+                                    habits: $habits,
+                                    groceryItems: $groceryItems,
                                     activityTimers: $activityTimers,
+                                    expenseCurrencySymbol: $expenseCurrencySymbol,
+                                    expenseCategories: $expenseCategories,
+                                    expenseEntries: $expenseEntries,
                                     onUpdateActivityTimers: { timers in
                                         persistActivityTimers(timers)
                                     },
+                                    onUpdateHabits: { defs in
+                                        persistHabits(defs)
+                                    },
                                     onUpdateGoals: { items in
                                         persistGoals(items)
+                                    },
+                                    onUpdateGroceryItems: { items in
+                                        persistGroceryItems(items)
+                                    },
+                                    onUpdateExpenseCategories: { categories, currencySymbol in
+                                        persistExpenseSettings(categories, currencySymbol: currencySymbol)
+                                    },
+                                    onSaveExpenseEntry: { entry in
+                                        persistExpenseEntry(entry)
+                                    },
+                                    onDeleteExpenseEntry: { id in
+                                        deleteExpenseEntry(id)
                                     }
                                 )
                             }

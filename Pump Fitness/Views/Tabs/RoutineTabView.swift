@@ -9,10 +9,17 @@ import SwiftUI
 import SwiftData
 
 fileprivate struct HabitItem: Identifiable {
-    let id = UUID()
+    var id: UUID
     var name: String
     var weeklyProgress: [HabitDayStatus]
     var colorHex: String = ""
+
+    init(id: UUID = UUID(), name: String, weeklyProgress: [HabitDayStatus], colorHex: String = "") {
+        self.id = id
+        self.name = name
+        self.weeklyProgress = weeklyProgress
+        self.colorHex = colorHex
+    }
 }
 
 private struct HabitsEditorView: View {
@@ -368,20 +375,24 @@ struct RoutineTabView: View {
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @Binding var goals: [GoalItem]
+    @Binding var habits: [HabitDefinition]
+    @Binding var groceryItems: [GroceryItem]
     @Binding var activityTimers: [ActivityTimerItem]
+    @Binding var expenseCurrencySymbol: String
+    @Binding var expenseCategories: [ExpenseCategory]
+    @Binding var expenseEntries: [ExpenseEntry]
     var onUpdateActivityTimers: ([ActivityTimerItem]) -> Void
+    var onUpdateHabits: ([HabitDefinition]) -> Void
     var onUpdateGoals: ([GoalItem]) -> Void
+    var onUpdateGroceryItems: ([GroceryItem]) -> Void
+    var onUpdateExpenseCategories: ([ExpenseCategory], String) -> Void
+    var onSaveExpenseEntry: (ExpenseEntry) -> Void
+    var onDeleteExpenseEntry: (UUID) -> Void
     @State private var showAccountsView = false
     @State private var dailyTaskItems: [DailyTaskItem] = []
-    @State private var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
-    @State private var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
     @State private var currentDay: Day?
 
-    @State private var habitItems: [HabitItem] = [
-        HabitItem(name: "Morning Stretch", weeklyProgress: [.tracked, .tracked, .notTracked, .tracked, .notTracked, .notTracked, .notTracked]),
-        HabitItem(name: "Meditation", weeklyProgress: [.notTracked, .tracked, .notTracked, .tracked, .notTracked, .notTracked, .notTracked]),
-        HabitItem(name: "Read", weeklyProgress: [.tracked, .tracked, .tracked, .tracked, .tracked, .notTracked, .notTracked])
-    ]
+    @State private var habitItems: [HabitItem] = []
 
     @State private var showWeeklySleep: Bool = false
     @State private var weekStartsOnMonday: Bool = true
@@ -427,7 +438,7 @@ struct RoutineTabView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
                         
                         DailyTasksSection(
                             accentColorOverride: accentOverride,
@@ -463,7 +474,7 @@ struct RoutineTabView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
                         
                         ActivityTimersSection(accentColorOverride: accentOverride, timers: activityTimers)
 
@@ -489,7 +500,7 @@ struct RoutineTabView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
 
                         GoalsSection(accentColorOverride: accentOverride, goals: $goals)
 
@@ -514,12 +525,16 @@ struct RoutineTabView: View {
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
                         .padding(.horizontal, 18)
 
                         HabitTrackingSection(
                             habits: $habitItems,
-                            accentColor: accentOverride ?? .accentColor
+                            accentColor: accentOverride ?? .accentColor,
+                            currentDayIndex: weekdayIndex(for: selectedDate),
+                            onToggle: { habitId, isCompleted in
+                                handleHabitToggle(habitId: habitId, isCompleted: isCompleted)
+                            }
                         )
 
                         HStack {
@@ -543,7 +558,7 @@ struct RoutineTabView: View {
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
                         .padding(.horizontal, 18)
 
                         SleepTrackingSection(accentColor: accentOverride)
@@ -629,7 +644,7 @@ struct RoutineTabView: View {
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
                         .padding(.horizontal, 18)
 
                         GroceryListSection(accentColorOverride: accentOverride, items: $groceryItems)
@@ -655,15 +670,27 @@ struct RoutineTabView: View {
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 48)
+                        .padding(.top, 38)
                         .padding(.horizontal, 18)
 
-                        ExpenseTrackerSection(accentColorOverride: accentOverride, categories: expenseCategories)
+                        ExpenseTrackerSection(
+                            accentColorOverride: accentOverride,
+                            currencySymbol: expenseCurrencySymbol,
+                            categories: $expenseCategories,
+                            weekEntries: $expenseEntries,
+                            anchorDate: selectedDate,
+                            onSaveEntry: { entry in
+                                onSaveExpenseEntry(entry)
+                            },
+                            onDeleteEntry: { id in
+                                onDeleteExpenseEntry(id)
+                            }
+                        )
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
                             .padding(.bottom, 24)
-                            .padding(.top, 48)
+                            .padding(.top, 38)
                     }
                 }
                 if showCalendar {
@@ -689,22 +716,33 @@ struct RoutineTabView: View {
                 HabitsEditorView(habits: $habitItems, onSave: applyHabitsEditorChanges)
             }
             .sheet(isPresented: $showExpenseCategoriesEditor) {
-                ExpenseCategoriesEditorView(categories: $expenseCategories, onSave: applyExpenseCategoryChanges)
+                ExpenseCategoriesEditorView(categories: $expenseCategories, currencySymbol: $expenseCurrencySymbol, onSave: applyExpenseCategoryChanges)
             }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
             }
         }
+        .keyboardDismissToolbar()
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
         .onAppear {
             loadDailyTasks()
+            loadHabitWeek()
         }
         .onChange(of: selectedDate) { _, _ in
             loadDailyTasks()
+            loadHabitWeek()
         }
         .onChange(of: account.dailyTasks) { _, _ in
             rebuildDailyTaskItems(using: currentDay)
+        }
+        .onChange(of: habits) { _, newValue in
+            rebuildHabits(using: newValue)
+            onUpdateHabits(newValue)
+            loadHabitWeek()
+        }
+        .onChange(of: groceryItems) { _, newValue in
+            onUpdateGroceryItems(newValue)
         }
         .onChange(of: goals) { _, newValue in
             onUpdateGoals(newValue)
@@ -1664,34 +1702,6 @@ private struct GroceryListEditorView: View {
                         }
                     }
 
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-
-                                Text("Unlock more grocery slots + other benefits")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .surfaceCard(16)
-                    }
-                    .buttonStyle(.plain)
-
                     if !presets.filter({ !isPresetSelected($0) }).isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Quick Add")
@@ -1829,12 +1839,14 @@ private struct GroceryListEditorView: View {
 private struct ExpenseCategoriesEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var categories: [ExpenseCategory]
-    var onSave: ([ExpenseCategory]) -> Void
+    @Binding var currencySymbol: String
+    var onSave: ([ExpenseCategory], String) -> Void
 
     @State private var working: [ExpenseCategory] = []
     @State private var hasLoaded: Bool = false
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: Int?
+    @State private var workingCurrencySymbol: String = ""
 
     var body: some View {
         NavigationStack {
@@ -1844,15 +1856,14 @@ private struct ExpenseCategoriesEditorView: View {
                         .font(.subheadline.weight(.semibold))
 
                     VStack(spacing: 12) {
-                        ForEach(Array(working.enumerated()), id: \.element.id) { idx, category in
-                            let binding = $working[idx]
+                        ForEach($working) { $category in
                             HStack(spacing: 12) {
                                 Button {
                                     colorPickerTargetId = category.id
                                     showColorPickerSheet = true
                                 } label: {
                                     Circle()
-                                        .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.2))
+                                        .fill((Color(hex: category.colorHex) ?? Color.accentColor).opacity(0.2))
                                         .frame(width: 44, height: 44)
                                         .overlay(
                                             Circle()
@@ -1866,7 +1877,7 @@ private struct ExpenseCategoriesEditorView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
 
-                                    TextField("Name", text: binding.name)
+                                    TextField("Name", text: $category.name)
                                         .font(.subheadline.weight(.semibold))
                                         .textInputAutocapitalization(.words)
                                 }
@@ -1877,20 +1888,28 @@ private struct ExpenseCategoriesEditorView: View {
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                         }
                     }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Currency")
+                            .font(.subheadline.weight(.semibold))
+
+                        TextField("Symbol or code (e.g. $, USD)", text: $workingCurrencySymbol)
+                            .textInputAutocapitalization(.never)
+                            .padding()
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
             }
-            .navigationTitle("Edit Categories")
+            .navigationTitle("Edit Expenses")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        donePressed()
-                    }
+                    Button("Done") { donePressed() }
                     .fontWeight(.semibold)
                 }
             }
@@ -1910,7 +1929,21 @@ private struct ExpenseCategoriesEditorView: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        working = categories.sorted { $0.id < $1.id }
+        // Merge existing categories with defaults so editor always shows the full set
+        let defaults = ExpenseCategory.defaultCategories()
+        var normalized: [ExpenseCategory] = []
+        for idx in 0..<defaults.count {
+            if let existing = categories.first(where: { $0.id == idx }) {
+                // keep existing but fall back to default fields when empty
+                let name = existing.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaults[idx].name : existing.name
+                let color = existing.colorHex.isEmpty ? defaults[idx].colorHex : existing.colorHex
+                normalized.append(ExpenseCategory(id: idx, name: name, colorHex: color))
+            } else {
+                normalized.append(defaults[idx])
+            }
+        }
+        working = normalized
+        workingCurrencySymbol = currencySymbol
         hasLoaded = true
     }
 
@@ -1920,7 +1953,9 @@ private struct ExpenseCategoriesEditorView: View {
     }
 
     private func donePressed() {
-        onSave(working)
+        let trimmed = workingCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCurrency = trimmed.isEmpty ? Account.deviceCurrencySymbol : trimmed
+        onSave(working, resolvedCurrency)
         dismiss()
     }
 }
@@ -1934,11 +1969,14 @@ extension RoutineTabView {
 
     private func applyGroceryListChanges(_ items: [GroceryItem]) {
         groceryItems = Array(items.prefix(8))
+        onUpdateGroceryItems(groceryItems)
     }
 
-    private func applyExpenseCategoryChanges(_ items: [ExpenseCategory]) {
+    private func applyExpenseCategoryChanges(_ items: [ExpenseCategory], currencySymbol: String) {
         let defaults = ExpenseCategory.defaultCategories()
         var normalized: [ExpenseCategory] = []
+        let trimmedCurrency = currencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCurrency = trimmedCurrency.isEmpty ? Account.deviceCurrencySymbol : trimmedCurrency
 
         for idx in 0..<defaults.count {
             if let incoming = items.first(where: { $0.id == idx }) {
@@ -1952,6 +1990,8 @@ extension RoutineTabView {
         }
 
         expenseCategories = normalized
+        expenseCurrencySymbol = resolvedCurrency
+        onUpdateExpenseCategories(normalized, resolvedCurrency)
     }
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {
@@ -1962,6 +2002,12 @@ extension RoutineTabView {
 
     private func applyHabitsEditorChanges(_ items: [HabitItem]) {
         habitItems = Array(items.prefix(3))
+        let defs = habitItems.map { HabitDefinition(id: $0.id, name: $0.name, colorHex: $0.colorHex) }
+        account.habits = defs
+        onUpdateHabits(defs)
+        persistAccount()
+        rebuildHabitProgress(using: currentDay)
+        loadHabitWeek()
     }
 
     private func loadDailyTasks() {
@@ -1970,8 +2016,32 @@ extension RoutineTabView {
                 let resolvedDay = day ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros)
                 currentDay = resolvedDay
                 pruneCompletions(for: resolvedDay)
+                pruneHabitCompletions(for: resolvedDay)
                 rebuildDailyTaskItems(using: resolvedDay)
+                rebuildHabitProgress(using: resolvedDay)
             }
+        }
+    }
+
+    private func loadHabitWeek() {
+        let dates = weekDates(for: selectedDate)
+        let group = DispatchGroup()
+        var dayMap: [Date: Day] = [:]
+
+        for date in dates {
+            group.enter()
+            dayService.fetchDay(for: date, in: modelContext, trackedMacros: account.trackedMacros) { day in
+                DispatchQueue.main.async {
+                    let resolvedDay = day ?? Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: account.trackedMacros)
+                    pruneHabitCompletions(for: resolvedDay)
+                    dayMap[Calendar.current.startOfDay(for: date)] = resolvedDay
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            rebuildHabitProgress(using: dayMap)
         }
     }
 
@@ -1998,6 +2068,16 @@ extension RoutineTabView {
         .sorted { $0.time < $1.time }
 
         dailyTaskItems = items
+    }
+
+    // Refresh habit definitions and visible items when the bound habits change.
+    private func rebuildHabits(using definitions: [HabitDefinition]) {
+        let resolved = definitions.isEmpty ? HabitDefinition.defaults : definitions
+        account.habits = resolved
+        if let day = currentDay {
+            pruneHabitCompletions(for: day)
+        }
+        rebuildHabitProgress(using: currentDay)
     }
 
     private func ensureCurrentDay() -> Day {
@@ -2029,6 +2109,7 @@ extension RoutineTabView {
         day.dailyTaskCompletions = completions
         persistDay(day)
         rebuildDailyTaskItems(using: currentDay)
+        rebuildHabitProgress(using: currentDay)
     }
 
     private func handleTaskToggle(id: String, isCompleted: Bool) {
@@ -2039,6 +2120,23 @@ extension RoutineTabView {
             day.dailyTaskCompletions.append(DailyTaskCompletion(id: id, isCompleted: isCompleted))
         }
         persistDay(day)
+    }
+
+    private func handleHabitToggle(habitId: UUID, isCompleted: Bool) {
+        let day = ensureCurrentDay()
+        var comps = day.habitCompletions
+        if let idx = comps.firstIndex(where: { $0.habitId == habitId }) {
+            comps[idx].isCompleted = isCompleted
+        } else {
+            comps.append(HabitCompletion(habitId: habitId, isCompleted: isCompleted))
+        }
+        day.habitCompletions = comps
+        persistDay(day)
+
+        let weekdayIndex = weekdayIndex(for: selectedDate)
+        if let habitIdx = habitItems.firstIndex(where: { $0.id == habitId }), habitItems[habitIdx].weeklyProgress.indices.contains(weekdayIndex) {
+            habitItems[habitIdx].weeklyProgress[weekdayIndex] = isCompleted ? .tracked : .notTracked
+        }
     }
 
     private func handleTaskRemove(id: String) {
@@ -2056,6 +2154,52 @@ extension RoutineTabView {
     private func pruneCompletions(for day: Day) {
         let allowedIds = Set(account.dailyTasks.map { $0.id })
         day.dailyTaskCompletions.removeAll { !allowedIds.contains($0.id) }
+    }
+
+    private func pruneHabitCompletions(for day: Day) {
+        let allowedHabitIds = Set(account.habits.map { $0.id })
+        day.habitCompletions.removeAll { !allowedHabitIds.contains($0.habitId) }
+    }
+
+    private func rebuildHabitProgress(using day: Day?) {
+        guard let day else { return }
+        var map: [Date: Day] = [:]
+        map[day.date] = day
+        rebuildHabitProgress(using: map)
+    }
+
+    private func rebuildHabitProgress(using days: [Date: Day]) {
+        let defs = account.habits.isEmpty ? HabitDefinition.defaults : account.habits
+        let week = weekDates(for: selectedDate)
+
+        let resolved: [HabitItem] = defs.enumerated().map { idx, def in
+            var weekly = Array(repeating: HabitDayStatus.notTracked, count: 7)
+            for (offset, date) in week.enumerated() {
+                if let day = days[Calendar.current.startOfDay(for: date)],
+                   let completion = day.habitCompletions.first(where: { $0.habitId == def.id }) {
+                    weekly[offset] = completion.isCompleted ? .tracked : .notTracked
+                }
+            }
+            let color = def.colorHex.isEmpty ? HabitDefinition.defaults[idx % HabitDefinition.defaults.count].colorHex : def.colorHex
+            return HabitItem(id: def.id, name: def.name, weeklyProgress: weekly, colorHex: color)
+        }
+
+        habitItems = resolved
+    }
+
+    private func weekDates(for anchor: Date) -> [Date] {
+        let cal = Calendar.current
+        let weekday = cal.component(.weekday, from: anchor)
+        let startIndex = weekStartsOnMonday ? 2 : 1 // 1=Sunday, 2=Monday
+        let offset = (weekday - startIndex + 7) % 7
+        guard let start = cal.date(byAdding: .day, value: -offset, to: anchor) else { return [] }
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    private func weekdayIndex(for date: Date) -> Int {
+        let dates = weekDates(for: date).map { Calendar.current.startOfDay(for: $0) }
+        let target = Calendar.current.startOfDay(for: date)
+        return dates.firstIndex(of: target) ?? 0
     }
 
     private func persistDay(_ day: Day) {
@@ -2188,7 +2332,8 @@ private struct HabitProgressTimelineView: View {
 private struct HabitTrackingSection: View {
     @Binding var habits: [HabitItem]
     let accentColor: Color
-    let currentDayIndex: Int = Calendar.current.component(.weekday, from: Date()) - 1
+    let currentDayIndex: Int
+    var onToggle: (UUID, Bool) -> Void
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -2243,6 +2388,7 @@ private struct HabitTrackingSection: View {
         default:
             habits[idx].weeklyProgress[currentDayIndex] = .tracked
         }
+        onToggle(habitId, habits[idx].weeklyProgress[currentDayIndex] == .tracked)
     }
 }
 

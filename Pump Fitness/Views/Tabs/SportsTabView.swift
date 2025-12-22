@@ -189,6 +189,7 @@ struct SportsTabView: View {
         let humidity: Int
         let symbol: String
         let description: String
+        let isDaylight: Bool
     }
 
     // Weather visual grouping used across WeatherSection and surrounding layout
@@ -277,6 +278,19 @@ struct SportsTabView: View {
                 case .loaded:
                     if let current = viewModel.currentSnapshot {
                         let group = WeatherGroup(symbolName: current.symbol)
+                        let isNight = !current.isDaylight
+                        let adjustedGroup: WeatherGroup = {
+                            if isNight { return group }
+                            if case .night = group {
+                                let desc = current.description.lowercased()
+                                if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") { return .rainy }
+                                if desc.contains("cloud") || desc.contains("fog") || desc.contains("overcast") { return .cloudy }
+                                if desc.contains("snow") || desc.contains("sleet") || desc.contains("hail") { return .snowy }
+                                if desc.contains("clear") || desc.contains("sun") { return .clear }
+                                return .clear
+                            }
+                            return group
+                        }()
                         
                         VStack(spacing: 0) {
                             // Main Info
@@ -308,7 +322,7 @@ struct SportsTabView: View {
                                 
                                 Spacer()
                                 
-                                Image(systemName: group.iconName)
+                                Image(systemName: adjustedGroup.iconName)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 80, height: 80)
@@ -324,6 +338,8 @@ struct SportsTabView: View {
                                 MetricItem(title: "Humidity", value: "\(current.humidity)", unit: "%", icon: "humidity")
                                 Divider()
                                 MetricItem(title: "Precip", value: "\(current.precipitationChance)", unit: "%", icon: "drop.fill")
+                                Divider()
+                                MetricItem(title: "UV Index", value: "\(current.uvIndex)", unit: uvCategory(for: current.uvIndex), icon: "sun.max.fill")
                             }
                             .padding(.vertical, 16)
                             
@@ -356,6 +372,17 @@ struct SportsTabView: View {
             if calendar.isDateInToday(date) { return "Forecast" }
             if calendar.isDateInTomorrow(date) { return "Tomorrow" }
             return DateFormatter.shortDay.string(from: date)
+        }
+
+        private func uvCategory(for index: Int) -> String {
+            let clamped = max(index, 0)
+            switch clamped {
+            case ..<3: return "Low"
+            case 3...5: return "Moderate"
+            case 6...7: return "High"
+            case 8...10: return "Very High"
+            default: return "Extreme"
+            }
         }
     }
 
@@ -470,7 +497,12 @@ struct SportsTabView: View {
 
         private func apply(current: CurrentWeather, hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
             let anchor = anchorHour(for: target, hourly: hourly)
-            if let anchor {
+
+            if calendar.isDateInToday(target) {
+                let currentTemp = Int(current.temperature.value.rounded())
+                let delta = deltaVsPreviousDay(for: target, currentTemp: currentTemp, daily: daily)
+                currentSnapshot = makeSnapshot(date: target, hourTemp: anchor, current: current, day: dailyForecast(for: target, from: daily), delta: delta)
+            } else if let anchor {
                 let anchorDay = dailyForecast(for: anchor.date, from: daily)
                 let anchorTemp = Int(anchor.temperature.value.rounded())
                 let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
@@ -562,7 +594,8 @@ struct SportsTabView: View {
                 windSpeed: Int(current.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
                 humidity: Int((current.humidity * 100).rounded()),
                 symbol: current.symbolName,
-                description: (hourTemp?.condition.description ?? current.condition.description)
+                description: (hourTemp?.condition.description ?? current.condition.description),
+                isDaylight: hourTemp?.isDaylight ?? current.isDaylight
             )
         }
 
@@ -579,7 +612,8 @@ struct SportsTabView: View {
                 windSpeed: Int(hour.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
                 humidity: Int((hour.humidity * 100).rounded()),
                 symbol: hour.symbolName,
-                description: hour.condition.description
+                description: hour.condition.description,
+                isDaylight: hour.isDaylight
             )
         }
     }
@@ -740,14 +774,27 @@ struct SportsTabView: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 18)
-                                .padding(.top, 48)
+                                .padding(.top, 38)
                                 .padding(.bottom, 8)
 
-                                let _wbGroup = weatherModel.currentSnapshot.map { WeatherGroup(symbolName: $0.symbol) } ?? .other
-                                let _isNight = (_wbGroup == .night)
+                                let _isNight = !(weatherModel.currentSnapshot?.isDaylight ?? true)
+                                let adjustedGroup: WeatherGroup = {
+                                    guard let snapshot = weatherModel.currentSnapshot else { return .other }
+                                    let base = WeatherGroup(symbolName: snapshot.symbol)
+                                    if _isNight { return base }
+                                    if case .night = base {
+                                        let desc = snapshot.description.lowercased()
+                                        if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") { return .rainy }
+                                        if desc.contains("cloud") || desc.contains("fog") || desc.contains("overcast") { return .cloudy }
+                                        if desc.contains("snow") || desc.contains("sleet") || desc.contains("hail") { return .snowy }
+                                        if desc.contains("clear") || desc.contains("sun") { return .clear }
+                                        return .clear
+                                    }
+                                    return base
+                                }()
                                 let _overlayOpacity = (_isNight ? 0.45 : 0.28)
                                 let _imageName: String = {
-                                    switch _wbGroup {
+                                    switch adjustedGroup {
                                     case .clear: return _isNight ? "weather_clear_night" : "weather_clear_day"
                                     case .rainy: return _isNight ? "weather_rainy_night" : "weather_rainy_day"
                                     case .cloudy: return _isNight ? "weather_cloudy_night" : "weather_cloudy_day"
@@ -797,7 +844,7 @@ struct SportsTabView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                            .padding(.top, 38)
                             .padding(.bottom, 8)
 
                             TimeTrackingSection(
@@ -828,7 +875,7 @@ struct SportsTabView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                            .padding(.top, 38)
                             .padding(.bottom, 8)
 
                             TeamPlaySection(
@@ -864,7 +911,7 @@ struct SportsTabView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                            .padding(.top, 38)
                             .padding(.bottom, 8)
 
                            SoloPlaySection(
@@ -897,7 +944,7 @@ struct SportsTabView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 18)
-                            .padding(.top, 48)
+                            .padding(.top, 38)
                             .padding(.bottom, 8)
 
                             VStack(alignment: .leading, spacing: 0) {
@@ -1581,6 +1628,34 @@ private struct SoloPlayMetricsEditorSheet: View {
                         }
                     }
 
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock more grocery slots + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .surfaceCard(16)
+                    }
+                    .buttonStyle(.plain)
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Add Custom Metric")
                             .font(.subheadline.weight(.semibold))
@@ -1917,6 +1992,34 @@ private struct TeamPlayMetricsEditorSheet: View {
                             }
                         }
                     }
+
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock more grocery slots + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .surfaceCard(16)
+                    }
+                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Custom Metric")

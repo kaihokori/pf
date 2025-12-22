@@ -5,7 +5,14 @@ struct CalendarComponent: View {
     @Binding var showCalendar: Bool
 
     private let calendar = Calendar.current
-    private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
+    // Weekday labels rotated to start on Monday
+    private var daysOfWeek: [String] {
+        let symbols = DateFormatter().veryShortStandaloneWeekdaySymbols ?? DateFormatter().veryShortWeekdaySymbols ?? ["M","T","W","T","F","S","S"]
+        // DateFormatter.weekdaySymbols start with Sunday; rotate so Monday is first
+        let sundayFirst = symbols
+        let mondayIndex = 1 // Monday position when Sunday is index 0
+        return Array(sundayFirst[mondayIndex..<sundayFirst.count] + sundayFirst[0..<mondayIndex])
+    }
 
     @State private var currentMonth: Date = Date()
     @Namespace private var calendarAnim
@@ -108,7 +115,11 @@ struct CalendarComponent: View {
                 .padding(.top, 16)
                 .padding(.bottom, 12)
                 let days = daysInMonth(currentMonth)
-                let firstWeekday = calendar.component(.weekday, from: firstOfMonth(currentMonth)) - 1
+                // Compute offset so the grid starts on Monday
+                let firstOfMonthDate = firstOfMonth(currentMonth)
+                let rawFirstWeekday = calendar.component(.weekday, from: firstOfMonthDate) // 1 = Sunday
+                // We want Monday to be index 0
+                let firstWeekday = (rawFirstWeekday - 2 + 7) % 7
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
                     ForEach(0..<(days + firstWeekday), id: \ .self) { i in
                         if i < firstWeekday {

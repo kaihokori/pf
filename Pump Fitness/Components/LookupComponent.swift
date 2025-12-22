@@ -66,7 +66,7 @@ struct LookupComponent: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 18)
-            .padding(.top, 48)
+            .padding(.top, 38)
             .padding(.bottom, 8)
 
             HStack(spacing: 8) {
@@ -297,7 +297,7 @@ struct LookupComponent: View {
                     HStack { Spacer(); Text(msg).foregroundColor(.red).font(.caption); Spacer() }
                 }
             }
-            .padding(.top, 48)
+            .padding(.top, 38)
         }
         .onAppear {
             searchText = itemName

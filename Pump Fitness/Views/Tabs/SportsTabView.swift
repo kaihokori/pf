@@ -275,6 +275,8 @@ struct SportsTabView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                case .locationUnavailable:
+                    EmptyView()
                 case .loaded:
                     if let current = viewModel.currentSnapshot {
                         let group = WeatherGroup(symbolName: current.symbol)
@@ -438,6 +440,7 @@ struct SportsTabView: View {
         case idle
         case loading
         case loaded
+        case locationUnavailable
         case failed(String)
     }
 
@@ -467,6 +470,13 @@ struct SportsTabView: View {
                 }
                 state = .loaded
             } catch {
+                currentSnapshot = nil
+                upcomingSnapshots = []
+                if let locationError = error as? LocationError {
+                    state = .locationUnavailable
+                } else if let clError = error as? CLError, [.denied, .locationUnknown, .network].contains(clError.code) {
+                    state = .locationUnavailable
+                } else {
                     let ns = error as NSError
                     if ns.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && ns.code == 2 {
                         state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
@@ -476,6 +486,7 @@ struct SportsTabView: View {
                         state = .failed(error.localizedDescription)
                     }
                 }
+            }
         }
 
         private func loadForecast(location: CLLocation, date: Date) async throws {

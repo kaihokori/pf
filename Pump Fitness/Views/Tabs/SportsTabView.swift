@@ -295,6 +295,15 @@ struct SportsTabView: View {
                         }()
                         
                         VStack(spacing: 0) {
+                            if let region = viewModel.regionDescription {
+                                Text(region)
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 24)
+                                    .padding(.top, 20)
+                            }
+
                             // Main Info
                             HStack(alignment: .center) {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -330,8 +339,10 @@ struct SportsTabView: View {
                                     .frame(width: 80, height: 80)
                                     .symbolRenderingMode(.multicolor)
                                     .shadow(color: Color.black.opacity(0.6), radius: 8, x: 0, y: 4)
-                            }
-                            .padding(24)
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 24)
+                                .padding(.top, viewModel.regionDescription == nil ? 24 : 12)
                             
                             // Metrics
                             HStack(spacing: 0) {
@@ -449,10 +460,12 @@ struct SportsTabView: View {
         @Published var currentSnapshot: WeatherSnapshot?
         @Published var upcomingSnapshots: [WeatherSnapshot] = []
         @Published var state: WeatherLoadState = .idle
+        @Published var regionDescription: String? = nil
 
         private let calendar = Calendar.current
         private let weatherService: WeatherService
         private let locationProvider: LocationProvider
+        private let geocoder = CLGeocoder()
 
         init(weatherService: WeatherService? = nil, locationProvider: LocationProvider? = nil) {
             self.weatherService = weatherService ?? WeatherService()
@@ -463,6 +476,7 @@ struct SportsTabView: View {
             state = .loading
             do {
                 let location = try await locationProvider.currentLocation()
+                await updateRegionDescription(for: location)
                 if calendar.isDateInFuture(date) || calendar.isDateInToday(date) {
                     try await loadForecast(location: location, date: date)
                 } else {
@@ -472,6 +486,7 @@ struct SportsTabView: View {
             } catch {
                 currentSnapshot = nil
                 upcomingSnapshots = []
+                regionDescription = nil
                 if let locationError = error as? LocationError {
                     state = .locationUnavailable
                 } else if let clError = error as? CLError, [.denied, .locationUnknown, .network].contains(clError.code) {
@@ -486,6 +501,30 @@ struct SportsTabView: View {
                         state = .failed(error.localizedDescription)
                     }
                 }
+            }
+        }
+
+        private func updateRegionDescription(for location: CLLocation) async {
+            geocoder.cancelGeocode()
+            do {
+                let placemarks = try await geocoder.reverseGeocodeLocation(location)
+                if let placemark = placemarks.first {
+                    var components: [String] = []
+                    if let locality = placemark.locality, !locality.isEmpty {
+                        components.append(locality)
+                    }
+                    if let admin = placemark.administrativeArea, !admin.isEmpty {
+                        components.append(admin)
+                    } else if let country = placemark.country, !country.isEmpty {
+                        components.append(country)
+                    }
+                    let description = components.joined(separator: ", ")
+                    regionDescription = description.isEmpty ? nil : description
+                } else {
+                    regionDescription = nil
+                }
+            } catch {
+                regionDescription = nil
             }
         }
 

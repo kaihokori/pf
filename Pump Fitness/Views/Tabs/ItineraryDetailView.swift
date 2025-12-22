@@ -71,13 +71,6 @@ struct ItineraryDetailView: View {
             }
 
         }
-        .overlay(alignment: .topTrailing) {
-            if hasValidCoordinate {
-                directionsButton
-                    .padding(10)
-                    .padding(.top, topSafeAreaInset)
-            }
-        }
         .overlay(alignment: .topLeading) {
             backButton
                 .padding(10)
@@ -125,9 +118,30 @@ struct ItineraryDetailView: View {
             }
 
             HStack {
-                Text(event.locationName ?? "")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(event.locationName ?? "")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if hasValidCoordinate {
+                        Menu {
+                            Button("Apple Maps") {
+                                if let coordinate = event.coordinate {
+                                    openInAppleMaps(coordinate)
+                                }
+                            }
+                            Button("Google Maps") {
+                                if let coordinate = event.coordinate {
+                                    openInGoogleMaps(coordinate)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 Spacer()
                 if let locality = event.locationLocality, !locality.isEmpty {
                     if let postcode = event.locationPostcode, !postcode.isEmpty {
@@ -200,29 +214,7 @@ struct ItineraryDetailView: View {
         .padding(.bottom)
     }
 
-    private var directionsButton: some View {
-        Button {
-            guard let coordinate = event.coordinate else { return }
-            let drivingOptions = [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
-                if #available(iOS 17.0, *) {
-                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                let destination = MKMapItem(location: location, address: nil)
-                destination.name = event.name
-                destination.openInMaps(launchOptions: drivingOptions)
-            } else {
-                let placemark = MKPlacemark(coordinate: coordinate)
-                let destination = MKMapItem(placemark: placemark)
-                destination.name = event.name
-                destination.openInMaps(launchOptions: drivingOptions)
-            }
-        } label: {
-            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 44, height: 44)
-                .background(.thickMaterial, in: .rect(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-    }
+    
 
     private var backButton: some View {
         Button {
@@ -234,6 +226,37 @@ struct ItineraryDetailView: View {
                 .background(.thickMaterial, in: .rect(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+
+    private func openInAppleMaps(_ coordinate: CLLocationCoordinate2D) {
+        let drivingOptions = [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
+        if #available(iOS 17.0, *) {
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            let destination = MKMapItem(location: location, address: nil)
+            destination.name = event.name
+            destination.openInMaps(launchOptions: drivingOptions)
+        } else {
+            let placemark = MKPlacemark(coordinate: coordinate)
+            let destination = MKMapItem(placemark: placemark)
+            destination.name = event.name
+            destination.openInMaps(launchOptions: drivingOptions)
+        }
+    }
+
+    private func openInGoogleMaps(_ coordinate: CLLocationCoordinate2D) {
+        let lat = coordinate.latitude
+        let lon = coordinate.longitude
+        let schemeURLString = "comgooglemaps://?daddr=\(lat),\(lon)&directionsmode=driving"
+        if let schemeURL = URL(string: schemeURLString), UIApplication.shared.canOpenURL(schemeURL) {
+            UIApplication.shared.open(schemeURL)
+            return
+        }
+
+        // Fallback to web URL
+        let webURLString = "https://www.google.com/maps/dir/?api=1&destination=\(lat),\(lon)&travelmode=driving"
+        if let webURL = URL(string: webURLString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? webURLString) {
+            UIApplication.shared.open(webURL)
+        }
     }
 }
 

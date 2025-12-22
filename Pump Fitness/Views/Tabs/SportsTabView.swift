@@ -8,6 +8,7 @@
 import Combine
 import SwiftUI
 import CoreLocation
+import MapKit
 import WeatherKit
 import Charts
 import SwiftData
@@ -38,6 +39,10 @@ struct SportsTabView: View {
     @State private var showSportsEditor = false
     @State private var metricsEditorSportIndex: Int? = nil
     @State private var dataEntrySportIndex: Int? = nil
+    @State private var editingSportRecord: SportActivityRecord? = nil
+    @State private var dataEntryDefaultDate: Date? = nil
+    @FocusState private var teamInputsFocused: Bool
+    @FocusState private var soloInputsFocused: Bool
     @State private var hasLoadedTimeTrackingConfig = false
     @State private var hasLoadedSoloMetrics = false
     @State private var hasLoadedTeamMetrics = false
@@ -51,6 +56,7 @@ struct SportsTabView: View {
 
     struct SportActivity: Identifiable {
         let id = UUID()
+        var recordId: String? = nil
         var date: Date
         // Running, Cycling, Swimming
         var distanceKm: Double? = nil
@@ -487,7 +493,7 @@ struct SportsTabView: View {
                 currentSnapshot = nil
                 upcomingSnapshots = []
                 regionDescription = nil
-                if let locationError = error as? LocationError {
+                if error is LocationError {
                     state = .locationUnavailable
                 } else if let clError = error as? CLError, [.denied, .locationUnknown, .network].contains(clError.code) {
                     state = .locationUnavailable
@@ -527,6 +533,8 @@ struct SportsTabView: View {
                 regionDescription = nil
             }
         }
+
+        
 
         private func loadForecast(location: CLLocation, date: Date) async throws {
             let weather = try await weatherService.weather(for: location)
@@ -934,6 +942,7 @@ struct SportsTabView: View {
                                 metricValues: $teamMetricValuesStore,
                                 homeScore: $teamHomeScore,
                                 awayScore: $teamAwayScore,
+                                focusBinding: $teamInputsFocused,
                                 onValueChange: handleTeamMetricValueChange,
                                 onScoreChange: handleTeamScoreChange
                             )
@@ -968,6 +977,7 @@ struct SportsTabView: View {
                                selectedDate: selectedDate,
                                metrics: $soloMetrics,
                                metricValues: $soloMetricValuesStore,
+                               focusBinding: $soloInputsFocused,
                                onValueChange: handleSoloMetricValueChange
                            )
                                .padding(.horizontal, 18)
@@ -1041,13 +1051,87 @@ struct SportsTabView: View {
                                                 SportMetricGraph(
                                                     metric: metric,
                                                     activities: sport.activities,
-                                                    historyDays: historyDays
+                                                    historyDays: historyDays,
+                                                    anchorDate: selectedDate
                                                 )
                                                 .frame(height: 140)
                                                 .padding(.bottom, 8)
                                             }
+
+                                            let weekDates = sportWeekDates(anchor: selectedDate)
+                                            let sportRecords = sportActivities.filter { $0.sportName.lowercased() == sport.name.lowercased() }
+
+                                            VStack(spacing: 0) {
+                                                ForEach(weekDates, id: \.self) { day in
+                                                    let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+
+                                                    Section(header:
+                                                        HStack {
+                                                            VStack(alignment: .leading, spacing: 2) {
+                                                                Text(DateFormatter.sportWeekdayFull.string(from: day))
+                                                                    .font(.subheadline.weight(.semibold))
+                                                                Text(DateFormatter.sportLongDate.string(from: day))
+                                                                    .font(.caption2)
+                                                                    .foregroundStyle(.secondary)
+                                                            }
+                                                            Spacer()
+                                                        }
+                                                        .padding(.vertical, 8)
+                                                    ) {
+                                                        if dayRecords.isEmpty {
+                                                            Text("No sports entries")
+                                                                .font(.caption2)
+                                                                .foregroundStyle(.secondary)
+                                                                .padding(.vertical, 8)
+                                                        } else {
+                                                            ForEach(dayRecords, id: \.id) { record in
+                                                                HStack(alignment: .top, spacing: 12) {
+                                                                    VStack(alignment: .leading, spacing: 6) {
+                                                                        ForEach(record.values, id: \.id) { val in
+                                                                            HStack(spacing: 6) {
+                                                                                Text(val.label)
+                                                                                    .font(.caption.weight(.semibold))
+                                                                                    .foregroundStyle(.secondary)
+                                                                                Text(formatMetricValue(val))
+                                                                                    .font(.caption)
+                                                                            }
+                                                                        }
+                                                                    }
+
+                                                                    Spacer()
+
+                                                                    Menu {
+                                                                        Button("Edit") {
+                                                                            editingSportRecord = record
+                                                                            dataEntrySportIndex = idx
+                                                                            dataEntryDefaultDate = record.date
+                                                                        }
+                                                                        Button("Delete", role: .destructive) {
+                                                                            sportActivities.removeAll { $0.id == record.id }
+                                                                            rebuildSports()
+                                                                        }
+                                                                    } label: {
+                                                                        Image(systemName: "ellipsis.circle")
+                                                                            .font(.callout)
+                                                                            .foregroundStyle(.primary)
+                                                                    }
+                                                                    .menuStyle(.borderlessButton)
+                                                                }
+                                                                .padding(.vertical, 8)
+                                                                if record.id != dayRecords.last?.id {
+                                                                    Divider()
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            .padding(.horizontal, 8)
+
                                             Button {
                                                 dataEntrySportIndex = idx
+                                                editingSportRecord = nil
+                                                dataEntryDefaultDate = selectedDate
                                             } label: {
                                                 Label("Submit Data", systemImage: "paperplane.fill")
                                                     .font(.callout.weight(.semibold))
@@ -1131,22 +1215,42 @@ struct SportsTabView: View {
         }
         .sheet(
             isPresented: Binding(
-                get: { dataEntrySportIndex != nil },
-                set: { newValue in if !newValue { dataEntrySportIndex = nil } }
+                get: { dataEntrySportIndex != nil || editingSportRecord != nil },
+                set: { newValue in if !newValue { dataEntrySportIndex = nil; editingSportRecord = nil; dataEntryDefaultDate = nil } }
             )
         ) {
-            if let idx = dataEntrySportIndex, sports.indices.contains(idx) {
+            let idx: Int? = {
+                if let i = dataEntrySportIndex { return i }
+                if let record = editingSportRecord {
+                    return sports.firstIndex { $0.name.lowercased() == record.sportName.lowercased() }
+                }
+                return nil
+            }()
+
+            if let idx, sports.indices.contains(idx) {
+                let baseDate = dataEntryDefaultDate ?? editingSportRecord?.date ?? selectedDate
+                let existingActivity = editingSportRecord.map { activity(from: $0) }
                 SportDataEntrySheet(
                     sportName: sports[idx].name,
                     metrics: sports[idx].metrics,
-                    defaultDate: selectedDate,
-                    accent: sports[idx].color
+                    defaultDate: baseDate,
+                    accent: sports[idx].color,
+                    existingActivity: existingActivity
                 ) { activity in
-                    let record = record(from: activity, metrics: sports[idx].metrics, sportName: sports[idx].name, color: sports[idx].color)
-                    sportActivities.append(record)
+                    let record = record(from: activity, metrics: sports[idx].metrics, sportName: sports[idx].name, color: sports[idx].color, existingId: activity.recordId)
+                    if let existingId = activity.recordId, let existingIndex = sportActivities.firstIndex(where: { $0.id == existingId }) {
+                        sportActivities[existingIndex] = record
+                    } else {
+                        sportActivities.append(record)
+                    }
+                    dataEntrySportIndex = nil
+                    editingSportRecord = nil
+                    dataEntryDefaultDate = nil
                     rebuildSports()
                 } onCancel: {
                     dataEntrySportIndex = nil
+                    editingSportRecord = nil
+                    dataEntryDefaultDate = nil
                 }
             }
         }
@@ -1182,6 +1286,15 @@ struct SportsTabView: View {
             ensureCurrentDay().ensureTeamMetricValues(for: teamMetrics)
             persistDayIfLoaded()
             persistTeamMetrics(teamMetrics)
+        }
+        .safeAreaInset(edge: .bottom) {
+            KeyboardDismissBar(
+                isVisible: teamInputsFocused || soloInputsFocused,
+                onDismiss: {
+                    teamInputsFocused = false
+                    soloInputsFocused = false
+                }
+            )
         }
     }
 }
@@ -1381,6 +1494,8 @@ private extension SportsTabView {
 private extension SportsTabView {
     func rebuildSports() {
         let grouped = Dictionary(grouping: sportActivities) { $0.sportName.lowercased() }
+        // Preserve previous expanded state by sport name so adding/updating records doesn't collapse open rows
+        let previousExpansion: [String: Bool] = Dictionary(uniqueKeysWithValues: zip(sports.map { $0.name.lowercased() }, expandedSports))
         let baseTypes = sportsFromConfigs(sportConfigs, fallbackActivities: [])
 
         var built: [SportType] = baseTypes.map { base in
@@ -1404,7 +1519,7 @@ private extension SportsTabView {
         }
 
         sports = built
-        expandedSports = Array(repeating: false, count: sports.count)
+        expandedSports = built.map { previousExpansion[$0.name.lowercased()] ?? false }
     }
 
     func metrics(from records: [SportActivityRecord], fallbackColor: Color) -> [SportMetric] {
@@ -1424,6 +1539,16 @@ private extension SportsTabView {
         return Array(byKey.values)
     }
 
+    func sportWeekDates(anchor: Date) -> [Date] {
+        let cal = Calendar.current
+        let anchorDay = cal.startOfDay(for: anchor)
+        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: anchorDay)
+        comps.weekday = 2 // Monday
+        guard let startOfWeek = cal.date(from: comps) else { return [] }
+        return (0..<historyDays).compactMap { offset in
+            cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: startOfWeek))
+        }
+    }
     func mergeMetrics(base: [SportMetric], additional: [SportMetric]) -> [SportMetric] {
         var merged = base
         let existingKeys = Set(base.map { $0.key })
@@ -1434,7 +1559,7 @@ private extension SportsTabView {
     }
 
     func activity(from record: SportActivityRecord) -> SportActivity {
-        var activity = SportActivity(date: record.date)
+        var activity = SportActivity(recordId: record.id, date: record.date)
         for value in record.values {
             switch value.key {
             case "distanceKm": activity.distanceKm = value.value
@@ -1459,7 +1584,7 @@ private extension SportsTabView {
         return activity
     }
 
-    func record(from activity: SportActivity, metrics: [SportMetric], sportName: String, color: Color) -> SportActivityRecord {
+    func record(from activity: SportActivity, metrics: [SportMetric], sportName: String, color: Color, existingId: String? = nil) -> SportActivityRecord {
         let values: [SportMetricValue] = metrics.map { metric in
             let value = metricValue(metric, in: activity)
             let colorHex = metric.color.toHexString(fallback: color.toHexString())
@@ -1467,6 +1592,7 @@ private extension SportsTabView {
         }
 
         return SportActivityRecord(
+            id: existingId ?? activity.recordId ?? UUID().uuidString,
             sportName: sportName,
             colorHex: color.toHexString(),
             date: activity.date,
@@ -1496,6 +1622,18 @@ private extension SportsTabView {
         default: return activity.customValues[metric.key] ?? 0
         }
     }
+
+    func formatMetricValue(_ value: SportMetricValue) -> String {
+        let intVal = Int(value.value)
+        let numberString: String
+        if Double(intVal) == value.value {
+            numberString = String(intVal)
+        } else {
+            numberString = String(format: "%.2f", value.value)
+        }
+        if value.unit.isEmpty { return numberString }
+        return "\(numberString) \(value.unit)"
+    }
 }
 
 // MARK: - Solo Play
@@ -1505,6 +1643,7 @@ fileprivate struct SoloPlaySection: View {
 
     @Binding var metrics: [SoloMetric]
     @Binding var metricValues: [String: String]
+    var focusBinding: FocusState<Bool>.Binding
     var onValueChange: (SoloMetric, String) -> Void
 
     var body: some View {
@@ -1525,6 +1664,7 @@ fileprivate struct SoloPlaySection: View {
                                 )
                                 .textInputAutocapitalization(.none)
                                 .keyboardType(.decimalPad)
+                                .focused(focusBinding)
                                 .padding()
                                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                             }
@@ -1803,6 +1943,38 @@ private struct SoloPlayMetricsEditorSheet: View {
     }
 }
 
+// Safe-area inset dismiss bar that mirrors the weights tracking behavior
+private struct KeyboardDismissBar: View {
+    var isVisible: Bool
+    var onDismiss: () -> Void
+
+    var body: some View {
+        Group {
+            if isVisible {
+                HStack {
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: isVisible)
+            } else {
+                EmptyView()
+                    .frame(height: 0)
+            }
+        }
+    }
+}
+
 // MARK: - Team Play
 
 fileprivate struct TeamPlaySection: View {
@@ -1812,6 +1984,7 @@ fileprivate struct TeamPlaySection: View {
     @Binding var metricValues: [String: String]
     @Binding var homeScore: Int
     @Binding var awayScore: Int
+    var focusBinding: FocusState<Bool>.Binding
     var onValueChange: (TeamMetric, String) -> Void
     var onScoreChange: (Int, Int) -> Void
 
@@ -1835,6 +2008,7 @@ fileprivate struct TeamPlaySection: View {
                                 TextField(metric.name, text: valueBinding(for: metric), prompt: Text("Enter value…").foregroundStyle(.secondary))
                                     .textInputAutocapitalization(.none)
                                     .keyboardType(.decimalPad)
+                                    .focused(focusBinding)
                                     .padding()
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                             }
@@ -2634,11 +2808,15 @@ private struct SportDataEntrySheet: View {
     private let calendar = Calendar.current
     private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
 
+    private var existingActivity: SportsTabView.SportActivity?
+    private var existingRecordId: String? { existingActivity?.recordId }
+
     init(
         sportName: String,
         metrics: [SportsTabView.SportMetric],
         defaultDate: Date,
         accent: Color,
+        existingActivity: SportsTabView.SportActivity? = nil,
         onSave: @escaping (SportsTabView.SportActivity) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -2646,13 +2824,24 @@ private struct SportDataEntrySheet: View {
         self.metrics = metrics
         self.defaultDate = defaultDate
         self.accent = accent
+        self.existingActivity = existingActivity
         self.onSave = onSave
         self.onCancel = onCancel
 
-        let baseDate = Calendar.current.startOfDay(for: defaultDate)
+        let baseDate = Calendar.current.startOfDay(for: existingActivity?.date ?? defaultDate)
         _selectedDate = State(initialValue: baseDate)
         _currentMonth = State(initialValue: baseDate)
-        _valueInputs = State(initialValue: Dictionary(uniqueKeysWithValues: metrics.map { ($0.id, "") }))
+
+        let initialInputs: [UUID: String]
+        if let activity = existingActivity {
+            initialInputs = Dictionary(uniqueKeysWithValues: metrics.map { metric in
+                let val = Self.value(for: metric, in: activity)
+                return (metric.id, Self.displayString(for: val))
+            })
+        } else {
+            initialInputs = Dictionary(uniqueKeysWithValues: metrics.map { ($0.id, "") })
+        }
+        _valueInputs = State(initialValue: initialInputs)
     }
 
     private var canSave: Bool {
@@ -2674,7 +2863,7 @@ private struct SportDataEntrySheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
             }
-            .navigationTitle("Submit \(sportName)")
+            .navigationTitle("Submit Data")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2871,6 +3060,38 @@ private struct SportDataEntrySheet: View {
         )
     }
 
+    private static func value(for metric: SportsTabView.SportMetric, in activity: SportsTabView.SportActivity) -> Double {
+        switch metric.key {
+        case "distanceKm": return activity.distanceKm ?? 0
+        case "durationMin": return activity.durationMin ?? 0
+        case "speedKmh": return activity.speedKmh ?? activity.speedKmhComputed ?? 0
+        case "speedKmhComputed": return activity.speedKmhComputed ?? activity.speedKmh ?? 0
+        case "laps": return Double(activity.laps ?? 0)
+        case "attemptsMade": return Double(activity.attemptsMade ?? 0)
+        case "attemptsMissed": return Double(activity.attemptsMissed ?? 0)
+        case "accuracy": return activity.accuracy ?? activity.accuracyComputed ?? 0
+        case "accuracyComputed": return activity.accuracyComputed ?? activity.accuracy ?? 0
+        case "rounds": return Double(activity.rounds ?? 0)
+        case "roundDuration": return activity.roundDuration ?? 0
+        case "points": return Double(activity.points ?? 0)
+        case "holdTime": return activity.holdTime ?? 0
+        case "poses": return Double(activity.poses ?? 0)
+        case "altitude": return activity.altitude ?? 0
+        case "timeToPeak": return activity.timeToPeak ?? 0
+        case "restTime": return activity.restTime ?? 0
+        default: return activity.customValues[metric.key] ?? 0
+        }
+    }
+
+    private static func displayString(for value: Double) -> String {
+        if value == 0 { return "" }
+        let intVal = Int(value)
+        if Double(intVal) == value {
+            return String(intVal)
+        }
+        return String(format: "%.2f", value)
+    }
+
     private func select(_ date: Date) {
         selectedDate = calendar.startOfDay(for: date)
     }
@@ -2899,7 +3120,7 @@ private struct SportDataEntrySheet: View {
     }
 
     private func buildActivity() -> SportsTabView.SportActivity? {
-        var activity = SportsTabView.SportActivity(date: selectedDate)
+        var activity = SportsTabView.SportActivity(recordId: existingRecordId, date: selectedDate)
 
         for metric in metrics {
             guard let text = valueInputs[metric.id]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -2958,14 +3179,19 @@ struct SportMetricGraph: View {
     let metric: SportsTabView.SportMetric
     let activities: [SportsTabView.SportActivity]
     let historyDays: Int
+    let anchorDate: Date
 
     private var cal: Calendar { Calendar.current }
-    private var today: Date { cal.startOfDay(for: Date()) }
+    private var today: Date { cal.startOfDay(for: anchorDate) }
 
     private var displayDates: [Date] {
-        (0..<historyDays).compactMap { offset in
-            cal.date(byAdding: .day, value: -offset, to: today)
-        }.reversed()
+        let anchor = cal.startOfDay(for: anchorDate)
+        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: anchor)
+        comps.weekday = 2 // Monday
+        guard let startOfWeek = cal.date(from: comps) else { return [] }
+        return (0..<historyDays).compactMap { offset in
+            cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: startOfWeek))
+        }
     }
 
     private func value(for activity: SportsTabView.SportActivity) -> Double {
@@ -2999,8 +3225,8 @@ struct SportMetricGraph: View {
         let grouped = Dictionary(grouping: activities) { cal.startOfDay(for: $0.date) }
         return displayDates.map { day in
             let items = grouped[day] ?? []
-            let total = items.reduce(0) { $0 + value(for: $1) }
-            return (date: day, total: total)
+            let maxValue = items.map { value(for: $0) }.max() ?? 0
+            return (date: day, total: maxValue)
         }
     }
 
@@ -3107,7 +3333,7 @@ private extension SportsTabView {
 private extension DateFormatter {
     static var shortDate: DateFormatter = {
         let df = DateFormatter()
-        df.dateFormat = "EEE" // weekday short (Mon, Tue)
+        df.dateFormat = "EEE d" // weekday short + day number (Mon 22)
         return df
     }()
 
@@ -3121,6 +3347,18 @@ private extension DateFormatter {
         let df = DateFormatter()
         df.dateStyle = .medium
         df.timeStyle = .none
+        return df
+    }()
+
+    static var sportWeekdayFull: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "EEEE"
+        return df
+    }()
+
+    static var sportLongDate: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "MMMM d"
         return df
     }()
 }

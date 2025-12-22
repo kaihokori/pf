@@ -23,6 +23,12 @@ class AccountFirestoreService {
             let remoteExpenseCategories = (data["expenseCategories"] as? [[String: Any]] ?? []).compactMap { ExpenseCategory(dictionary: $0) }
             let remoteCurrencySymbol = (data["expenseCurrencySymbol"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
+            let workoutSupplements = (data["workoutSupplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
+            let nutritionSupplements = (data["nutritionSupplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
+            let legacySupplements = (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
+            let resolvedWorkoutSupplements = workoutSupplements.isEmpty ? legacySupplements : workoutSupplements
+            let resolvedNutritionSupplements = nutritionSupplements.isEmpty ? legacySupplements : nutritionSupplements
+
             let account = Account(
                 id: id,
                 profileImage: nil, // Handle image separately
@@ -50,7 +56,8 @@ class AccountFirestoreService {
                 habits: remoteHabits.isEmpty ? HabitDefinition.defaults : remoteHabits,
                 mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) },
                 weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
-                supplements: (data["supplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) },
+                workoutSupplements: resolvedWorkoutSupplements,
+                nutritionSupplements: resolvedNutritionSupplements,
                 dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) },
                 itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) },
                 sports: (data["sports"] as? [[String: Any]] ?? []).compactMap { SportConfig(dictionary: $0) },
@@ -178,9 +185,15 @@ class AccountFirestoreService {
         if !account.weeklyProgress.isEmpty {
             data["weeklyProgress"] = account.weeklyProgress.map { $0.asFirestoreDictionary() }
         }
-        if !account.supplements.isEmpty {
-            data["supplements"] = account.supplements.map { $0.asDictionary }
-        }
+
+        // Persist split supplement lists; also emit legacy combined list for backward compatibility
+        data["workoutSupplements"] = account.workoutSupplements.map { $0.asDictionary }
+        data["nutritionSupplements"] = account.nutritionSupplements.map { $0.asDictionary }
+        var legacySeen = Set<String>()
+        let legacySupplements = (account.workoutSupplements + account.nutritionSupplements)
+            .filter { legacySeen.insert($0.id).inserted }
+        data["supplements"] = legacySupplements.map { $0.asDictionary }
+
         if !account.dailyTasks.isEmpty {
             data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
         }

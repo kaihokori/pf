@@ -10,6 +10,7 @@ extension View {
                 Button("Dismiss") {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
+                .offset(x: 0, y: 1)
             }
         }
     }

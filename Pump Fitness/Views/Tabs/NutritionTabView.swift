@@ -286,7 +286,7 @@ struct NutritionTabView: View {
 
                         SupplementTrackingView(
                             accentColorOverride: .orange,
-                            supplements: account.supplements,
+                            supplements: account.nutritionSupplements,
                             takenSupplementIDs: $dayTakenSupplementIDs,
                             onToggle: { supplement in
                                 // Optimistically update UI state first to avoid stale reads
@@ -312,14 +312,14 @@ struct NutritionTabView: View {
                             },
                             onRemove: { supplement in
                                 // remove supplement from Account then persist
-                                account.supplements.removeAll { $0.id == supplement.id }
+                                account.nutritionSupplements.removeAll { $0.id == supplement.id }
                                 do {
                                     try modelContext.save()
                                 } catch {
-                                    print("NutritionTabView: failed to save Account after removing supplement: \(error)")
+                                    print("NutritionTabView: failed to save Account after removing nutrition supplement: \(error)")
                                 }
                                 accountFirestoreService.saveAccount(account) { success in
-                                    if !success { print("NutritionTabView: failed to sync removed supplement to Firestore") }
+                                    if !success { print("NutritionTabView: failed to sync removed nutrition supplement to Firestore") }
                                 }
                             }
                         )
@@ -509,9 +509,6 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
-            for (i, r) in account.weeklyProgress.enumerated() {
-                print("  onAppear account.weeklyProgress[\(i)]: id=\(r.id) date=\(r.date) weight=\(r.weight) hasPhoto=\(r.photoData != nil)")
-            }
             reloadWeeklyProgressFromAccount()
             ensurePlaceholderIfNeeded(persist: true)
             refreshProgressFromRemote()
@@ -580,16 +577,16 @@ struct NutritionTabView: View {
         }
         .sheet(isPresented: $showSupplementEditor) {
             let supplementsBinding = Binding<[Supplement]>(
-                get: { account.supplements },
+                get: { account.nutritionSupplements },
                 set: { newValue in
-                    account.supplements = newValue
+                    account.nutritionSupplements = newValue
                     do {
                         try modelContext.save()
                     } catch {
-                        print("NutritionTabView: failed to save Account after editing supplements: \(error)")
+                        print("NutritionTabView: failed to save Account after editing nutrition supplements: \(error)")
                     }
                     accountFirestoreService.saveAccount(account) { success in
-                        if !success { print("NutritionTabView: failed to sync account supplements to Firestore") }
+                        if !success { print("NutritionTabView: failed to sync nutrition supplements to Firestore") }
                     }
                 }
             )
@@ -2885,6 +2882,7 @@ private struct MealIntakeSheet: View {
                             TextField("Calories", text: $caloriesText)
                                 .keyboardType(.numberPad)
                                 .textFieldStyle(.plain)
+                                .surfaceCard(16)
                             Text("cal")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -2914,6 +2912,7 @@ private struct MealIntakeSheet: View {
                                         ))
                                         .keyboardType(.decimalPad)
                                         .textFieldStyle(.plain)
+                                        .surfaceCard(16)
 
                                         Text(macro.unit)
                                             .font(.subheadline)

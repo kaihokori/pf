@@ -242,75 +242,32 @@ private struct HabitsEditorView: View {
     }
 }
 
-// MARK: - Weekly Sleep Helpers
 
-private struct SleepDayEntry: Identifiable {
-    let id = UUID()
-    let date: Date
-    var nightSeconds: TimeInterval
-    var napSeconds: TimeInterval
-
-    var totalSeconds: TimeInterval { nightSeconds + napSeconds }
-
-    static func sampleEntries() -> [SleepDayEntry] {
-        let cal = Calendar.current
-        let today = Date()
-        // build last 7 days
-        let weekday = cal.component(.weekday, from: today)
-        let startIndex = 2 // monday
-        let offsetToStart = (weekday - startIndex + 7) % 7
-        let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
-
-        return (0..<7).compactMap { i in
-            guard let d = cal.date(byAdding: .day, value: i, to: startOfWeek) else { return nil }
-            // make some variation
-            let night = TimeInterval(6 * 3600 + (i % 3) * 1800) // 6:00, 6:30, 7:00
-            let nap = TimeInterval((i % 4 == 0) ? 30 * 60 : 0)
-            return SleepDayEntry(date: d, nightSeconds: night, napSeconds: nap)
-        }
-    }
-}
+// MARK: - Sleep Summary Column
 
 private struct SleepDayColumn: View {
     let date: Date
     let tint: Color
     let nightSeconds: TimeInterval
     let napSeconds: TimeInterval
-    let isFuture: Bool
 
     var body: some View {
         VStack(spacing: 8) {
-            Text(shortWeekday(from: date))
+            Text(formattedDate(from: date))
                 .font(.caption)
                 .fontWeight(.semibold)
 
-            if isFuture {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                    Text("Upcoming")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("No data yet")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary.opacity(0.8))
-                }
-                Spacer()
-            } else {
-                VStack(spacing: 8) {
-                    // Night sleep (hours)
-                    SleepIndicatorRow(label: "Night", color: .indigo, seconds: nightSeconds)
+            VStack(spacing: 8) {
+                // Night sleep (hours)
+                SleepIndicatorRow(label: "Night", color: .indigo, seconds: nightSeconds)
 
-                    // Nap sleep (minutes)
-                    SleepIndicatorRow(label: "Nap", color: .cyan, seconds: napSeconds)
+                // Nap sleep (minutes)
+                SleepIndicatorRow(label: "Nap", color: .cyan, seconds: napSeconds)
 
-                    // Total
-                    SleepIndicatorRow(label: "Total", color: tint, seconds: nightSeconds + napSeconds)
-                }
-                Spacer()
+                // Total
+                SleepIndicatorRow(label: "Total", color: tint, seconds: nightSeconds + napSeconds)
             }
+            Spacer()
         }
         .padding(EdgeInsets(top: 16, leading: 12, bottom: 12, trailing: 12))
         .frame(width: 180, height: 140)
@@ -358,6 +315,12 @@ private struct SleepDayColumn: View {
         return df.string(from: date)
     }
 
+    private func formattedDate(from date: Date) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "E, d MMM"
+        return df.string(from: date)
+    }
+
     private func formatDuration(_ seconds: TimeInterval) -> String {
         let total = Int(seconds)
         let h = total / 3600
@@ -381,6 +344,9 @@ struct RoutineTabView: View {
     @Binding var expenseCurrencySymbol: String
     @Binding var expenseCategories: [ExpenseCategory]
     @Binding var expenseEntries: [ExpenseEntry]
+    @Binding var nightSleepSeconds: TimeInterval
+    @Binding var napSleepSeconds: TimeInterval
+    @Binding var weeklySleepEntries: [SleepDayEntry]
     var onUpdateActivityTimers: ([ActivityTimerItem]) -> Void
     var onUpdateHabits: ([HabitDefinition]) -> Void
     var onUpdateGoals: ([GoalItem]) -> Void
@@ -388,6 +354,8 @@ struct RoutineTabView: View {
     var onUpdateExpenseCategories: ([ExpenseCategory], String) -> Void
     var onSaveExpenseEntry: (ExpenseEntry) -> Void
     var onDeleteExpenseEntry: (UUID) -> Void
+    var onUpdateSleep: (TimeInterval, TimeInterval) -> Void
+    var onLiveSleepUpdate: (TimeInterval, TimeInterval) -> Void
     @State private var showAccountsView = false
     @State private var dailyTaskItems: [DailyTaskItem] = []
     @State private var currentDay: Day?
@@ -396,7 +364,6 @@ struct RoutineTabView: View {
 
     @State private var showWeeklySleep: Bool = false
     @State private var weekStartsOnMonday: Bool = true
-    @State private var weeklySleepEntries: [SleepDayEntry] = SleepDayEntry.sampleEntries()
     @State private var showDailyTasksEditor: Bool = false
     @State private var showActivityTimersEditor: Bool = false
     @State private var showGoalsEditor: Bool = false
@@ -448,7 +415,8 @@ struct RoutineTabView: View {
                             },
                             onRemove: { id in
                                 handleTaskRemove(id: id)
-                            }
+                            },
+                            day: $currentDay
                         )
                         .padding(.bottom, -30)
                         
@@ -561,13 +529,23 @@ struct RoutineTabView: View {
                         .padding(.top, 38)
                         .padding(.horizontal, 18)
 
-                        SleepTrackingSection(accentColor: accentOverride)
+                        SleepTrackingSection(
+                            accentColor: accentOverride,
+                            nightStored: $nightSleepSeconds,
+                            napStored: $napSleepSeconds,
+                            onPersist: { night, nap in
+                                onUpdateSleep(night, nap)
+                            },
+                            onLiveUpdate: { night, nap in
+                                onLiveSleepUpdate(night, nap)
+                            }
+                        )
 
                         VStack(alignment: .leading, spacing: 16) {
-                            // New collapsible Weekly Sleep section (Macro-style layout adapted for sleep)
+                            // New collapsible Sleep Summary section (Macro-style layout adapted for sleep)
                             HStack {
                                 Spacer()
-                                Label("Weekly Sleep", systemImage: "bed.double.fill")
+                                Label("Sleep Summary", systemImage: "bed.double.fill")
                                     .font(.callout.weight(.semibold))
                                 Spacer()
                             }
@@ -594,19 +572,12 @@ struct RoutineTabView: View {
                                             }
 
                                             ForEach(weekDates, id: \.self) { day in
-                                                // Determine whether this day should be considered a "future" day
-                                                let weekday = Calendar.current.component(.weekday, from: day) // 1 = Sunday
-                                                let isFutureDay = weekday >= 5
-
                                                 if let entry = weeklySleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
                                                     // Use existing entry values
-                                                    SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: entry.nightSeconds, napSeconds: entry.napSeconds, isFuture: isFutureDay)
+                                                    SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: entry.nightSeconds, napSeconds: entry.napSeconds)
                                                 } else {
-                                                    // Fallback sample values based on day ordinal
-                                                    let idx = Calendar.current.ordinality(of: .day, in: .year, for: day) ?? 0
-                                                    let night = 7 * 3600 - (idx % 3) * 600
-                                                    let nap = (idx % 4 == 0) ? 30 * 60 : 0
-                                                    SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: TimeInterval(night), napSeconds: TimeInterval(nap), isFuture: isFutureDay)
+                                                    // No recorded data for this day yet
+                                                    SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: 0, napSeconds: 0)
                                                 }
                                             }
                                         }
@@ -1066,12 +1037,11 @@ private struct ActivityTimersEditorView: View {
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: String?
 
-    static let maxFreeTimers = 2
-
     private let minDuration = 10
     private let maxDuration = 180
 
-    private var canAddMore: Bool { working.count < Self.maxFreeTimers }
+    // Unlimited timers allowed
+    private var canAddMore: Bool { true }
     private var customDurationMinutes: Int? {
         let hours = Int(customHours) ?? 0
         let minutes = Int(customMinutes) ?? 0
@@ -1162,34 +1132,6 @@ private struct ActivityTimersEditorView: View {
                         }
                     }
 
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-
-                                Text("Unlock unlimited timers + other benefits")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .surfaceCard(16)
-                    }
-                    .buttonStyle(.plain)
-
                     if !presets.filter({ !isPresetSelected($0) }).isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Quick Add")
@@ -1273,9 +1215,6 @@ private struct ActivityTimersEditorView: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("You can create up to \(Self.maxFreeTimers) timers.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -1311,7 +1250,7 @@ private struct ActivityTimersEditorView: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        working = timers.isEmpty ? Array(ActivityTimerItem.defaultTimers.prefix(Self.maxFreeTimers)) : Array(timers.prefix(Self.maxFreeTimers))
+        working = timers.isEmpty ? ActivityTimerItem.defaultTimers : timers
         hasLoaded = true
     }
 
@@ -1377,7 +1316,7 @@ private struct ActivityTimersEditorView: View {
     }
 
     private func donePressed() {
-        onSave(Array(working.prefix(Self.maxFreeTimers)))
+        onSave(working)
         dismiss()
     }
 }
@@ -1391,7 +1330,7 @@ private struct GoalsEditorView: View {
     @State private var newNote: String = ""
     @State private var newDate: Date = Date()
     @State private var hasLoaded: Bool = false
-    private let maxGoals: Int = 8
+    // Unlimited goals allowed
 
     private var presets: [GoalItem] {
         let cal = Calendar.current
@@ -1406,10 +1345,11 @@ private struct GoalsEditorView: View {
     }
 
     private var canAddCustom: Bool {
-        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // allow unlimited goals (only require a non-empty name)
+        !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var canAddMore: Bool { working.count < maxGoals }
+    private var canAddMore: Bool { true }
 
     var body: some View {
         NavigationStack {
@@ -1569,9 +1509,6 @@ private struct GoalsEditorView: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
                         }
-                        Text("You can create up to \(maxGoals) goals.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -1995,8 +1932,7 @@ extension RoutineTabView {
     }
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {
-        let trimmed = Array(items.prefix(ActivityTimersEditorView.maxFreeTimers))
-        activityTimers = trimmed.isEmpty ? ActivityTimerItem.defaultTimers : trimmed
+        activityTimers = items.isEmpty ? ActivityTimerItem.defaultTimers : items
         onUpdateActivityTimers(activityTimers)
     }
 

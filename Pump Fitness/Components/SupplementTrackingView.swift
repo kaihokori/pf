@@ -8,7 +8,7 @@ struct SupplementTrackingView: View {
     var accentColorOverride: Color?
     var tileMinHeight: CGFloat = NutritionLayout.supplementTileMinHeight
 
-    // Supplements come from Account.supplements
+    // Supplements provided by parent view (nutrition or workout)
     var supplements: [Supplement]
 
     // IDs of supplements taken for the current day

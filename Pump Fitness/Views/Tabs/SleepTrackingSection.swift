@@ -10,9 +10,12 @@ import Combine
 
 struct SleepTrackingSection: View {
     let accentColor: Color?
+    @Binding var nightStored: TimeInterval
+    @Binding var napStored: TimeInterval
+    var onPersist: (TimeInterval, TimeInterval) -> Void
+    var onLiveUpdate: (TimeInterval, TimeInterval) -> Void
 
-    @State private var nightAccumulated: TimeInterval = 0
-    @State private var napAccumulated: TimeInterval = 0
+    @State private var timerTick: Date = Date()
 
     @State private var nightRunning: Bool = false
     @State private var napRunning: Bool = false
@@ -74,7 +77,21 @@ struct SleepTrackingSection: View {
             .frame(maxWidth: .infinity)
         }
         .onReceive(timer) { _ in
-            // tick keeps UI updated
+            // force a state change so SwiftUI re-renders and recomputes elapsed time
+            timerTick = Date()
+            // send live totals while any timer is running
+            if nightRunning || napRunning {
+                onLiveUpdate(currentNightElapsed, currentNapElapsed)
+            }
+        }
+        .id(timerTick)
+        .onChange(of: nightStored) { _, _ in
+            nightStart = nil
+            nightRunning = false
+        }
+        .onChange(of: napStored) { _, _ in
+            napStart = nil
+            napRunning = false
         }
         .padding(16)
         .glassEffect(in: .rect(cornerRadius: 16.0))
@@ -90,7 +107,8 @@ struct SleepTrackingSection: View {
                     onDone: { newElapsed in
                         nightStart = nil
                         nightRunning = false
-                        nightAccumulated = newElapsed
+                        nightStored = newElapsed
+                        onPersist(nightStored, napStored)
                         editingTimer = nil
                     },
                     onCancel: {
@@ -105,7 +123,8 @@ struct SleepTrackingSection: View {
                     onDone: { newElapsed in
                         napStart = nil
                         napRunning = false
-                        napAccumulated = newElapsed
+                        napStored = newElapsed
+                        onPersist(nightStored, napStored)
                         editingTimer = nil
                     },
                     onCancel: {
@@ -118,28 +137,39 @@ struct SleepTrackingSection: View {
 
     private var currentNightElapsed: TimeInterval {
         if let start = nightStart, nightRunning {
-            return nightAccumulated + Date().timeIntervalSince(start)
+            return nightStored + Date().timeIntervalSince(start)
         }
-        return nightAccumulated
+        return nightStored
     }
 
     private var currentNapElapsed: TimeInterval {
         if let start = napStart, napRunning {
-            return napAccumulated + Date().timeIntervalSince(start)
+            return napStored + Date().timeIntervalSince(start)
         }
-        return napAccumulated
+        return napStored
     }
 
     private func toggleNight() {
         if nightRunning {
             // stop
             if let start = nightStart {
-                nightAccumulated += Date().timeIntervalSince(start)
+                nightStored += Date().timeIntervalSince(start)
             }
             nightStart = nil
             nightRunning = false
+            onPersist(nightStored, napStored)
         } else {
-            // start
+            // if a nap is running, stop it first
+            if napRunning {
+                if let nstart = napStart {
+                    napStored += Date().timeIntervalSince(nstart)
+                }
+                napStart = nil
+                napRunning = false
+                onPersist(nightStored, napStored)
+            }
+
+            // start night timer
             nightStart = Date()
             nightRunning = true
         }
@@ -148,11 +178,23 @@ struct SleepTrackingSection: View {
     private func toggleNap() {
         if napRunning {
             if let start = napStart {
-                napAccumulated += Date().timeIntervalSince(start)
+                napStored += Date().timeIntervalSince(start)
             }
             napStart = nil
             napRunning = false
+            onPersist(nightStored, napStored)
         } else {
+            // if night sleep is running, stop it first
+            if nightRunning {
+                if let nstart = nightStart {
+                    nightStored += Date().timeIntervalSince(nstart)
+                }
+                nightStart = nil
+                nightRunning = false
+                onPersist(nightStored, napStored)
+            }
+
+            // start nap timer
             napStart = Date()
             napRunning = true
         }
@@ -247,7 +289,13 @@ private struct StopwatchCard: View {
 
 struct SleepTrackingSection_Previews: PreviewProvider {
     static var previews: some View {
-        SleepTrackingSection(accentColor: .accentColor)
+        SleepTrackingSection(
+            accentColor: .accentColor,
+            nightStored: .constant(7_200),
+            napStored: .constant(1_200),
+            onPersist: { _, _ in },
+            onLiveUpdate: { _, _ in }
+        )
             .previewLayout(.sizeThatFits)
             .padding()
     }
@@ -270,10 +318,6 @@ private struct SleepTimerEditorSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Manual time")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Hours")

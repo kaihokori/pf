@@ -269,8 +269,8 @@ struct WorkoutTabView: View {
     @State private var showAccountsView = false
     @State private var workoutSchedule: [WorkoutScheduleItem] = coachingWeeklySchedule
     @State private var showRestDaySheet = false
-    // Use Account.supplements as the canonical source of supplement definitions
-    // no local supplement store — use `account.supplements`
+    // Use Account.workoutSupplements as the canonical source of workout supplement definitions
+    // no local supplement store — use `account.workoutSupplements`
     @State private var showSupplementEditor = false
     private let accountFirestoreService = AccountFirestoreService()
     @State private var dayTakenWorkoutSupplementIDs: Set<String> = []
@@ -289,6 +289,7 @@ struct WorkoutTabView: View {
     @State private var bodyParts: [BodyPartWeights] = []
     @State private var showWeightsEditor = false
     @State private var isHydratingWeights: Bool = false
+    @FocusState private var isWeightsInputFocused: UUID?
 
     init(
         account: Binding<Account>,
@@ -515,7 +516,7 @@ struct WorkoutTabView: View {
                     .onTapGesture { /* noop */ }
                     SupplementTrackingView(
                         accentColorOverride: .purple,
-                        supplements: account.supplements,
+                        supplements: account.workoutSupplements,
                         takenSupplementIDs: $dayTakenWorkoutSupplementIDs,
                         onToggle: { supplement in
                             // optimistic UI update
@@ -540,28 +541,28 @@ struct WorkoutTabView: View {
                             }
                         },
                         onRemove: { supp in
-                            account.supplements.removeAll { $0.id == supp.id }
+                            account.workoutSupplements.removeAll { $0.id == supp.id }
                             do {
                                 try modelContext.save()
                             } catch {
-                                print("WorkoutTabView: failed to save Account after removing supplement: \(error)")
+                                print("WorkoutTabView: failed to save Account after removing workout supplement: \(error)")
                             }
                             accountFirestoreService.saveAccount(account) { success in
-                                if !success { print("WorkoutTabView: failed to sync account supplements to Firestore") }
+                                if !success { print("WorkoutTabView: failed to sync workout supplements to Firestore") }
                             }
                         }
                     )
                     .onAppear {
                         // Seed account supplements with coaching defaults if empty
-                        if account.supplements.isEmpty {
-                            account.supplements = coachingDefaultSupplements
+                        if account.workoutSupplements.isEmpty {
+                            account.workoutSupplements = coachingDefaultSupplements
                             do {
                                 try modelContext.save()
                             } catch {
-                                print("WorkoutTabView: failed to save Account after seeding supplements: \(error)")
+                                print("WorkoutTabView: failed to save Account after seeding workout supplements: \(error)")
                             }
                             accountFirestoreService.saveAccount(account) { success in
-                                if !success { print("WorkoutTabView: failed to sync seeded account supplements to Firestore") }
+                                if !success { print("WorkoutTabView: failed to sync seeded workout supplements to Firestore") }
                             }
                         }
                         fetchDayTakenWorkoutSupplements()
@@ -571,16 +572,16 @@ struct WorkoutTabView: View {
                     }
                     .sheet(isPresented: $showSupplementEditor) {
                         let supplementsBinding = Binding<[Supplement]>(
-                            get: { account.supplements },
+                            get: { account.workoutSupplements },
                             set: { newValue in
-                                account.supplements = newValue
+                                account.workoutSupplements = newValue
                                 do {
                                     try modelContext.save()
                                 } catch {
-                                    print("WorkoutTabView: failed to save Account after editing supplements: \(error)")
+                                    print("WorkoutTabView: failed to save Account after editing workout supplements: \(error)")
                                 }
                                 accountFirestoreService.saveAccount(account) { success in
-                                    if !success { print("WorkoutTabView: failed to sync account supplements to Firestore") }
+                                    if !success { print("WorkoutTabView: failed to sync workout supplements to Firestore") }
                                 }
                             }
                         )
@@ -612,7 +613,10 @@ struct WorkoutTabView: View {
                     .padding(.top, 48)
                     
                     // Weights tracking section
-                    WeightsTrackingSection(bodyParts: $bodyParts)
+                    WeightsTrackingSection(
+                        bodyParts: $bodyParts,
+                        focusBinding: $isWeightsInputFocused
+                    )
 
                     // Coaching inquiry card
                     CoachingInquiryCTA()
@@ -633,7 +637,7 @@ struct WorkoutTabView: View {
         .navigationDestination(isPresented: $showAccountsView) {
             AccountsView(account: $account)
         }
-        .navigationTitle("Coaching")
+        .navigationTitle("Workout")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showRestDaySheet) {
             RestDayPickerSheet(
@@ -685,11 +689,26 @@ struct WorkoutTabView: View {
                 showWeightsEditor = false
             }
         }
-        .keyboardDismissToolbar()
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: lastWeightPlaceholderVersion) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: bodyParts) { _, _ in persistBodyPartsChanges() }
+        .onChange(of: isWeightsInputFocused) { _, newValue in
+            if newValue == nil {
+                // clear selection when no field is focused
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            KeyboardDismissBar(
+                isVisible: isWeightsInputFocused != nil,
+                selectedUnit: activeExerciseUnit,
+                tint: accentOverride ?? .accentColor,
+                onDismiss: { isWeightsInputFocused = nil },
+                onSelectUnit: { unit in
+                    updateActiveExerciseUnit(to: unit)
+                }
+            )
+        }
         .onAppear {
             if weeklyProgress.count != 7 {
                 weeklyProgress = Array(repeating: .notLogged, count: 7)
@@ -814,6 +833,26 @@ private extension WorkoutTabView {
         }
     }
 
+    var activeExerciseUnit: String? {
+        guard let focusedId = isWeightsInputFocused else { return nil }
+        for part in bodyParts {
+            if let match = part.exercises.first(where: { $0.id == focusedId }) {
+                return match.unit
+            }
+        }
+        return nil
+    }
+
+    func updateActiveExerciseUnit(to unit: String) {
+        guard let focusedId = isWeightsInputFocused else { return }
+        for partIndex in bodyParts.indices {
+            if let exerciseIndex = bodyParts[partIndex].exercises.firstIndex(where: { $0.id == focusedId }) {
+                bodyParts[partIndex].exercises[exerciseIndex].unit = unit
+                break
+            }
+        }
+    }
+
     func handleAdjustAction(isAddition: Bool, valueString: String, target: String?) {
         guard let val = Double(valueString) else { return }
         switch target {
@@ -844,6 +883,7 @@ private extension WorkoutTabView {
                     id: def.id,
                     name: def.name,
                     weight: entry?.weight ?? "",
+                    unit: entry?.unit ?? "kg",
                     sets: entry?.sets ?? "",
                     reps: entry?.reps ?? "",
                     placeholderWeight: placeholder?.weight ?? "",
@@ -888,6 +928,7 @@ private extension WorkoutTabView {
                     exerciseId: exercise.id,
                     exerciseName: exercise.name,
                     weight: exercise.weight,
+                    unit: exercise.unit,
                     sets: exercise.sets,
                     reps: exercise.reps
                 )
@@ -1693,6 +1734,7 @@ private struct WeightExercise: Identifiable, Equatable {
     var id: UUID
     var name: String
     var weight: String
+    var unit: String
     var sets: String
     var reps: String
     var placeholderWeight: String
@@ -1703,6 +1745,7 @@ private struct WeightExercise: Identifiable, Equatable {
         id: UUID = UUID(),
         name: String,
         weight: String = "",
+        unit: String = "kg",
         sets: String = "",
         reps: String = "",
         placeholderWeight: String = "",
@@ -1712,6 +1755,7 @@ private struct WeightExercise: Identifiable, Equatable {
         self.id = id
         self.name = name
         self.weight = weight
+        self.unit = unit
         self.sets = sets
         self.reps = reps
         self.placeholderWeight = placeholderWeight
@@ -1740,7 +1784,7 @@ private extension BodyPartWeights {
             BodyPartWeights(
                 id: group.id,
                 name: group.name,
-                exercises: group.exercises.map { WeightExercise(id: $0.id, name: $0.name) }
+                exercises: group.exercises.map { WeightExercise(id: $0.id, name: $0.name, unit: "kg") }
             )
         }
     }
@@ -2064,6 +2108,7 @@ private struct WeightsGroupEditorSheet: View {
 
 private struct WeightsTrackingSection: View {
     @Binding var bodyParts: [BodyPartWeights]
+    var focusBinding: FocusState<UUID?>.Binding
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -2082,6 +2127,7 @@ private struct WeightsTrackingSection: View {
                                 .glassEffect(in: .rect(cornerRadius: 8.0))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .frame(height: 40)
+                                .focused(focusBinding, equals: part.id)
                                 .onSubmit {
                                     part.isEditing = false
                                 }
@@ -2131,7 +2177,7 @@ private struct WeightsTrackingSection: View {
                         Text("Weight")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .frame(width: 60, alignment: .center)
+                            .frame(width: 90, alignment: .center)
 
                         Text("Sets")
                             .font(.caption)
@@ -2164,13 +2210,23 @@ private struct WeightsTrackingSection: View {
                                     .padding(.horizontal, 8)
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(minWidth: 0, maxWidth: .infinity)
+                                        .focused(focusBinding, equals: exercise.id)
 
                                 TextField(exercise.placeholderWeight.isEmpty ? "0" : exercise.placeholderWeight, text: $exercise.weight)
                                     .keyboardType(.decimalPad)
                                     .padding(.vertical, 6)
-                                    .padding(.horizontal, 8)
+                                    .padding(.leading, 8)
+                                    .padding(.trailing, 28) // leave room for unit suffix
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
-                                    .frame(width: 60)
+                                    .frame(width: 80)
+                                    .focused(focusBinding, equals: exercise.id)
+                                    // focus is handled by FocusState equals binding; no explicit tap handler needed
+                                    .overlay(alignment: .trailing) {
+                                        Text(exercise.unit.uppercased())
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .padding(.trailing, 8)
+                                    }
 
                                 TextField(exercise.placeholderSets.isEmpty ? "0" : exercise.placeholderSets, text: $exercise.sets)
                                     .keyboardType(.numberPad)
@@ -2178,6 +2234,7 @@ private struct WeightsTrackingSection: View {
                                     .padding(.horizontal, 8)
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 40)
+                                    .focused(focusBinding, equals: exercise.id)
 
                                 Text("x")
                                     .frame(width: 15)
@@ -2188,6 +2245,7 @@ private struct WeightsTrackingSection: View {
                                     .padding(.horizontal, 8)
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 40)
+                                    .focused(focusBinding, equals: exercise.id)
 
                                 if part.isEditing {
                                     Button {
@@ -2248,5 +2306,58 @@ private struct WeightsTrackingSection: View {
         guard let partIndex = bodyParts.firstIndex(where: { $0.id == bodyPartId }) else { return }
         guard let exerciseIndex = bodyParts[partIndex].exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
         bodyParts[partIndex].exercises.remove(at: exerciseIndex)
+    }
+
+}
+
+// Safe-area inset dismiss bar that naturally sits above the keyboard.
+private struct KeyboardDismissBar: View {
+    var isVisible: Bool
+    var selectedUnit: String?
+    var tint: Color
+    var onDismiss: () -> Void
+    var onSelectUnit: (String) -> Void
+
+    var body: some View {
+        Group {
+            if isVisible {
+                HStack(spacing: 12) {
+                    ForEach(["kg", "lbs"], id: \.self) { unit in
+                        let isSelected = selectedUnit?.lowercased() == unit
+                        Button {
+                            onSelectUnit(unit)
+                        } label: {
+                            Text(unit.uppercased())
+                                .font(.callout.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                                .foregroundStyle(isSelected ? tint : .primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+
+                    Button(action: onDismiss) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: isVisible)
+            } else {
+                EmptyView()
+                    .frame(height: 0)
+            }
+        }
     }
 }

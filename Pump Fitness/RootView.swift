@@ -40,6 +40,9 @@ struct RootView: View {
     @State private var caloriesBurnedToday: Double = 0
     @State private var stepsTakenToday: Double = 0
     @State private var distanceTravelledToday: Double = 0
+    @State private var nightSleepSecondsToday: TimeInterval = 0
+    @State private var napSleepSecondsToday: TimeInterval = 0
+    @State private var weeklySleepEntries: [SleepDayEntry] = SleepDayEntry.sampleEntries()
     @State private var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     @State private var goals: [GoalItem] = GoalItem.sampleDefaults()
     @State private var habits: [HabitDefinition] = HabitDefinition.defaults
@@ -79,6 +82,12 @@ struct RootView: View {
             .onChange(of: itineraryEvents) { _, newValue in handleItineraryEventsChange(newValue) }
             .onChange(of: checkedMeals) { _, newValue in handleCheckedMealsChange(newValue) }
             .onChange(of: accounts.first?.maintenanceCalories) { _, newValue in handleMaintenanceCaloriesChange(newValue) }
+            .onChange(of: nightSleepSecondsToday) { _, _ in
+                updateWeeklySleepEntry(for: selectedDate)
+            }
+            .onChange(of: napSleepSecondsToday) { _, _ in
+                updateWeeklySleepEntry(for: selectedDate)
+            }
     }
 
     @ViewBuilder
@@ -153,6 +162,7 @@ struct RootView: View {
         loadDay(for: selectedDate)
         refreshWeeklyCheckInStatuses(for: selectedDate)
         loadExpensesForWeek(anchorDate: selectedDate)
+        loadWeeklySleep(for: selectedDate)
     }
 
     private func handleSelectedDateChange(_ newDate: Date) {
@@ -160,6 +170,7 @@ struct RootView: View {
         refreshWeeklyCheckInStatuses(for: newDate)
         refreshWeightHistoryCache()
         loadExpensesForWeek(anchorDate: newDate)
+        loadWeeklySleep(for: newDate)
     }
 
     private func handleConsumedCaloriesChange(_ newValue: Int) {
@@ -387,7 +398,8 @@ private extension RootView {
                     cravings: [],
                     mealReminders: MealReminder.defaults,
                     weeklyProgress: [],
-                    supplements: [],
+                    workoutSupplements: [],
+                    nutritionSupplements: [],
                     dailyTasks: [],
                     itineraryEvents: [],
                     caloriesBurnGoal: 800,
@@ -637,6 +649,46 @@ private extension RootView {
         }
     }
 
+    func loadWeeklySleep(for anchorDate: Date) {
+        let dates = datesForWeek(containing: anchorDate)
+        let group = DispatchGroup()
+        var collected: [SleepDayEntry] = []
+
+        for date in dates {
+            group.enter()
+            dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
+                DispatchQueue.main.async {
+                    let resolvedDay = day ?? Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: trackedMacros)
+                    collected.append(
+                        SleepDayEntry(
+                            date: resolvedDay.date,
+                            nightSeconds: resolvedDay.nightSleepSeconds,
+                            napSeconds: resolvedDay.napSleepSeconds
+                        )
+                    )
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            self.weeklySleepEntries = collected.sorted { $0.date < $1.date }
+        }
+    }
+
+    private func updateWeeklySleepEntry(for date: Date) {
+        let dayStart = Calendar.current.startOfDay(for: date)
+        if let idx = weeklySleepEntries.firstIndex(where: { Calendar.current.isDate($0.date, inSameDayAs: dayStart) }) {
+            weeklySleepEntries[idx].nightSeconds = nightSleepSecondsToday
+            weeklySleepEntries[idx].napSeconds = napSleepSecondsToday
+        } else {
+            // if not present, insert and keep sorted
+            let entry = SleepDayEntry(date: dayStart, nightSeconds: nightSleepSecondsToday, napSeconds: napSleepSecondsToday)
+            weeklySleepEntries.append(entry)
+            weeklySleepEntries.sort { $0.date < $1.date }
+        }
+    }
+
     func applyDayState(_ day: Day, for targetDate: Date) {
         if let account = fetchAccount() {
             maintenanceCalories = account.maintenanceCalories
@@ -649,6 +701,8 @@ private extension RootView {
         caloriesBurnedToday = day.caloriesBurned
         stepsTakenToday = day.stepsTaken
         distanceTravelledToday = day.distanceTravelled
+        nightSleepSecondsToday = day.nightSleepSeconds
+        napSleepSecondsToday = day.napSleepSeconds
         consumedCalories = day.caloriesConsumed
         weightEntries = day.weightEntries
         refreshWeightHistoryCache()
@@ -704,6 +758,7 @@ private extension RootView {
             }
         }
         isHydratingDailyActivity = false
+        loadWeeklySleep(for: targetDate)
     }
 
     private func updateExpenseEntriesState(forDay dayDate: Date, with entries: [ExpenseEntry]) {
@@ -934,6 +989,39 @@ private extension RootView {
                 print("RootView: failed to sync daily activity metrics to Firestore for date=\(selectedDate)")
             }
         }
+    }
+
+    func persistSleep(nightSeconds: TimeInterval? = nil, napSeconds: TimeInterval? = nil) {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+
+        if let nightSeconds {
+            day.nightSleepSeconds = nightSeconds
+            nightSleepSecondsToday = nightSeconds
+        }
+        if let napSeconds {
+            day.napSleepSeconds = napSeconds
+            napSleepSecondsToday = napSeconds
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save sleep locally: \(error)")
+        }
+
+        var fields: [String: Any] = [:]
+        if let nightSeconds { fields["nightSleepSeconds"] = nightSeconds }
+        if let napSeconds { fields["napSleepSeconds"] = napSeconds }
+
+        guard !fields.isEmpty else { return }
+
+        dayFirestoreService.updateDayFields(fields, for: day) { success in
+            if !success {
+                print("RootView: failed to sync sleep to Firestore for date=\(selectedDate)")
+            }
+        }
+
+        loadWeeklySleep(for: selectedDate)
     }
 
     func persistDailyGoals(calorieGoalBurn: Int, stepsGoal: Int, distanceGoal: Double) {
@@ -1271,18 +1359,6 @@ private extension RootView {
             var autoRestNeedsPersist: [(Date, WorkoutCheckInStatus)] = []
 
             for (idx, status) in resolved.enumerated() {
-                // If this date was recently updated locally, preserve the local value
-                let key = self.dateKey(for: weekDates[idx])
-                if self.locallyUpdatedDayKeys.contains(key) {
-                    // keep existing weeklyCheckInStatuses value if available
-                    if self.weeklyCheckInStatuses.indices.contains(idx) {
-                        applied[idx] = self.weeklyCheckInStatuses[idx]
-                    } else {
-                        applied[idx] = status
-                    }
-                    continue
-                }
-
                 if autoRestDayIndices.contains(idx) && status == .notLogged {
                     applied[idx] = .rest
                     autoRestNeedsPersist.append((weekDates[idx], .rest))
@@ -1301,15 +1377,6 @@ private extension RootView {
 
     func updateCheckInStatus(_ status: WorkoutCheckInStatus, for date: Date, shouldRefresh: Bool = true) {
         Task {
-            let key = dateKey(for: date)
-            // Mark as locally updated to avoid quick remote refresh overwrite
-            DispatchQueue.main.async {
-                self.locallyUpdatedDayKeys.insert(key)
-            }
-            // Remove the local lock after a short debounce window
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                self.locallyUpdatedDayKeys.remove(key)
-            }
             let day = Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: trackedMacros)
             day.workoutCheckInStatusRaw = status.rawValue
             do {
@@ -1349,23 +1416,24 @@ private extension RootView {
 
     func datesForWeek(containing date: Date) -> [Date] {
         let start = startOfWeek(containing: date)
-        var calendar = Calendar.current
-        calendar.firstWeekday = 2 // Monday
+        let calendar = Calendar.current
         return (0..<7).compactMap { offset in
             calendar.date(byAdding: .day, value: offset, to: start)
         }
     }
 
+    // Anchor weeks to Monday explicitly to avoid any timezone- or locale-driven drift.
     func startOfWeek(containing date: Date) -> Date {
-        var calendar = Calendar.current
-        calendar.firstWeekday = 2 // Monday
-        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: startOfDay)
+        // Monday should map to 2 in the Gregorian calendar. Compute how many days to subtract.
+        let daysFromMonday = (weekday + 5) % 7 // Mon -> 0, Tue -> 1, ..., Sun -> 6
+        return calendar.date(byAdding: .day, value: -daysFromMonday, to: startOfDay) ?? startOfDay
     }
 
     func weekdayIndex(for date: Date) -> Int {
-        var calendar = Calendar.current
-        calendar.firstWeekday = 2 // Monday
+        let calendar = Calendar.current
         let start = startOfWeek(containing: date)
         let startOfDay = calendar.startOfDay(for: date)
         let diff = calendar.dateComponents([.day], from: start, to: startOfDay).day ?? 0
@@ -1489,7 +1557,8 @@ private extension RootView {
                 local.expenseCurrencySymbol = fetched.expenseCurrencySymbol
                     // Persist weekly progress and supplements from server into local Account
                     local.weeklyProgress = fetched.weeklyProgress
-                    local.supplements = fetched.supplements
+                    local.workoutSupplements = fetched.workoutSupplements
+                    local.nutritionSupplements = fetched.nutritionSupplements
                 local.goals = fetched.goals
                 local.habits = fetched.habits
                 local.mealReminders = fetched.mealReminders
@@ -1531,7 +1600,8 @@ private extension RootView {
                     groceryItems: fetched.groceryItems,
                     expenseCategories: fetched.expenseCategories, expenseCurrencySymbol: fetched.expenseCurrencySymbol, goals: fetched.goals, habits: fetched.habits, mealReminders: fetched.mealReminders,
                     weeklyProgress: fetched.weeklyProgress,
-                    supplements: fetched.supplements,
+                    workoutSupplements: fetched.workoutSupplements,
+                    nutritionSupplements: fetched.nutritionSupplements,
                     dailyTasks: fetched.dailyTasks,
                     itineraryEvents: fetched.itineraryEvents,
                     sports: fetched.sports,
@@ -1678,6 +1748,9 @@ private extension RootView {
                                     expenseCurrencySymbol: $expenseCurrencySymbol,
                                     expenseCategories: $expenseCategories,
                                     expenseEntries: $expenseEntries,
+                                    nightSleepSeconds: $nightSleepSecondsToday,
+                                    napSleepSeconds: $napSleepSecondsToday,
+                                    weeklySleepEntries: $weeklySleepEntries,
                                     onUpdateActivityTimers: { timers in
                                         persistActivityTimers(timers)
                                     },
@@ -1698,6 +1771,15 @@ private extension RootView {
                                     },
                                     onDeleteExpenseEntry: { id in
                                         deleteExpenseEntry(id)
+                                    }
+                                    ,
+                                    onUpdateSleep: { night, nap in
+                                        persistSleep(nightSeconds: night, napSeconds: nap)
+                                    }
+                                    , onLiveSleepUpdate: { night, nap in
+                                        // Live UI-only update (do not persist every tick)
+                                        nightSleepSecondsToday = night
+                                        napSleepSecondsToday = nap
                                     }
                                 )
                             }

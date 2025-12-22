@@ -57,10 +57,8 @@ class DayFirestoreService {
     }
 
     private func encodeSportActivities(_ activities: [SportActivityRecord]) -> [[String: Any]] {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
         return activities.map { activity in
-            let dayStart = cal.startOfDay(for: activity.date)
+            let dayStart = Calendar.current.startOfDay(for: activity.date)
             return [
                 "id": activity.id,
                 "sportName": activity.sportName,
@@ -186,6 +184,8 @@ class DayFirestoreService {
         if day.caloriesBurned != 0 { return true }
         if day.stepsTaken != 0 { return true }
         if day.distanceTravelled != 0 { return true }
+        if day.nightSleepSeconds > 0 { return true }
+        if day.napSleepSeconds > 0 { return true }
         if day.macroConsumptions.contains(where: { $0.consumed != 0 }) { return true }
         if !day.mealIntakes.isEmpty { return true }
         if !day.dailyTaskCompletions.isEmpty { return true }
@@ -265,6 +265,8 @@ class DayFirestoreService {
                 let teamMetricValuesRemote = (data["teamPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeTeamMetricValue($0) }
                 let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
                 let expensesRemote = (data["expenses"] as? [[String: Any]] ?? []).compactMap { self.decodeExpenseEntry($0) }
+                let nightSleepRemote = (data["nightSleepSeconds"] as? NSNumber)?.doubleValue ?? data["nightSleepSeconds"] as? Double
+                let napSleepRemote = (data["napSleepSeconds"] as? NSNumber)?.doubleValue ?? data["napSleepSeconds"] as? Double
                 let teamHomeScoreRemote = data["teamHomeScore"] as? Int ?? 0
                 let teamAwayScoreRemote = data["teamAwayScore"] as? Int ?? 0
                 if let ctx = context {
@@ -299,6 +301,12 @@ class DayFirestoreService {
                     }
                     if let distanceRemote = distanceRemote {
                         day.distanceTravelled = max(day.distanceTravelled, distanceRemote)
+                    }
+                    if let nightSleepRemote = nightSleepRemote {
+                        day.nightSleepSeconds = max(day.nightSleepSeconds, nightSleepRemote)
+                    }
+                    if let napSleepRemote = napSleepRemote {
+                        day.napSleepSeconds = max(day.napSleepSeconds, napSleepRemote)
                     }
                     if let takenWorkoutRemote = data["takenWorkoutSupplements"] as? [String] {
                         let merged = Array(Set(day.takenWorkoutSupplements).union(Set(takenWorkoutRemote)))
@@ -413,6 +421,8 @@ class DayFirestoreService {
                         caloriesBurned: caloriesBurnedRemote ?? 0,
                         stepsTaken: stepsTakenRemote ?? 0,
                         distanceTravelled: distanceRemote ?? 0,
+                        nightSleepSeconds: nightSleepRemote ?? 0,
+                        napSleepSeconds: napSleepRemote ?? 0,
                         weightEntries: weightEntriesRemote
                     )
                     completion(day)
@@ -464,10 +474,14 @@ class DayFirestoreService {
     }
 
     /// Save a Day to Firestore. Document ID will be `dd-MM-yyyy` for the `day.date`.
-    func saveDay(_ day: Day, completion: @escaping (Bool) -> Void) {
+    /// - Parameters:
+    ///   - day: Day to persist
+    ///   - forceWrite: When true, write even zero/empty fields so remote data can be cleared
+    func saveDay(_ day: Day, forceWrite: Bool = false, completion: @escaping (Bool) -> Void) {
         // If the day only contains default/zero values then avoid uploading it —
         // this prevents accidental overwrites of non-zero remote/core-data values with zeros.
-        if !dayHasMeaningfulData(day) {
+        // `forceWrite` is used when we need to clear remote fields (e.g., deleting the last meal).
+        if !forceWrite && !dayHasMeaningfulData(day) {
             completion(true)
             return
         }
@@ -489,60 +503,71 @@ class DayFirestoreService {
             data["workoutCheckInStatus"] = statusRaw
         }
 
-        if day.caloriesConsumed != 0 {
+        if forceWrite || day.caloriesConsumed != 0 {
             data["caloriesConsumed"] = day.caloriesConsumed
         }
-        if !day.completedMeals.isEmpty {
+        if forceWrite || !day.completedMeals.isEmpty {
             data["completedMeals"] = day.completedMeals
         }
-        if !day.takenSupplements.isEmpty {
+        if forceWrite || !day.takenSupplements.isEmpty {
             data["takenSupplements"] = encodeTakenSupplements(day.takenSupplements)
         }
-        if !day.takenWorkoutSupplements.isEmpty {
+        if forceWrite || !day.takenWorkoutSupplements.isEmpty {
             data["takenWorkoutSupplements"] = encodeTakenWorkoutSupplements(day.takenWorkoutSupplements)
         }
-        if day.caloriesBurned > 0 {
+        if forceWrite || day.caloriesBurned > 0 {
             data["caloriesBurned"] = day.caloriesBurned
         }
-        if day.stepsTaken > 0 {
+        if forceWrite || day.stepsTaken > 0 {
             data["stepsTaken"] = day.stepsTaken
         }
-        if day.distanceTravelled > 0 {
+        if forceWrite || day.distanceTravelled > 0 {
             data["distanceTravelled"] = day.distanceTravelled
         }
-        if day.macroConsumptions.contains(where: { $0.consumed != 0 }) {
+        if forceWrite || day.nightSleepSeconds > 0 {
+            data["nightSleepSeconds"] = day.nightSleepSeconds
+        }
+        if forceWrite || day.napSleepSeconds > 0 {
+            data["napSleepSeconds"] = day.napSleepSeconds
+        }
+        if forceWrite || day.macroConsumptions.contains(where: { $0.consumed != 0 }) {
             data["macroConsumptions"] = encodeMacroConsumptions(day.macroConsumptions)
         }
-        if !day.mealIntakes.isEmpty {
+        if forceWrite || !day.mealIntakes.isEmpty {
             data["mealIntakes"] = encodeMealIntakes(day.mealIntakes)
         }
-        if !day.dailyTaskCompletions.isEmpty {
+        if forceWrite || !day.dailyTaskCompletions.isEmpty {
             data["dailyTaskCompletions"] = encodeDailyTaskCompletions(day.dailyTaskCompletions)
         }
         // Always include habit completions when present so toggles (including
         // clearing all completions) are persisted to Firestore.
-        if !day.habitCompletions.isEmpty {
+        if forceWrite || !day.habitCompletions.isEmpty {
             data["habitCompletions"] = encodeHabitCompletions(day.habitCompletions)
         }
-        if !day.sportActivities.isEmpty {
+        if forceWrite || !day.sportActivities.isEmpty {
             data["sportActivities"] = encodeSportActivities(day.sportActivities)
         }
-        if !day.soloMetricValues.isEmpty {
+        if forceWrite || !day.soloMetricValues.isEmpty {
             data["soloPlayEntries"] = encodeSoloMetricValues(day.soloMetricValues)
         }
-        if !day.teamMetricValues.isEmpty {
+        if forceWrite || !day.teamMetricValues.isEmpty {
             data["teamPlayEntries"] = encodeTeamMetricValues(day.teamMetricValues)
         }
-        if day.teamHomeScore != 0 {
+        if forceWrite || day.teamHomeScore != 0 {
             data["teamHomeScore"] = day.teamHomeScore
         }
-        if day.teamAwayScore != 0 {
+        if forceWrite || day.teamAwayScore != 0 {
             data["teamAwayScore"] = day.teamAwayScore
         }
-        if day.weightEntries.contains(where: { $0.hasContent }) {
+        if forceWrite || day.weightEntries.contains(where: { $0.hasContent }) {
             data["weightEntries"] = encodeWeightEntries(day.weightEntries.filter { $0.hasContent })
         }
-        data["expenses"] = encodeExpenses(day.expenses)
+        if forceWrite || !day.expenses.isEmpty {
+            data["expenses"] = encodeExpenses(day.expenses)
+        }
+
+        let useMerge = !forceWrite
+
         if let uid = Auth.auth().currentUser?.uid {
             // accounts/{userID}/days/{dayDate}
             let path = "accounts/\(uid)/days/\(key)"
@@ -550,7 +575,7 @@ class DayFirestoreService {
                 .document(uid)
                 .collection(daysSubcollection)
                 .document(key)
-                .setData(data, merge: true) { err in
+                .setData(data, merge: useMerge) { err in
                     if let err = err {
                         print("DayFirestoreService: failed to save day to \(path): \(err)")
                     }
@@ -561,10 +586,9 @@ class DayFirestoreService {
 
         // Fallback legacy path
         let path = "\(daysSubcollection)/\(key)"
-        db.collection(daysSubcollection).document(key).setData(data, merge: true) { err in
+        db.collection(daysSubcollection).document(key).setData(data, merge: useMerge) { err in
             if let err = err {
                 print("DayFirestoreService: failed to save day to legacy path \(path): \(err)")
-            } else {
             }
             completion(err == nil)
         }
@@ -775,6 +799,10 @@ class DayFirestoreService {
         for (key, value) in fields {
             if key == "weightEntries", let arr = value as? [WeightExerciseValue] {
                 filtered[key] = arr
+                continue
+            }
+            if key == "nightSleepSeconds" || key == "napSleepSeconds" {
+                filtered[key] = value
                 continue
             }
             if key == "expenses" {

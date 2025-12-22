@@ -238,12 +238,11 @@ struct SportActivityRecord: Codable, Hashable, Identifiable {
         date: Date,
         values: [SportMetricValue]
     ) {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
         self.id = id
         self.sportName = sportName
         self.colorHex = colorHex
-        self.date = cal.startOfDay(for: date)
+        // Keep the date anchored in the user's current calendar/time zone to avoid off-by-one-day shifts when viewing charts.
+        self.date = Calendar.current.startOfDay(for: date)
         self.values = values
     }
 
@@ -271,12 +270,38 @@ struct SportActivityRecord: Codable, Hashable, Identifiable {
     }
 }
 
+struct SleepDayEntry: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var date: Date
+    var nightSeconds: TimeInterval
+    var napSeconds: TimeInterval
+
+    var totalSeconds: TimeInterval { nightSeconds + napSeconds }
+
+    static func sampleEntries() -> [SleepDayEntry] {
+        let cal = Calendar.current
+        let today = Date()
+        let weekday = cal.component(.weekday, from: today)
+        let startIndex = 2 // Monday
+        let offsetToStart = (weekday - startIndex + 7) % 7
+        let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
+
+        return (0..<7).compactMap { i in
+            guard let d = cal.date(byAdding: .day, value: i, to: startOfWeek) else { return nil }
+            let night = TimeInterval(6 * 3600 + (i % 3) * 1800)
+            let nap = TimeInterval((i % 4 == 0) ? 30 * 60 : 0)
+            return SleepDayEntry(date: d, nightSeconds: night, napSeconds: nap)
+        }
+    }
+}
+
 struct WeightExerciseValue: Codable, Hashable, Identifiable {
     var id: String
     var groupId: UUID
     var exerciseId: UUID
     var exerciseName: String
     var weight: String
+    var unit: String
     var sets: String
     var reps: String
 
@@ -286,6 +311,7 @@ struct WeightExerciseValue: Codable, Hashable, Identifiable {
         exerciseId: UUID,
         exerciseName: String,
         weight: String,
+        unit: String = "kg",
         sets: String,
         reps: String
     ) {
@@ -294,6 +320,7 @@ struct WeightExerciseValue: Codable, Hashable, Identifiable {
         self.exerciseId = exerciseId
         self.exerciseName = exerciseName
         self.weight = weight
+        self.unit = unit
         self.sets = sets
         self.reps = reps
     }
@@ -307,6 +334,7 @@ struct WeightExerciseValue: Codable, Hashable, Identifiable {
         let id = dictionary["id"] as? String ?? exerciseId.uuidString
         let exerciseName = dictionary["exerciseName"] as? String ?? ""
         let weight = dictionary["weight"] as? String ?? ""
+        let unit = dictionary["unit"] as? String ?? "kg"
         let sets = dictionary["sets"] as? String ?? ""
         let reps = dictionary["reps"] as? String ?? ""
 
@@ -316,6 +344,7 @@ struct WeightExerciseValue: Codable, Hashable, Identifiable {
             exerciseId: exerciseId,
             exerciseName: exerciseName,
             weight: weight,
+            unit: unit,
             sets: sets,
             reps: reps
         )
@@ -328,6 +357,7 @@ struct WeightExerciseValue: Codable, Hashable, Identifiable {
             "exerciseId": exerciseId.uuidString,
             "exerciseName": exerciseName,
             "weight": weight,
+            "unit": unit,
             "sets": sets,
             "reps": reps
         ]
@@ -408,6 +438,8 @@ class Day {
     var caloriesBurned: Double = 0
     var stepsTaken: Double = 0
     var distanceTravelled: Double = 0
+    var nightSleepSeconds: Double = 0
+    var napSleepSeconds: Double = 0
     var weightEntries: [WeightExerciseValue] = []
     var expenses: [ExpenseEntry] = []
 
@@ -418,12 +450,20 @@ class Day {
         return fmt.string(from: date)
     }
 
+    // Preferred unit for weight display for this day. "kg" or "lbs".
+    var weightUnitRaw: String? = "kg"
+
+    var weightUnit: String {
+        weightUnitRaw ?? "kg"
+    }
+
     init(
         id: String? = UUID().uuidString,
         date: Date = Date(),
         caloriesConsumed: Int = 0,
         calorieGoal: Int = 0,
         maintenanceCalories: Int = 0,
+        weightUnitRaw: String? = "kg",
         macroFocusRaw: String? = nil,
         workoutCheckInStatusRaw: String? = WorkoutCheckInStatus.notLogged.rawValue,
         macroConsumptions: [MacroConsumption] = [],
@@ -441,6 +481,8 @@ class Day {
         caloriesBurned: Double = 0,
         stepsTaken: Double = 0,
         distanceTravelled: Double = 0,
+        nightSleepSeconds: Double = 0,
+        napSleepSeconds: Double = 0,
         weightEntries: [WeightExerciseValue] = [],
         expenses: [ExpenseEntry] = []
     ) {
@@ -451,6 +493,7 @@ class Day {
         self.caloriesConsumed = caloriesConsumed
         self.calorieGoal = calorieGoal
         self.maintenanceCalories = maintenanceCalories
+        self.weightUnitRaw = weightUnitRaw
         self.macroFocusRaw = macroFocusRaw
         self.workoutCheckInStatusRaw = workoutCheckInStatusRaw
         self.macroConsumptions = macroConsumptions
@@ -468,6 +511,8 @@ class Day {
         self.caloriesBurned = caloriesBurned
         self.stepsTaken = stepsTaken
         self.distanceTravelled = distanceTravelled
+        self.nightSleepSeconds = nightSleepSeconds
+        self.napSleepSeconds = napSleepSeconds
         self.weightEntries = weightEntries
         self.expenses = expenses
     }

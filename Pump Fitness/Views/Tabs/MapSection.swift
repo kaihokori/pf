@@ -121,6 +121,24 @@ private struct MapEventAnnotationView: View {
     }
 }
 
+private struct UserLocationAnnotationView: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.25))
+                .frame(width: 28, height: 28)
+
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2)
+                )
+        }
+    }
+}
+
 private struct FullScreenMapView: View {
     @Binding var events: [ItineraryEvent]
     @ObservedObject var locationManager: TravelLocationManager
@@ -133,6 +151,8 @@ private struct FullScreenMapView: View {
     // button was just tapped. This prevents the 'add' sheet opening when
     // the user taps an existing annotation.
     @State private var didTapAnnotation: Bool = false
+    // Temporary guard to suppress POI sheet while a detail view is opening.
+    @State private var suppressPOISheet: Bool = false
     @State private var editingEvent: ItineraryEvent?
     @State private var editorSeedDate = Date()
     @State private var initialCamera: MapCameraPosition? = nil
@@ -187,9 +207,14 @@ private struct FullScreenMapView: View {
                                             // map's tap handler can ignore the same
                                             // interaction and avoid opening the add sheet.
                                             didTapAnnotation = true
+                                            suppressPOISheet = true
                                             // Reset after a short delay to re-enable taps
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                                                 didTapAnnotation = false
+                                            }
+                                            // Give the navigation push a moment before allowing POI taps
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                                suppressPOISheet = false
                                             }
                                             selectedEvent = event
                                         } label: {
@@ -199,16 +224,41 @@ private struct FullScreenMapView: View {
                                 }
                             }
                         }
+
+                        if let userCoordinate = locationManager.lastLocation?.coordinate {
+                            Annotation("You", coordinate: userCoordinate) {
+                                UserLocationAnnotationView()
+                            }
+                            .annotationTitles(.hidden)
+                        }
                     }
                     .ignoresSafeArea()
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 0)
                             .onEnded { gesture in
+                                // Treat as tap only if the finger did not move meaningfully
+                                let movement = hypot(gesture.translation.width, gesture.translation.height)
+                                let tapSlop: CGFloat = 12
+                                if movement > tapSlop { return }
+
                                 // Convert tap point to coordinate and resolve nearby POI
                                 let tapPoint = gesture.location
                                 // If an annotation button was just tapped, ignore
                                 // this tap to avoid opening the add sheet.
-                                if didTapAnnotation { return }
+                                if didTapAnnotation || suppressPOISheet { return }
+
+                                // If the tap landed within the on-screen bounds of an existing
+                                // annotation (approximate the rendered size), treat it as an
+                                // annotation tap and do not open the add sheet.
+                                let halfWidth: CGFloat = 24   // approximates 35x35 pin with padding
+                                let halfHeight: CGFloat = 24
+                                for event in filteredEvents {
+                                    guard let coord = event.coordinate,
+                                          let point = proxy.convert(coord, to: .local) else { continue }
+                                    let dx = abs(point.x - tapPoint.x)
+                                    let dy = abs(point.y - tapPoint.y)
+                                    if dx <= halfWidth && dy <= halfHeight { return }
+                                }
 
                                 if let coordinate = proxy.convert(tapPoint, from: .local) {
                                     resolvePOI(at: coordinate)
@@ -218,6 +268,10 @@ private struct FullScreenMapView: View {
                 }
 
                 .onAppear {
+                    if locationManager.lastLocation == nil {
+                        locationManager.requestLocation()
+                    }
+
                     // Ensure full-screen map initially frames only the annotation pins
                     // and ignores subsequent location updates so it doesn't include
                     // the user's current location unexpectedly.

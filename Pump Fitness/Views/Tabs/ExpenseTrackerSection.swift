@@ -169,7 +169,7 @@ struct ExpenseTrackerSection: View {
                     }
                 }
             }
-            .frame(height: 140)
+            .frame(height: 200)
 
             VStack(spacing: 0) {
                 ForEach(weekDisplayDates, id: \.self) { day in
@@ -277,7 +277,6 @@ struct ExpenseTrackerSection: View {
                 }
             }
         }
-        .keyboardDismissToolbar()
     }
 
     private func entries(for day: Date) -> [ExpenseEntry] {

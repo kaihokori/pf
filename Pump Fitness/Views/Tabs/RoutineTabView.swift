@@ -1785,6 +1785,10 @@ private struct ExpenseCategoriesEditorView: View {
     @State private var colorPickerTargetId: Int?
     @State private var workingCurrencySymbol: String = ""
 
+    // Predefined currency symbol options for the editor
+    private let currencyOptions: [String] = ["$", "€", "£", "¥", "₹", "₩", "₪", "₫", "₱", "₦"]
+    private let currencyPillColumns: [GridItem] = [GridItem(.adaptive(minimum: 80), spacing: 12)]
+
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
@@ -1830,10 +1834,17 @@ private struct ExpenseCategoriesEditorView: View {
                         Text("Currency")
                             .font(.subheadline.weight(.semibold))
 
-                        TextField("Symbol or code (e.g. $, USD)", text: $workingCurrencySymbol)
-                            .textInputAutocapitalization(.never)
-                            .padding()
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        LazyVGrid(columns: currencyPillColumns, alignment: .leading, spacing: 12) {
+                            ForEach(currencyOptions, id: \.self) { option in
+                                SelectablePillComponent(
+                                    label: option,
+                                    isSelected: workingCurrencySymbol == option,
+                                    selectedTint: Color.accentColor
+                                ) {
+                                    workingCurrencySymbol = option
+                                }
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 20)

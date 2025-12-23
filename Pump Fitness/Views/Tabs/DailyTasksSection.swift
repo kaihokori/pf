@@ -11,18 +11,11 @@ struct DailyTasksSection: View {
     var tileMinHeight: CGFloat = DailyTasksLayout.tileMinHeight
     var onToggle: (String, Bool) -> Void
     var onRemove: (String) -> Void
-    // Optional binding to the Day model so the section can read/write the preferred weight unit.
     var day: Binding<Day?>? = nil
 
     var body: some View {
 
         VStack(spacing: 16) {
-            // Weight unit toggle (per-day preference)
-            HStack {
-                Spacer()
-                WeightUnitToggleView(day: day)
-            }
-            .padding(.horizontal, 18)
 
             // GeometryReader to compute center of the viewport for scaling
             GeometryReader { outerGeo in
@@ -166,48 +159,6 @@ private struct DailyTaskCircle: View {
             }
         }
         .animation(.spring(), value: item.isCompleted)
-    }
-}
-
-private struct WeightUnitToggleView: View {
-    var day: Binding<Day?>?
-    @Environment(\.modelContext) private var modelContext
-    @State private var weightUnit: String = "kg"
-
-    var body: some View {
-        Button(action: toggleUnit) {
-            Text(weightUnit.uppercased())
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.secondary.opacity(0.06))
-                )
-        }
-        .buttonStyle(.plain)
-        .onAppear {
-            if let d = day?.wrappedValue, let w = d.weightUnitRaw {
-                weightUnit = w
-            } else {
-                weightUnit = "kg"
-            }
-        }
-    }
-
-    private func toggleUnit() {
-        let new = (weightUnit == "kg") ? "lbs" : "kg"
-        weightUnit = new
-        if let binding = day, let d = binding.wrappedValue {
-            d.weightUnitRaw = new
-            binding.wrappedValue = d
-            do {
-                try modelContext.save()
-            } catch {
-                // ignore save errors here
-            }
-        }
     }
 }
 

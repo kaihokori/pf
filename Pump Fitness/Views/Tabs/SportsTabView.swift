@@ -417,9 +417,16 @@ struct SportsTabView: View {
                     .font(.caption)
                     .symbolRenderingMode(.monochrome)
                     .foregroundStyle(.white)
+
+                // Small description below the symbol (e.g., "UV")
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+
                 Text(value)
                     .font(.headline)
                     .foregroundStyle(.white)
+
                 Text(unit)
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.85))
@@ -1061,8 +1068,13 @@ struct SportsTabView: View {
                                             let weekDates = sportWeekDates(anchor: selectedDate)
                                             let sportRecords = sportActivities.filter { $0.sportName.lowercased() == sport.name.lowercased() }
 
+                                            // Only include days that actually have records
+                                            let daysWithRecords = weekDates.filter { d in
+                                                sportRecords.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: d) })
+                                            }
+
                                             VStack(spacing: 0) {
-                                                ForEach(weekDates, id: \.self) { day in
+                                                ForEach(daysWithRecords, id: \.self) { day in
                                                     let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
 
                                                     Section(header:
@@ -1078,49 +1090,42 @@ struct SportsTabView: View {
                                                         }
                                                         .padding(.vertical, 8)
                                                     ) {
-                                                        if dayRecords.isEmpty {
-                                                            Text("No sports entries")
-                                                                .font(.caption2)
-                                                                .foregroundStyle(.secondary)
-                                                                .padding(.vertical, 8)
-                                                        } else {
-                                                            ForEach(dayRecords, id: \.id) { record in
-                                                                HStack(alignment: .top, spacing: 12) {
-                                                                    VStack(alignment: .leading, spacing: 6) {
-                                                                        ForEach(record.values, id: \.id) { val in
-                                                                            HStack(spacing: 6) {
-                                                                                Text(val.label)
-                                                                                    .font(.caption.weight(.semibold))
-                                                                                    .foregroundStyle(.secondary)
-                                                                                Text(formatMetricValue(val))
-                                                                                    .font(.caption)
-                                                                            }
+                                                        ForEach(dayRecords, id: \.id) { record in
+                                                            HStack(alignment: .top, spacing: 12) {
+                                                                VStack(alignment: .leading, spacing: 6) {
+                                                                    ForEach(record.values, id: \.id) { val in
+                                                                        HStack(spacing: 6) {
+                                                                            Text(val.label)
+                                                                                .font(.caption.weight(.semibold))
+                                                                                .foregroundStyle(.secondary)
+                                                                            Text(formatMetricValue(val))
+                                                                                .font(.caption)
                                                                         }
                                                                     }
+                                                                }
 
-                                                                    Spacer()
+                                                                Spacer()
 
-                                                                    Menu {
-                                                                        Button("Edit") {
-                                                                            editingSportRecord = record
-                                                                            dataEntrySportIndex = idx
-                                                                            dataEntryDefaultDate = record.date
-                                                                        }
-                                                                        Button("Delete", role: .destructive) {
-                                                                            sportActivities.removeAll { $0.id == record.id }
-                                                                            rebuildSports()
-                                                                        }
-                                                                    } label: {
-                                                                        Image(systemName: "ellipsis.circle")
-                                                                            .font(.callout)
-                                                                            .foregroundStyle(.primary)
+                                                                Menu {
+                                                                    Button("Edit") {
+                                                                        editingSportRecord = record
+                                                                        dataEntrySportIndex = idx
+                                                                        dataEntryDefaultDate = record.date
                                                                     }
-                                                                    .menuStyle(.borderlessButton)
+                                                                    Button("Delete", role: .destructive) {
+                                                                        sportActivities.removeAll { $0.id == record.id }
+                                                                        rebuildSports()
+                                                                    }
+                                                                } label: {
+                                                                    Image(systemName: "ellipsis.circle")
+                                                                        .font(.callout)
+                                                                        .foregroundStyle(.primary)
                                                                 }
-                                                                .padding(.vertical, 8)
-                                                                if record.id != dayRecords.last?.id {
-                                                                    Divider()
-                                                                }
+                                                                .menuStyle(.borderlessButton)
+                                                            }
+                                                            .padding(.vertical, 8)
+                                                            if record.id != dayRecords.last?.id {
+                                                                Divider()
                                                             }
                                                         }
                                                     }

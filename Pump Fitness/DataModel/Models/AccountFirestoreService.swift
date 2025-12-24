@@ -1,4 +1,5 @@
 import FirebaseFirestore
+import FirebaseAuth
 import Foundation
 
 class AccountFirestoreService {
@@ -7,7 +8,26 @@ class AccountFirestoreService {
 
     func fetchAccount(withId id: String, completion: @escaping (Account?) -> Void) {
         db.collection(collection).document(id).getDocument { snapshot, error in
-            guard let data = snapshot?.data(), error == nil else {
+            if let error {
+                print("AccountFirestoreService.fetchAccount error for id=\(id): \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+
+            guard let snapshot = snapshot else {
+                print("AccountFirestoreService.fetchAccount: no snapshot returned for id=\(id)")
+                completion(nil)
+                return
+            }
+
+            if !snapshot.exists {
+                print("AccountFirestoreService.fetchAccount: document does not exist for id=\(id)")
+                completion(nil)
+                return
+            }
+
+            guard let data = snapshot.data() else {
+                print("AccountFirestoreService.fetchAccount: snapshot exists but no data for id=\(id)")
                 completion(nil)
                 return
             }
@@ -22,6 +42,7 @@ class AccountFirestoreService {
             let remoteGroceries = (data["groceryItems"] as? [[String: Any]] ?? []).compactMap { GroceryItem(dictionary: $0) }
             let remoteExpenseCategories = (data["expenseCategories"] as? [[String: Any]] ?? []).compactMap { ExpenseCategory(dictionary: $0) }
             let remoteCurrencySymbol = (data["expenseCurrencySymbol"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let remoteWorkoutSchedule = (data["workoutSchedule"] as? [[String: Any]] ?? []).compactMap { WorkoutScheduleItem(dictionary: $0) }
 
             let workoutSupplements = (data["workoutSupplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
             let nutritionSupplements = (data["nutritionSupplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
@@ -47,6 +68,7 @@ class AccountFirestoreService {
                 activityLevel: data["activityLevel"] as? String,
                 startWeekOn: data["startWeekOn"] as? String,
                 autoRestDayIndices: (data["autoRestDayIndices"] as? [Int]) ?? (data["autoRestDayIndices"] as? [NSNumber])?.map { $0.intValue } ?? [],
+                workoutSchedule: remoteWorkoutSchedule.isEmpty ? WorkoutScheduleItem.defaults : remoteWorkoutSchedule,
                 trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) },
                 cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) },
                 groceryItems: remoteGroceries.isEmpty ? GroceryItem.sampleItems() : remoteGroceries,
@@ -75,8 +97,10 @@ class AccountFirestoreService {
     }
 
     func saveAccount(_ account: Account, completion: @escaping (Bool) -> Void) {
-        guard let id = account.id, !id.isEmpty else {
-            print("AccountFirestoreService.saveAccount: missing account id")
+        // Prefer the authenticated user's UID for the document id when signed in.
+        let currentUID = Auth.auth().currentUser?.uid
+        guard let id = (currentUID ?? account.id), !id.isEmpty else {
+            print("AccountFirestoreService.saveAccount: missing account id and no authenticated user")
             completion(false)
             return
         }
@@ -204,6 +228,7 @@ class AccountFirestoreService {
         data["soloMetrics"] = account.soloMetrics.map { $0.asDictionary }
         data["teamMetrics"] = account.teamMetrics.map { $0.asDictionary }
         data["activityTimers"] = account.activityTimers.map { $0.asDictionary }
+        data["workoutSchedule"] = account.workoutSchedule.map { $0.asDictionary }
         // Persist itinerary events even when empty so deletions propagate.
         data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
 

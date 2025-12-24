@@ -120,9 +120,10 @@ struct ActivityTimersSection: View {
     @State private var now: Date = Date()
 
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let columns: [GridItem] = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     private var renderedTimers: [RenderedTimer] {
-        timers.prefix(2).map { timer in
+        timers.map { timer in
             let duration = max(1, Double(timer.durationMinutes * 60))
             let endDate = runStates[timer.id]
             let remaining = endDate.map { max(0, $0.timeIntervalSince(now)) } ?? duration
@@ -195,7 +196,7 @@ struct ActivityTimersSection: View {
             if timers.isEmpty {
                 placeholder
             } else {
-                HStack(spacing: 12) {
+                LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(renderedTimers) { timer in
                         ActivityTimerCard(
                             accentColorOverride: accentColorOverride,
@@ -206,11 +207,6 @@ struct ActivityTimersSection: View {
                             nextLabel: timer.nextLabel,
                             onToggle: { toggleTimer(timer.item) }
                         )
-                        .frame(maxWidth: .infinity)
-                    }
-
-                    if renderedTimers.count == 1 {
-                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -332,7 +328,7 @@ private struct ActivityTimerCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .foregroundStyle(.white)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                    .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: 16.0))
             }
         }
         .padding(20)

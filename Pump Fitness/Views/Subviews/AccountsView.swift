@@ -39,6 +39,7 @@ struct AccountsView: View {
     @State private var showCameraUnavailableAlert = false
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
+    @State private var showMaintenanceExplainer = false
     @State private var showHealthKitStatusAlert = false
     @State private var healthKitStatusMessage = ""
     @State private var showAlertsSheet = false
@@ -54,7 +55,7 @@ struct AccountsView: View {
         let syncFromAccount = {
             let acc = account
             viewModel.draft.name = acc.name ?? ""
-            viewModel.draft.avatarImageData = acc.profileImage
+            viewModel.setAvatarImageData(acc.profileImage)
             viewModel.draft.avatarColor = AvatarColorOption(rawValue: Int(acc.profileAvatar ?? "0") ?? 0) ?? .emberPulse
             viewModel.draft.appTheme = AppTheme(rawValue: acc.theme ?? "multiColour") ?? .multiColour
             viewModel.draft.birthDate = acc.dateOfBirth ?? Date()
@@ -75,6 +76,7 @@ struct AccountsView: View {
                 viewModel.draft.heightFeet = ""
                 viewModel.draft.heightInches = ""
             }
+            viewModel.setBaselineFromDraft()
         }
         NavigationStack {
             ZStack {
@@ -159,18 +161,32 @@ struct AccountsView: View {
                                         .foregroundStyle(.secondary)
 
                                     if let gender = viewModel.draft.selectedGender, gender == .male || gender == .female {
-                                        Button(action: {
+                                        Button {
                                             Task { await MainActor.run { viewModel.calculateMaintenanceCalories() } }
-                                        }) {
+                                        } label: {
                                             Text("Auto")
                                                 .font(.subheadline)
                                                 .fontWeight(.semibold)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 8)
+                                                .glassEffect(in: .rect(cornerRadius: 18.0))
                                         }
                                         .buttonStyle(.plain)
                                     }
                                 }
                                 .padding()
                                 .surfaceCard(12)
+
+                                // Explanation tappable hint
+                                Button(action: { showMaintenanceExplainer = true }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "info.circle")
+                                        Text("Tap for Explanation")
+                                    }
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         
@@ -290,7 +306,7 @@ struct AccountsView: View {
         }
         .alert("Sign out of Pump Fitness?", isPresented: $showSignOutConfirmation) {
             Button("Sign Out", role: .destructive) {
-                Task { await viewModel.signOut() }
+                Task { await viewModel.signOut(in: modelContext) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -299,8 +315,8 @@ struct AccountsView: View {
         .alert("Delete your Pump Fitness account?", isPresented: $showDeleteConfirmation) {
             Button("Delete Account", role: .destructive) {
                 Task {
-                    await viewModel.deleteAccount()
-                    await viewModel.signOut()
+                    await viewModel.deleteAccount(in: modelContext)
+                    await viewModel.signOut(in: modelContext)
                     dismiss()
                 }
             }
@@ -346,6 +362,9 @@ struct AccountsView: View {
                     selectedPhotoPickerItem = nil
                 }
             }
+        }
+        .sheet(isPresented: $showMaintenanceExplainer) {
+            MaintenanceCaloriesExplainer()
         }
         .sheet(isPresented: $showAlertsSheet) {
             AlertSheetView(selectedAlerts: $selectedAlerts)
@@ -720,7 +739,7 @@ private struct IdentitySection: View {
         VStack(spacing: 20) {
             VStack(spacing: 16) {
                 Circle()
-                    .fill(viewModel.avatarGradient)
+                    .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
                     .frame(width: 96, height: 96)
                     .overlay {
                         if let avatarImage = viewModel.avatarImage {
@@ -818,6 +837,12 @@ private struct GenderSelector: View {
                         selectedGender = option
                     }
                 }
+            }
+            if selectedGender == .preferNotSay {
+                Text("Automatic maintenance calorie calculations are disabled unless you select Male or Female.")
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -1104,6 +1129,7 @@ final class AccountsViewModel: ObservableObject {
             name: "Dafa Budiman",
             avatarColor: .emberPulse,
             avatarImageData: nil,
+            avatarImageSignature: AccountProfile.signature(for: nil),
             appTheme: initialTheme,
             weekStart: initialWeekStart,
             birthDate: Calendar.current.date(from: DateComponents(year: 1994, month: 8, day: 14)) ?? Date(),
@@ -1309,6 +1335,11 @@ final class AccountsViewModel: ObservableObject {
 
     func setAvatarImageData(_ data: Data?) {
         draft.avatarImageData = data
+        draft.avatarImageSignature = AccountProfile.signature(for: data)
+    }
+
+    func setBaselineFromDraft() {
+        profile = draft
     }
 
     func applyExternalTheme(_ theme: AppTheme) {
@@ -1424,7 +1455,7 @@ final class AccountsViewModel: ObservableObject {
     }
 
     @MainActor
-    func signOut() async {
+    func signOut(in context: ModelContext? = nil) async {
         await performDestructiveAction {
             // Sign out from Firebase Auth
             do {
@@ -1440,28 +1471,106 @@ final class AccountsViewModel: ObservableObject {
             for key in keysToRemove {
                 self.defaults.removeObject(forKey: key)
             }
-            // Clear all Core Data objects
-            // TODO: Implement Core Data clearing using your persistence controller/model context
-            // Example: PersistenceController.shared.clearAll()
+            
+            // Clear all UserDefaults for this app (remove all persisted settings)
+            if let bundle = Bundle.main.bundleIdentifier {
+                self.defaults.removePersistentDomain(forName: bundle)
+                self.defaults.synchronize()
+            } else {
+                let keysToRemove = [ThemeManager.defaultsKey, Self.weekStartDefaultsKey, "currentUserName", "fasting.durationMinutes", "fasting.startTimestamp"]
+                for key in keysToRemove { self.defaults.removeObject(forKey: key) }
+            }
+
+            // Clear SwiftData local store for Account and Day models
+            if let ctx = context {
+                do {
+                    let dayReq = FetchDescriptor<Day>()
+                    let days = try ctx.fetch(dayReq)
+                    for d in days { ctx.delete(d) }
+
+                    let acctReq = FetchDescriptor<Account>()
+                    let accts = try ctx.fetch(acctReq)
+                    for a in accts { ctx.delete(a) }
+
+                    try ctx.save()
+                } catch {
+                    print("Failed to clear local SwiftData models: \(error)")
+                }
+            } else {
+                print("No ModelContext provided; skipping local SwiftData cleanup.")
+            }
         }
     }
 
     @MainActor
-    func deleteAccount() async {
+    func deleteAccount(in context: ModelContext?) async {
         await performDestructiveAction {
-            // Delete account document from Firestore using async/await
             guard let user = Auth.auth().currentUser else {
                 print("No authenticated user; cannot delete account from Firestore.")
                 return
             }
             let uid = user.uid
             let db = Firestore.firestore()
+
+            // Delete known subcollections (days) under the user's account doc
+            do {
+                let daysColl = db.collection("accounts").document(uid).collection("days")
+                let daysSnapshot = try await daysColl.getDocuments()
+                for doc in daysSnapshot.documents {
+                    do {
+                        try await doc.reference.delete()
+                    } catch {
+                        print("Failed to delete day doc \(doc.documentID): \(error)")
+                    }
+                }
+            } catch {
+                print("Failed to list/delete days subcollection: \(error)")
+            }
+
+            // Delete the main account document
             do {
                 try await db.collection("accounts").document(uid).delete()
             } catch {
-                print("Failed to delete account: \(error)")
+                print("Failed to delete account doc: \(error)")
             }
-            // Optionally clear local state, UserDefaults, and Core Data as in signOut()
+
+            // Attempt to delete Firebase Auth account (may require recent reauth)
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                user.delete { error in
+                    if let error {
+                        print("Failed to delete Firebase Auth user: \(error)")
+                    }
+                    cont.resume()
+                }
+            }
+
+            // Clear all UserDefaults for this app (remove all persisted settings)
+            if let bundle = Bundle.main.bundleIdentifier {
+                self.defaults.removePersistentDomain(forName: bundle)
+                self.defaults.synchronize()
+            } else {
+                let keysToRemove = [ThemeManager.defaultsKey, Self.weekStartDefaultsKey, "currentUserName", "fasting.durationMinutes", "fasting.startTimestamp"]
+                for key in keysToRemove { self.defaults.removeObject(forKey: key) }
+            }
+
+            // Clear SwiftData local store for Account and Day models
+            if let ctx = context {
+                do {
+                    let dayReq = FetchDescriptor<Day>()
+                    let days = try ctx.fetch(dayReq)
+                    for d in days { ctx.delete(d) }
+
+                    let acctReq = FetchDescriptor<Account>()
+                    let accts = try ctx.fetch(acctReq)
+                    for a in accts { ctx.delete(a) }
+
+                    try ctx.save()
+                } catch {
+                    print("Failed to clear local SwiftData models: \(error)")
+                }
+            } else {
+                print("No ModelContext provided; skipping local SwiftData cleanup.")
+            }
         }
     }
 
@@ -1478,6 +1587,7 @@ struct AccountProfile: Equatable {
     var name: String
     var avatarColor: AvatarColorOption
     var avatarImageData: Data?
+    var avatarImageSignature: Int
     var appTheme: AppTheme
     var weekStart: WeekStartOption
     var birthDate: Date
@@ -1489,6 +1599,34 @@ struct AccountProfile: Equatable {
     var weightValue: String
     var maintenanceCalories: String
     var activityLevel: ActivityLevelOption
+
+    static func signature(for data: Data?) -> Int {
+        guard let data else { return 0 }
+        let sample = data.prefix(256)
+        var hasher = Hasher()
+        hasher.combine(data.count)
+        for byte in sample {
+            hasher.combine(byte)
+        }
+        return hasher.finalize()
+    }
+
+    static func == (lhs: AccountProfile, rhs: AccountProfile) -> Bool {
+        lhs.name == rhs.name &&
+        lhs.avatarColor == rhs.avatarColor &&
+        lhs.avatarImageSignature == rhs.avatarImageSignature &&
+        lhs.appTheme == rhs.appTheme &&
+        lhs.weekStart == rhs.weekStart &&
+        lhs.birthDate == rhs.birthDate &&
+        lhs.selectedGender == rhs.selectedGender &&
+        lhs.unitSystem == rhs.unitSystem &&
+        lhs.heightValue == rhs.heightValue &&
+        lhs.heightFeet == rhs.heightFeet &&
+        lhs.heightInches == rhs.heightInches &&
+        lhs.weightValue == rhs.weightValue &&
+        lhs.maintenanceCalories == rhs.maintenanceCalories &&
+        lhs.activityLevel == rhs.activityLevel
+    }
 }
 
 enum WeekStartOption: String, CaseIterable, Identifiable {

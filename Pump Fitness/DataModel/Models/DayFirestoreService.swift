@@ -13,15 +13,18 @@ class DayFirestoreService {
     private var pendingDayKeys = Set<String>()
 
     private func dateKey(for date: Date) -> String {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        // Use the UTC calendar to compute the start-of-day so keys are UTC-normalized
-        let dayStart = cal.startOfDay(for: date)
+        // Always derive the key from a UTC-normalized start-of-day to avoid
+        // mixing calendars (local components + UTC calendar) that can shift
+        // the day backward/forward in some time zones.
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStartInUTC = utcCal.startOfDay(for: date)
+
         let fmt = DateFormatter()
-        fmt.calendar = cal
-        fmt.timeZone = cal.timeZone
+        fmt.calendar = utcCal
+        fmt.timeZone = utcCal.timeZone
         fmt.dateFormat = "dd-MM-yyyy"
-        return fmt.string(from: dayStart)
+        return fmt.string(from: dayStartInUTC)
     }
 
     private func encodeMacroConsumptions(_ macros: [MacroConsumption]) -> [[String: Any]] {
@@ -598,8 +601,28 @@ class DayFirestoreService {
     private func mergeMacroConsumptions(local: [MacroConsumption], remote: [MacroConsumption]) -> [MacroConsumption] {
         if remote.isEmpty { return local }
 
-        var mergedById: [String: MacroConsumption] = Dictionary(uniqueKeysWithValues: local.map { ($0.trackedMacroId, $0) })
-        let localByName: [String: MacroConsumption] = Dictionary(uniqueKeysWithValues: local.map { ($0.name.lowercased(), $0) })
+        // Deduplicate local macros first so duplicate trackedMacroIds/names cannot crash the dictionary initializer.
+        var mergedById: [String: MacroConsumption] = [:]
+        var localByName: [String: MacroConsumption] = [:]
+
+        for macro in local {
+            if var existing = mergedById[macro.trackedMacroId] {
+                existing.consumed = max(existing.consumed, macro.consumed)
+                if !macro.name.isEmpty { existing.name = macro.name }
+                if !macro.unit.isEmpty { existing.unit = macro.unit }
+                mergedById[macro.trackedMacroId] = existing
+            } else {
+                mergedById[macro.trackedMacroId] = macro
+            }
+
+            let nameKey = macro.name.lowercased()
+            if var existingByName = localByName[nameKey] {
+                existingByName.consumed = max(existingByName.consumed, macro.consumed)
+                localByName[nameKey] = existingByName
+            } else {
+                localByName[nameKey] = macro
+            }
+        }
 
         for remoteMacro in remote {
             if var existing = mergedById[remoteMacro.trackedMacroId] {

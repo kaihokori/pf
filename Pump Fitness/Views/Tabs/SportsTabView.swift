@@ -820,7 +820,7 @@ struct SportsTabView: View {
                 backgroundView
                 VStack(spacing: 0) {
                     ScrollView {
-                        VStack(spacing: 0) {
+                        LazyVStack(spacing: 0) {
                             HeaderComponent(
                                 showCalendar: $showCalendar,
                                 selectedDate: $selectedDate,

@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 import UIKit
 import SwiftData
 import UserNotifications
@@ -18,7 +17,6 @@ struct NutritionTabView: View {
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
-    @State private var showAddSheet = false
     @State private var showLogIntakeSheet = false
     @State private var showCalorieGoalSheet = false
     @Binding var calorieGoal: Int
@@ -38,12 +36,7 @@ struct NutritionTabView: View {
     // supplements are persisted on Account; per-day taken state is stored on Day
     @State private var dayTakenSupplementIDs: Set<String> = []
     @State private var nutritionSearchText: String = ""
-
-    // Weekly progress state (persisted via Account + Firestore)
     @State private var weeklyEntries: [WeeklyProgressEntry] = []
-    @State private var weeklySelectedEntry: WeeklyProgressEntry? = nil
-    @State private var weeklyShowEditor: Bool = false
-    @State private var previewImageEntry: WeeklyProgressEntry? = nil
 
     @Binding var maintenanceCalories: Int
 
@@ -122,12 +115,49 @@ struct NutritionTabView: View {
             }
         }
     }
+
+    /// Ensure a small set of defaults are present for a new account / empty cravings list
+    private func ensureDefaultSupplementsAndCravings() {
+        // Add a few sensible defaults to Account.nutritionSupplements when empty
+        if account.nutritionSupplements.isEmpty {
+            account.nutritionSupplements = [
+                Supplement(name: "Vitamin D", amountLabel: "50 μg"),
+                Supplement(name: "Magnesium", amountLabel: "200 mg"),
+                Supplement(name: "Fish Oil", amountLabel: "1000 mg")
+            ]
+
+            do {
+                try modelContext.save()
+            } catch {
+                print("NutritionTabView: failed to save default supplements: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if !success { print("NutritionTabView: failed to sync default supplements to Firestore") }
+            }
+        }
+
+        // Populate a few default cravings on first load so the UI isn't empty
+        if cravings.isEmpty {
+            cravings = [
+                CravingItem(name: "Chocolate Chip Cookie", calories: 220),
+                CravingItem(name: "Iced Latte", calories: 140),
+                CravingItem(name: "Protein Bar", calories: 210)
+            ]
+            // Attempt a local save in case cravings are backed by a model context
+            do {
+                try modelContext.save()
+            } catch {
+                // Not critical — cravings may be stored outside SwiftData
+            }
+        }
+    }
     var body: some View {
         NavigationStack {
             ZStack {
                 backgroundView
                 ScrollView {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         HeaderComponent(
                             showCalendar: $showCalendar,
                             selectedDate: $selectedDate,
@@ -354,14 +384,6 @@ struct NutritionTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
 
-                        Text("Craving something? List it below")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 6)
-                        
-                        // Cravings list card
                         VStack(spacing: 0) {
                             ForEach(Array(cravings.enumerated()), id: \.element.id) { idx, _ in
                                 let binding = $cravings[idx]
@@ -459,38 +481,6 @@ struct NutritionTabView: View {
                         )
                         .padding(.horizontal, 18)
                         .padding(.top, 12)
-                        
-                        HStack {
-                            Text("Weekly Progress")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            Button {
-                                showAddSheet = true
-                            } label: {
-                                Label("Add", systemImage: "plus")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
-
-                        WeeklyProgressCarousel(accentColorOverride: accentOverride,
-                                               entries: $weeklyEntries,
-                                               selectedEntry: $weeklySelectedEntry,
-                                               showEditor: $weeklyShowEditor,
-                                               previewImageEntry: $previewImageEntry)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 12)
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
@@ -509,18 +499,7 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
-            reloadWeeklyProgressFromAccount()
-            ensurePlaceholderIfNeeded(persist: true)
-            refreshProgressFromRemote()
-        }
-        .onChange(of: account.weeklyProgress) { _, _ in
-            print("NutritionTabView.onChange: account.weeklyProgress changed, raw count=\(account.weeklyProgress.count)")
-            for (i, r) in account.weeklyProgress.enumerated() {
-                print("  onChange account.weeklyProgress[\(i)]: id=\(r.id) date=\(r.date) weight=\(r.weight) hasPhoto=\(r.photoData != nil)")
-            }
-            reloadWeeklyProgressFromAccount()
-            ensurePlaceholderIfNeeded(persist: false)
-            scheduleProgressReminder()
+            ensureDefaultSupplementsAndCravings()
         }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
@@ -556,23 +535,6 @@ struct NutritionTabView: View {
                 onCancel: { showLogIntakeSheet = false }
             )
             .presentationDetents([.large, .medium])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showAddSheet) {
-            WeeklyProgressAddSheet(
-                tint: accentOverride ?? .accentColor,
-                onSave: { entry in
-                    weeklyEntries.append(entry)
-                    weeklyEntries.sort { $0.date < $1.date }
-                    persistWeeklyProgressEntries()
-                    scheduleProgressReminder()
-                    showAddSheet = false
-                },
-                onCancel: {
-                    showAddSheet = false
-                }
-            )
-            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showSupplementEditor) {
@@ -634,290 +596,6 @@ struct NutritionTabView: View {
             }
             .presentationDetents([.fraction(0.38)])
             .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $weeklySelectedEntry) { entry in
-            WeeklyProgressAddSheet(
-                tint: accentOverride ?? .accentColor,
-                initialEntry: entry,
-                onSave: { updatedEntry in
-                    if let idx = weeklyEntries.firstIndex(where: { $0.id == updatedEntry.id }) {
-                        weeklyEntries[idx] = updatedEntry
-                    }
-                    weeklyEntries.sort { $0.date < $1.date }
-                    persistWeeklyProgressEntries()
-                    scheduleProgressReminder()
-                    weeklySelectedEntry = nil
-                },
-                onCancel: {
-                    weeklySelectedEntry = nil
-                }
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-        
-        .fullScreenCover(item: $previewImageEntry) { entry in
-            ZStack {
-                Color.black.ignoresSafeArea()
-                if let data = entry.photoData, let ui = UIImage(data: data) {
-                    Image(uiImage: ui)
-                        .resizable()
-                        .scaledToFit()
-                        .ignoresSafeArea()
-                } else {
-                    Image("placeholder")
-                        .resizable()
-                        .scaledToFit()
-                        .ignoresSafeArea()
-                }
-
-                // Close button in the top-right corner
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button {
-                            previewImageEntry = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.white)
-                                .opacity(0.95)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 18)
-                        .padding(.top, 44)
-                    }
-                    Spacer()
-                }
-            }
-        }
-    }
-}
-private struct WeeklyProgressAddSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var date: Date = Date()
-    @State private var weightText: String = ""
-    @State private var waterText: String = ""
-    @State private var bodyFatText: String = ""
-
-    @State private var photoItem: PhotosPickerItem? = nil
-    @State private var photoData: Data? = nil
-
-    var tint: Color = .accentColor
-    var initialEntry: WeeklyProgressEntry? = nil
-    var onSave: (WeeklyProgressEntry) -> Void
-    var onCancel: () -> Void = {}
-
-    init(
-        tint: Color = .accentColor,
-        initialEntry: WeeklyProgressEntry? = nil,
-        onSave: @escaping (WeeklyProgressEntry) -> Void,
-        onCancel: @escaping () -> Void = {}
-    ) {
-        self.tint = tint
-        self.initialEntry = initialEntry
-        self.onSave = onSave
-        self.onCancel = onCancel
-
-        _date = State(initialValue: initialEntry?.date ?? Date())
-        _weightText = State(initialValue: initialEntry != nil ? String(format: "%.1f", initialEntry!.weight) : "")
-        _waterText = State(initialValue: initialEntry?.waterPercent != nil ? String(format: "%.0f", initialEntry!.waterPercent!) : "")
-        _bodyFatText = State(initialValue: initialEntry?.bodyFatPercent != nil ? String(format: "%.1f", initialEntry!.bodyFatPercent!) : "")
-        _photoData = State(initialValue: initialEntry?.photoData)
-        _photoItem = State(initialValue: nil)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Date")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        
-                        DateComponent(
-                            date: Binding(
-                                get: { date },
-                                set: { date = $0 }
-                            ),
-                            range: PumpDateRange.birthdate
-                        )
-                        .surfaceCard(12)
-                    }
-
-
-                    // Weight input
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Weight")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        HStack {
-                            TextField("Weight", text: $weightText)
-                                .keyboardType(.decimalPad)
-                                .textFieldStyle(.plain)
-                            Text("kg")
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding()
-                        .surfaceCard(16)
-                        .frame(maxWidth: .infinity)
-                    }
-
-                    HStack {
-                        // Water % input
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Body Water")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                TextField("e.g. 50", text: $waterText)
-                                    .keyboardType(.numberPad)
-                                    .textFieldStyle(.plain)
-                                Text("%")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding()
-                            .surfaceCard(16)
-                            .frame(maxWidth: .infinity)
-                        }
-
-                        Spacer()
-
-                        // Body fat % input
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Body Fat")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                TextField("e.g. 18.5", text: $bodyFatText)
-                                    .keyboardType(.decimalPad)
-                                    .textFieldStyle(.plain)
-                                Text("%")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding()
-                            .surfaceCard(16)
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-
-                    // Photo controls: Upload/Replace (PhotosPicker) and Remove
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Photo")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 12) {
-                            let uploadLabel = (photoData == nil) ? "Upload" : "Replace"
-
-                            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                                SelectablePillComponent(
-                                    label: uploadLabel,
-                                    isSelected: false,
-                                    selectedTint: tint
-                                ) {
-                                    // PhotosPicker will present the picker when tapped
-                                }
-                                .allowsHitTesting(false)
-                            }
-
-                            if photoData != nil {
-                                SelectablePillComponent(
-                                    label: "Remove",
-                                    isSelected: false,
-                                    selectedTint: tint
-                                ) {
-                                    photoData = nil
-                                    photoItem = nil
-                                }
-                            }
-                        }
-                        .padding(.bottom, 8)
-
-                        if let data = photoData, let ui = UIImage(data: data) {
-                            HStack {
-                                Spacer()
-                                Image(uiImage: ui)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 180, height: 240)
-                                    .aspectRatio(3/4, contentMode: .fill)
-                                    .clipped()
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(tint.opacity(0.12), lineWidth: 1)
-                                    )
-                                Spacer()
-                            }
-                            .padding(.top, 6)
-                        } else {
-                            HStack {
-                                Spacer()
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.primary.opacity(0.05))
-                                    .frame(width: 180, height: 240)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(tint.opacity(0.12), lineWidth: 1)
-                                    )
-                                    .overlay(
-                                        Text("No photo")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    )
-                                Spacer()
-                            }
-                            .padding(.top, 6)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-            }
-            .navigationTitle(initialEntry != nil ? "Edit Progress" : "Add Progress")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        onCancel()
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        let weight = Double(weightText) ?? 0
-                        let water = Double(waterText)
-                        let bf = Double(bodyFatText)
-                        let entry = WeeklyProgressEntry(
-                            id: initialEntry?.id ?? UUID(),
-                            date: date,
-                            weight: weight,
-                            waterPercent: water,
-                            bodyFatPercent: bf,
-                            photoData: photoData
-                        )
-                        onSave(entry)
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-            .onChange(of: photoItem) { _, newItem in
-                Task {
-                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                        await MainActor.run {
-                            photoData = data
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -1139,185 +817,6 @@ private extension NutritionTabView {
             }
             // Notify other UI that this day's data changed so they can refresh
             NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
-        }
-    }
-
-    func reloadWeeklyProgressFromAccount() {
-        weeklyEntries = account.weeklyProgress
-            .map {
-                WeeklyProgressEntry(
-                    id: UUID(uuidString: $0.id) ?? UUID(),
-                    date: $0.date,
-                    weight: $0.weight,
-                    waterPercent: $0.waterPercent,
-                    bodyFatPercent: $0.bodyFatPercent,
-                    photoData: $0.photoData
-                )
-            }
-            .sorted { $0.date < $1.date }
-    }
-
-    func persistWeeklyProgressEntries() {
-        let filteredEntries = weeklyEntries.filter { entry in
-            entry.weight != 0 || entry.waterPercent != nil || entry.bodyFatPercent != nil || entry.photoData != nil
-        }
-
-        var mergedById: [UUID: WeeklyProgressEntry] = [:]
-
-        // Start with locally edited entries.
-        for entry in filteredEntries {
-            mergedById[entry.id] = entry
-        }
-
-        // Preserve any existing account entries that aren't currently in memory to avoid accidental overwrites.
-        for record in account.weeklyProgress {
-            let uuid = UUID(uuidString: record.id) ?? UUID()
-            if mergedById[uuid] == nil {
-                mergedById[uuid] = WeeklyProgressEntry(
-                    id: uuid,
-                    date: record.date,
-                    weight: record.weight,
-                    waterPercent: record.waterPercent,
-                    bodyFatPercent: record.bodyFatPercent,
-                    photoData: record.photoData
-                )
-            }
-        }
-
-        let mergedEntries = mergedById.values.sorted { $0.date < $1.date }
-        weeklyEntries = mergedEntries
-
-        account.weeklyProgress = mergedEntries.map {
-            WeeklyProgressRecord(
-                id: $0.id.uuidString,
-                date: $0.date,
-                weight: $0.weight,
-                waterPercent: $0.waterPercent,
-                bodyFatPercent: $0.bodyFatPercent,
-                photoData: compressImageDataIfNeeded($0.photoData)
-            )
-        }
-
-        do {
-            try modelContext.save()
-        } catch {
-            print("NutritionTabView: failed to save weekly progress locally: \(error)")
-        }
-
-        guard !mergedEntries.isEmpty else { return }
-
-        accountFirestoreService.saveAccount(account) { success in
-            if success {
-            } else {
-                print("NutritionTabView: failed to sync weekly progress to Firestore")
-            }
-        }
-    }
-
-    func refreshProgressFromRemote() {
-        guard let id = account.id else { return }
-        accountFirestoreService.fetchAccount(withId: id) { fetched in
-            guard let fetched else { return }
-            DispatchQueue.main.async {
-                let remoteProgress = fetched.weeklyProgress
-                let localProgress = account.weeklyProgress
-
-                if !remoteProgress.isEmpty {
-                    // Prefer remote when it actually has data.
-                    account.weeklyProgress = remoteProgress
-                    reloadWeeklyProgressFromAccount()
-                    ensurePlaceholderIfNeeded(persist: false)
-                } else if !localProgress.isEmpty {
-                    // Preserve local entries instead of wiping them with an empty payload.
-                    reloadWeeklyProgressFromAccount()
-                    persistWeeklyProgressEntries()
-                } else {
-                    weeklyEntries.removeAll()
-                }
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("NutritionTabView: failed to cache remote weekly progress: \(error)")
-                }
-            }
-        }
-    }
-
-    func ensurePlaceholderIfNeeded(persist: Bool) {
-        weeklyEntries.sort { $0.date < $1.date }
-
-        // Do not create placeholder entries; only persist real data.
-        if persist {
-            persistWeeklyProgressEntries()
-        }
-
-        if !weeklyEntries.isEmpty {
-            scheduleProgressReminder()
-        }
-    }
-
-    // Downsample + recompress photos to keep Firestore documents within limits and avoid invalid nested entity errors.
-    private func compressImageDataIfNeeded(_ data: Data?, maxBytes: Int = 450_000) -> Data? {
-        guard let data, !data.isEmpty else { return data }
-
-        // If already under the limit, keep as-is.
-        if data.count <= maxBytes { return data }
-
-        guard let image = UIImage(data: data) else { return data }
-
-        // Downscale to a reasonable portrait size to shrink payloads.
-        let targetWidth: CGFloat = 900
-        let scale = targetWidth / image.size.width
-        let targetHeight = image.size.height * scale
-        let targetSize = CGSize(width: targetWidth, height: targetHeight)
-
-        let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let scaledImage = renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-
-        // Try a few quality levels to stay under the byte cap.
-        let qualities: [CGFloat] = [0.6, 0.5, 0.4, 0.3]
-        for quality in qualities {
-            if let compressed = scaledImage.jpegData(compressionQuality: quality), compressed.count <= maxBytes {
-                return compressed
-            }
-        }
-
-        // Fallback: return the smallest attempt even if still large.
-        return scaledImage.jpegData(compressionQuality: 0.25) ?? data
-    }
-
-    func scheduleProgressReminder() {
-        let baseDate = weeklyEntries.last?.date ?? Date()
-        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
-        var components = Calendar.current.dateComponents([.weekday], from: nextDate)
-        if components.weekday == nil {
-            components.weekday = Calendar.current.component(.weekday, from: Date())
-        }
-        components.hour = 9
-        components.minute = 0
-
-        let requestId = "weekly-progress-photo-reminder"
-        let center = UNUserNotificationCenter.current()
-
-        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-            guard error == nil, granted else { return }
-
-            center.removePendingNotificationRequests(withIdentifiers: [requestId])
-
-            let content = UNMutableNotificationContent()
-            content.title = "Weekly Progress Photo"
-            content.body = "Time to capture this week's progress photo at 9 AM."
-            content.sound = .default
-
-            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-            let request = UNNotificationRequest(identifier: requestId, content: content, trigger: trigger)
-            center.add(request) { addError in
-                if let addError = addError {
-                    print("NutritionTabView: failed to schedule reminder: \(addError)")
-                }
-            }
         }
     }
 }
@@ -2833,7 +2332,7 @@ private struct MealIntakeSheet: View {
                             }
                             .padding()
                             .frame(width: 100)
-                            .glassEffect(in: .rect(cornerRadius: 8.0))
+                            .surfaceCard(16)
                             .onChange(of: portionSizeGrams) { _, newValue in
                                 let filtered = newValue.filter { "0123456789".contains($0) }
                                 if filtered != newValue {
@@ -2856,7 +2355,7 @@ private struct MealIntakeSheet: View {
                                 .font(.callout.weight(.semibold))
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .surfaceCard(16)
                         }
                         .buttonStyle(.plain)
 
@@ -2869,58 +2368,59 @@ private struct MealIntakeSheet: View {
                                 .font(.title2.weight(.semibold))
                                 .frame(minWidth: 64, minHeight: 44)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .surfaceCard(16)
                         }
                         .buttonStyle(.plain)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Calories")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        HStack {
+                            Text("Calories")
+                              .font(.footnote)
+                              .foregroundStyle(.secondary)
+
+                            Spacer()
+                        }
+                        
                         HStack(spacing: 8) {
                             TextField("Calories", text: $caloriesText)
                                 .keyboardType(.numberPad)
-                                .textFieldStyle(.plain)
-                                .surfaceCard(16)
+
                             Text("cal")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 8.0))
+                        .surfaceCard(16)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Macros")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        if trackedMacros.isEmpty {
-                            Text("Add tracked macros to your account to log macro amounts.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(spacing: 12) {
+                            ForEach(trackedMacros, id: \.id) { macro in
+                                HStack {
+                                    Text(macro.name)
+                                      .font(.footnote)
+                                      .foregroundStyle(.secondary)
+
+                                    Spacer()
+                                }
+                                
+                                HStack(spacing: 8) {
+                                    TextField("0", text: Binding(
+                                          get: { macroInputs[macro.id, default: ""] },
+                                          set: { macroInputs[macro.id] = $0 }
+                                      ))
+                                      .keyboardType(.decimalPad)
+
+                                    Text(macro.unit)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
                                 .padding()
                                 .surfaceCard(16)
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(trackedMacros, id: \.id) { macro in
-                                    HStack(spacing: 8) {
-                                        TextField("\(macro.name) (\(macro.unit))", text: Binding(
-                                            get: { macroInputs[macro.id, default: ""] },
-                                            set: { macroInputs[macro.id] = $0 }
-                                        ))
-                                        .keyboardType(.decimalPad)
-                                        .textFieldStyle(.plain)
-                                        .surfaceCard(16)
-
-                                        Text(macro.unit)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding()
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
-                                }
                             }
                         }
                     }
@@ -3501,6 +3001,7 @@ private struct MealReminderEditorSheet: View {
             }
             .listStyle(.plain)
             .navigationTitle("Meal Times")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -4329,192 +3830,6 @@ struct WeeklyProgressEntry: Identifiable, Equatable {
         self.waterPercent = waterPercent
         self.bodyFatPercent = bodyFatPercent
         self.photoData = photoData
-    }
-}
-
-private struct WeeklyProgressCarousel: View {
-    var accentColorOverride: Color?
-
-    @Binding var entries: [WeeklyProgressEntry]
-    @Binding var selectedEntry: WeeklyProgressEntry?
-    @Binding var showEditor: Bool
-    @Binding var previewImageEntry: WeeklyProgressEntry?
-    
-    private var dateFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.dateFormat = "E, d MMM"
-        return f
-    }
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    let tint = accentColorOverride ?? .accentColor
-
-                    ForEach(entries) { entry in
-                        VStack(alignment: .center, spacing: 8) {
-                            // Date centered at top
-                            Text(dateFormatter.string(from: entry.date))
-                                .font(.footnote)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 8)
-
-                            Spacer()
-
-                            // Weight shown only when present
-                            if entry.weight > 0 {
-                                Text(String(format: "%.1f kg", entry.weight))
-                                    .font(.title2)
-                                    .fontWeight(.semibold)
-                            } else {
-                                Text("No data yet")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            // Optional additional info — reserve a fixed height so absence
-                            // of both values doesn't shift the weight vertically.
-                            HStack(spacing: 10) {
-                                if let water = entry.waterPercent {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "drop.fill")
-                                            .foregroundStyle(tint)
-                                        Text(String(format: "%.0f%%", water))
-                                    }
-                                }
-
-                                if let bf = entry.bodyFatPercent {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "scalemass")
-                                            .foregroundStyle(tint)
-                                        Text(String(format: "%.1f%%", bf))
-                                    }
-                                }
-
-                                // If neither metric is present, add an invisible placeholder
-                                // that preserves the row height to avoid layout shifts.
-                                if entry.waterPercent == nil && entry.bodyFatPercent == nil {
-                                    Color.clear
-                                        .frame(height: 18)
-                                }
-                            }
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(minHeight: 18)
-
-                            // Photo (placed under the additional info)
-                            if let data = entry.photoData, let uiImage = UIImage(data: data) {
-                                Image(uiImage: uiImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 180, height: 240)
-                                    .aspectRatio(3/4, contentMode: .fill)
-                                    .clipped()
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(tint.opacity(0.12), lineWidth: 1)
-                                    )
-                                    .onTapGesture {
-                                        previewImageEntry = entry
-                                    }
-                                    .accessibilityLabel("Progress photo")
-                                    .padding(.top, 6)
-                            } else {
-                                // Rounded Rectangle placeholder with .glassEffect
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.primary.opacity(0.05))
-                                    .frame(width: 180, height: 240)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(tint.opacity(0.12), lineWidth: 1)
-                                    )
-                                    .overlay(
-                                        Text("No Photo")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    )
-                                    .padding(.top, 6)
-                            }
-
-                            HStack {
-                                Spacer()
-                                Button {
-                                    selectedEntry = entry
-                                    showEditor = true
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                }
-                                .buttonStyle(.plain)
-                                Spacer()
-                            }
-                            .padding(.top, 8)
-                            .padding(.bottom, 8)
-                        }
-                        .padding(16)
-                        .frame(width: 220)
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                        .id(entry.id)
-                    }
-
-                    // Upcoming tile: shows next expected entry date (last entry date + 7 days)
-                    VStack(alignment: .center, spacing: 8) {
-                        Text("Upcoming")
-                            .font(.footnote)
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 8)
-
-                        Spacer()
-
-                        // Compute next expected date (7 days after last entry)
-                        let baseDate = entries.last?.date ?? Date()
-                        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
-
-                        VStack(spacing: 12) {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .font(.system(size: 28))
-                                .foregroundStyle(tint)
-
-                            Text("Next expected:")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            Text(dateFormatter.string(from: nextDate))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                        }
-
-                        Spacer()
-                    }
-                    .padding(16)
-                    .frame(width: 220)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
-                    .id("weekly-upcoming")
-                }
-                .padding(.vertical, 6)
-                .padding(.leading, 2)
-            }
-            .onAppear {
-                if let last = entries.last {
-                    proxy.scrollTo(last.id, anchor: .trailing)
-                }
-            }
-            .onChange(of: entries) { _, newEntries in
-                if let last = newEntries.last {
-                    withAnimation(.easeOut) {
-                        proxy.scrollTo(last.id, anchor: .trailing)
-                    }
-                }
-            }
-        }
     }
 }
 

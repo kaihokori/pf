@@ -417,13 +417,17 @@ struct ExpenseEntry: Codable, Hashable, Identifiable {
 @Model
 class Day {
     var id: String? = UUID().uuidString
-    var date: Date
-    var caloriesConsumed: Int
-    var calorieGoal: Int
-    var maintenanceCalories: Int
+    var date: Date = Date()
+    var caloriesConsumed: Int = 0
+    var calorieGoal: Int = 0
+    var maintenanceCalories: Int = 0
     var macroFocusRaw: String?
     var workoutCheckInStatusRaw: String? = WorkoutCheckInStatus.notLogged.rawValue
-    var macroConsumptions: [MacroConsumption]
+    var workoutCheckInStatus: WorkoutCheckInStatus {
+        get { WorkoutCheckInStatus(rawValue: workoutCheckInStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue) ?? .notLogged }
+        set { workoutCheckInStatusRaw = newValue.rawValue }
+    }
+    var macroConsumptions: [MacroConsumption] = []
     var completedMeals: [String] = []
     var takenSupplements: [String] = []
     var takenWorkoutSupplements: [String] = []

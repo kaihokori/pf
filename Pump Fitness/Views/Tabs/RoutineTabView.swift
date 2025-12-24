@@ -379,7 +379,7 @@ struct RoutineTabView: View {
             ZStack {
                 backgroundView
                 ScrollView {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
                             .environmentObject(account)
 
@@ -512,18 +512,6 @@ struct RoutineTabView: View {
                                 .foregroundStyle(.primary)
 
                             Spacer()
-
-                            Button {
-                                
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                            }
-                            .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 38)
@@ -1040,8 +1028,8 @@ private struct ActivityTimersEditorView: View {
     private let minDuration = 10
     private let maxDuration = 180
 
-    // Unlimited timers allowed
-    private var canAddMore: Bool { true }
+    private let maxTimersAllowed = 2
+    private var canAddMore: Bool { working.count < maxTimersAllowed }
     private var customDurationMinutes: Int? {
         let hours = Int(customHours) ?? 0
         let minutes = Int(customMinutes) ?? 0
@@ -1092,7 +1080,7 @@ private struct ActivityTimersEditorView: View {
 
                                             HStack(spacing: 12) {
                                                 HStack {
-                                                    TextField("Hours", text: hourBinding(for: binding))
+                                                    TextField("0", text: hourBinding(for: binding))
                                                         .keyboardType(.numberPad)
                                                         .textFieldStyle(.plain)
                                                     Text("hrs")
@@ -1103,7 +1091,7 @@ private struct ActivityTimersEditorView: View {
                                                 .frame(maxWidth: .infinity)
 
                                                 HStack {
-                                                    TextField("Minutes", text: minuteBinding(for: binding))
+                                                    TextField("0  ", text: minuteBinding(for: binding))
                                                         .keyboardType(.numberPad)
                                                         .textFieldStyle(.plain)
                                                     Text("min")
@@ -1172,6 +1160,34 @@ private struct ActivityTimersEditorView: View {
                         }
                     }
 
+                    Button(action: { /* TODO: present upgrade flow */ }) {
+                        HStack(alignment: .center) {
+                            Image(systemName: "sparkles")
+                                .font(.title3)
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.trailing, 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade to Pro")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+
+                                Text("Unlock more grocery slots + other benefits")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(12)
+                        .surfaceCard(16)
+                    }
+                    .buttonStyle(.plain)
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Custom Timer")
                             .font(.subheadline.weight(.semibold))
@@ -1184,7 +1200,7 @@ private struct ActivityTimersEditorView: View {
 
                             HStack(spacing: 12) {
                                 HStack {
-                                    TextField("Hours", text: $customHours)
+                                    TextField("0", text: $customHours)
                                         .keyboardType(.numberPad)
                                         .textFieldStyle(.plain)
                                     Text("hrs")
@@ -1195,7 +1211,7 @@ private struct ActivityTimersEditorView: View {
                                 .frame(maxWidth: .infinity)
 
                                 HStack {
-                                    TextField("Minutes", text: $customMinutes)
+                                    TextField("0", text: $customMinutes)
                                         .keyboardType(.numberPad)
                                         .textFieldStyle(.plain)
                                     Text("min")
@@ -1250,7 +1266,8 @@ private struct ActivityTimersEditorView: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        working = timers.isEmpty ? ActivityTimerItem.defaultTimers : timers
+        let initial = timers.isEmpty ? ActivityTimerItem.defaultTimers : timers
+        working = Array(initial.prefix(maxTimersAllowed))
         hasLoaded = true
     }
 
@@ -1306,6 +1323,7 @@ private struct ActivityTimersEditorView: View {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let newTimer = ActivityTimerItem(name: trimmed, startTime: Date(), durationMinutes: duration, colorHex: "#4CAF6A")
+        guard working.count < maxTimersAllowed else { return }
         working.append(newTimer)
         newName = ""
     }
@@ -1316,7 +1334,7 @@ private struct ActivityTimersEditorView: View {
     }
 
     private func donePressed() {
-        onSave(working)
+        onSave(Array(working.prefix(maxTimersAllowed)))
         dismiss()
     }
 }
@@ -1784,9 +1802,10 @@ private struct ExpenseCategoriesEditorView: View {
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: Int?
     @State private var workingCurrencySymbol: String = ""
+    @State private var customCurrencyInput: String = ""
 
     // Predefined currency symbol options for the editor
-    private let currencyOptions: [String] = ["$", "€", "£", "¥", "₹", "₩", "₪", "₫", "₱", "₦"]
+    private let currencyOptions: [String] = ["$", "€", "£", "¥", "₹", "₩", "₱", "Rp"]
     private let currencyPillColumns: [GridItem] = [GridItem(.adaptive(minimum: 80), spacing: 12)]
 
     var body: some View {
@@ -1842,8 +1861,31 @@ private struct ExpenseCategoriesEditorView: View {
                                     selectedTint: Color.accentColor
                                 ) {
                                     workingCurrencySymbol = option
+                                    customCurrencyInput = ""
                                 }
                             }
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField("Enter custom currency", text: $customCurrencyInput)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true)
+                                .padding()
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                .onChange(of: customCurrencyInput) { _, newValue in
+                                    let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if trimmed.isEmpty {
+                                        if !currencyOptions.contains(workingCurrencySymbol) {
+                                            workingCurrencySymbol = ""
+                                        }
+                                        return
+                                    }
+                                    workingCurrencySymbol = trimmed
+                                }
+
+                            Text("You may use any currency symbol or abbreviation.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -1892,6 +1934,9 @@ private struct ExpenseCategoriesEditorView: View {
         }
         working = normalized
         workingCurrencySymbol = currencySymbol
+        if !currencyOptions.contains(currencySymbol) {
+            customCurrencyInput = currencySymbol
+        }
         hasLoaded = true
     }
 
@@ -1901,10 +1946,16 @@ private struct ExpenseCategoriesEditorView: View {
     }
 
     private func donePressed() {
-        let trimmed = workingCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedCurrency = trimmed.isEmpty ? Account.deviceCurrencySymbol : trimmed
-        onSave(working, resolvedCurrency)
-        dismiss()
+        // Ensure any UI state updates (e.g. quick taps on currency pills) are applied
+        // before we resolve and persist the currency symbol. Dispatching to the
+        // next runloop tick avoids a race where a rapid tap + Done could read
+        // a stale value.
+        DispatchQueue.main.async {
+            let trimmed = self.workingCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedCurrency = trimmed.isEmpty ? Account.deviceCurrencySymbol : trimmed
+            self.onSave(self.working, resolvedCurrency)
+            self.dismiss()
+        }
     }
 }
 

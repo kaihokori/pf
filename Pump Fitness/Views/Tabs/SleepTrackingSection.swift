@@ -23,7 +23,14 @@ struct SleepTrackingSection: View {
     @State private var nightStart: Date? = nil
     @State private var napStart: Date? = nil
 
-    private let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+    // Keep a fixed baseline captured at the moment a timer starts so that
+    // live updates to the bound stored values do not compound elapsed time.
+    @State private var nightAccumulatedAtStart: TimeInterval = 0
+    @State private var napAccumulatedAtStart: TimeInterval = 0
+
+    // Persist the timer publisher across view re-creations to avoid
+    // creating multiple autoconnect subscriptions which accelerate ticks.
+    @State private var timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     private enum EditingTimer: Int, Identifiable {
         case night
@@ -43,13 +50,11 @@ struct SleepTrackingSection: View {
                     elapsed: currentNightElapsed,
                     isRunning: nightRunning,
                     showsStartButton: true,
+                    showsSeconds: true,
                     accent: accentColor ?? .accentColor,
                     startAction: { toggleNight() },
                     editAction: { openEditor(.night) }
                 )
-                .onTapGesture {
-                    openEditor(.night)
-                }
 
                 // Nap card — tapping opens editor
                 StopwatchCard(
@@ -57,13 +62,11 @@ struct SleepTrackingSection: View {
                     elapsed: currentNapElapsed,
                     isRunning: napRunning,
                     showsStartButton: true,
+                    showsSeconds: true,
                     accent: accentColor ?? .accentColor,
                     startAction: { toggleNap() },
                     editAction: { openEditor(.nap) }
                 )
-                .onTapGesture {
-                    openEditor(.nap)
-                }
             }
 
             StopwatchCard(
@@ -84,14 +87,25 @@ struct SleepTrackingSection: View {
                 onLiveUpdate(currentNightElapsed, currentNapElapsed)
             }
         }
-        .id(timerTick)
+        // Note: don't set view identity to the ticking date — changing the view's `id`
+        // every second causes SwiftUI to recreate the view and reconnect the timer,
+        // which can lead to multiple timer subscriptions and accelerating ticks.
         .onChange(of: nightStored) { _, _ in
-            nightStart = nil
-            nightRunning = false
+            // If the user is currently running the night timer, ignore external stored-value
+            // updates (they may come from live updates) so the timer isn't stopped.
+            if !nightRunning {
+                nightAccumulatedAtStart = nightStored
+                nightStart = nil
+                nightRunning = false
+            }
         }
         .onChange(of: napStored) { _, _ in
-            napStart = nil
-            napRunning = false
+            // Same handling for nap: only reset if the nap timer isn't running.
+            if !napRunning {
+                napAccumulatedAtStart = napStored
+                napStart = nil
+                napRunning = false
+            }
         }
         .padding(16)
         .glassEffect(in: .rect(cornerRadius: 16.0))
@@ -137,14 +151,14 @@ struct SleepTrackingSection: View {
 
     private var currentNightElapsed: TimeInterval {
         if let start = nightStart, nightRunning {
-            return nightStored + Date().timeIntervalSince(start)
+            return nightAccumulatedAtStart + Date().timeIntervalSince(start)
         }
         return nightStored
     }
 
     private var currentNapElapsed: TimeInterval {
         if let start = napStart, napRunning {
-            return napStored + Date().timeIntervalSince(start)
+            return napAccumulatedAtStart + Date().timeIntervalSince(start)
         }
         return napStored
     }
@@ -153,7 +167,7 @@ struct SleepTrackingSection: View {
         if nightRunning {
             // stop
             if let start = nightStart {
-                nightStored += Date().timeIntervalSince(start)
+                nightStored = nightAccumulatedAtStart + Date().timeIntervalSince(start)
             }
             nightStart = nil
             nightRunning = false
@@ -162,7 +176,7 @@ struct SleepTrackingSection: View {
             // if a nap is running, stop it first
             if napRunning {
                 if let nstart = napStart {
-                    napStored += Date().timeIntervalSince(nstart)
+                    napStored = napAccumulatedAtStart + Date().timeIntervalSince(nstart)
                 }
                 napStart = nil
                 napRunning = false
@@ -170,6 +184,7 @@ struct SleepTrackingSection: View {
             }
 
             // start night timer
+            nightAccumulatedAtStart = nightStored
             nightStart = Date()
             nightRunning = true
         }
@@ -178,7 +193,7 @@ struct SleepTrackingSection: View {
     private func toggleNap() {
         if napRunning {
             if let start = napStart {
-                napStored += Date().timeIntervalSince(start)
+                napStored = napAccumulatedAtStart + Date().timeIntervalSince(start)
             }
             napStart = nil
             napRunning = false
@@ -187,7 +202,7 @@ struct SleepTrackingSection: View {
             // if night sleep is running, stop it first
             if nightRunning {
                 if let nstart = nightStart {
-                    nightStored += Date().timeIntervalSince(nstart)
+                    nightStored = nightAccumulatedAtStart + Date().timeIntervalSince(nstart)
                 }
                 nightStart = nil
                 nightRunning = false
@@ -195,6 +210,7 @@ struct SleepTrackingSection: View {
             }
 
             // start nap timer
+            napAccumulatedAtStart = napStored
             napStart = Date()
             napRunning = true
         }
@@ -219,6 +235,7 @@ private struct StopwatchCard: View {
     let elapsed: TimeInterval
     let isRunning: Bool
     let showsStartButton: Bool
+    let showsSeconds: Bool
     let accent: Color
     let startAction: () -> Void
     let editAction: (() -> Void)?
@@ -227,6 +244,7 @@ private struct StopwatchCard: View {
          elapsed: TimeInterval,
          isRunning: Bool,
          showsStartButton: Bool,
+         showsSeconds: Bool = false,
          accent: Color,
          startAction: @escaping () -> Void,
          editAction: (() -> Void)? = nil) {
@@ -234,6 +252,7 @@ private struct StopwatchCard: View {
         self.elapsed = elapsed
         self.isRunning = isRunning
         self.showsStartButton = showsStartButton
+        self.showsSeconds = showsSeconds
         self.accent = accent
         self.startAction = startAction
         self.editAction = editAction
@@ -269,21 +288,39 @@ private struct StopwatchCard: View {
         .glassEffect(in: .rect(cornerRadius: 12.0))
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
-            Image(systemName: "pencil")
-                .font(.system(size: 14, weight: .semibold))
-                .padding(8)
+            if let edit = editAction {
+                Button(action: edit) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(8)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
     private func timeString(from interval: TimeInterval) -> String {
-        let total = Int(interval)
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        if showsSeconds {
+            let totalSeconds = Int(interval)
+            // Show MM:SS while under 60 minutes, then switch to H:MM (no seconds)
+            if totalSeconds < 3600 {
+                let minutes = (totalSeconds / 60)
+                let seconds = totalSeconds % 60
+                return String(format: "%02d:%02d", minutes, seconds)
+            } else {
+                let hours = totalSeconds / 3600
+                let minutes = (totalSeconds % 3600) / 60
+                return String(format: "%d:%02d", hours, minutes)
+            }
+        } else {
+            let totalMinutes = Int(interval) / 60
+            let hours = totalMinutes / 60
+            let minutes = totalMinutes % 60
+            if hours > 0 {
+                return String(format: "%d:%02d", hours, minutes)
+            }
+            return String(format: "%02d", minutes)
         }
-        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 

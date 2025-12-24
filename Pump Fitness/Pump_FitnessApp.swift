@@ -22,7 +22,23 @@ struct Pump_FitnessApp: App {
         ])
         _themeManager = StateObject(wrappedValue: ThemeManager())
         do {
-            modelContainer = try ModelContainer(for: Account.self)
+            // Use separate stores to avoid migration failures for users who already have an Account-only store.
+            // Account continues to use the original default store; Day gets a new store file.
+            let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let dayStoreURL = documentsURL.appendingPathComponent("Day.store")
+
+            let accountSchema = Schema([Account.self])
+            let daySchema = Schema([Day.self])
+
+            let accountConfig = ModelConfiguration(schema: accountSchema)
+            let dayConfig = ModelConfiguration("day", schema: daySchema, url: dayStoreURL)
+
+            let combinedSchema = Schema([Account.self, Day.self])
+
+            modelContainer = try ModelContainer(
+                for: combinedSchema,
+                configurations: [accountConfig, dayConfig]
+            )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -36,3 +52,4 @@ struct Pump_FitnessApp: App {
         }
     }
 }
+

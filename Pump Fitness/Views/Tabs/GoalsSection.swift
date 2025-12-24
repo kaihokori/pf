@@ -11,13 +11,31 @@ struct GoalsSection: View {
     private let cardWidth: CGFloat = 280
 
     private var groupedGoals: [GoalBucket: [GoalItem]] {
-        Dictionary(grouping: goals, by: { $0.bucket })
+        // Group only non-completed goals so completed ones appear only
+        // in the `Completed` column.
+        Dictionary(grouping: goals.filter { !$0.isCompleted }, by: { $0.bucket })
+    }
+
+    private var overdueGoals: [GoalItem] {
+        let now = Date()
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        return goals.filter { !$0.isCompleted && $0.dueDate < startOfToday }
+    }
+
+    private var completedGoals: [GoalItem] {
+        goals.filter { $0.isCompleted }
     }
 
     var body: some View {
         VStack(spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
+                    if !overdueGoals.isEmpty {
+                        overdueCard()
+                    }
+                    if !completedGoals.isEmpty {
+                        completedCard()
+                    }
                     goalCard(title: "Today", systemImage: "sun.max.fill", bucket: .today)
                     goalCard(title: "This Week", systemImage: "calendar", bucket: .thisWeek)
                     goalCard(title: "This Month", systemImage: "calendar.badge.clock", bucket: .thisMonth)
@@ -48,6 +66,148 @@ struct GoalsSection: View {
                 if items.isEmpty {
                     HStack {
                         Text("No goals yet")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                    .padding(.vertical, 8)
+                } else {
+                    ForEach(items) { goal in
+                        Button(action: {
+                            toggleCompletion(goal.id)
+                        }) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .stroke(tint.opacity(0.12), lineWidth: 2)
+                                        .frame(width: 36, height: 36)
+                                    if goal.isCompleted {
+                                        Circle()
+                                            .fill(tint)
+                                            .frame(width: 36, height: 36)
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(goal.title)
+                                        .font(.subheadline.weight(.semibold))
+                                    if !goal.note.isEmpty {
+                                        Text(goal.note)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if goal.id != items.last?.id {
+                            Divider()
+                                .overlay(Color.white.opacity(0.06))
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .padding(16)
+        .frame(width: cardWidth)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
+    @ViewBuilder
+    private func overdueCard() -> some View {
+        let items = overdueGoals
+
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Spacer()
+                Label("Overdue", systemImage: "exclamationmark.circle.fill")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 12) {
+                if items.isEmpty {
+                    HStack {
+                        Text("No overdue goals")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                    .padding(.vertical, 8)
+                } else {
+                    ForEach(items) { goal in
+                        Button(action: {
+                            toggleCompletion(goal.id)
+                        }) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .stroke(tint.opacity(0.12), lineWidth: 2)
+                                        .frame(width: 36, height: 36)
+                                    if goal.isCompleted {
+                                        Circle()
+                                            .fill(tint)
+                                            .frame(width: 36, height: 36)
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(goal.title)
+                                        .font(.subheadline.weight(.semibold))
+                                    if !goal.note.isEmpty {
+                                        Text(goal.note)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if goal.id != items.last?.id {
+                            Divider()
+                                .overlay(Color.white.opacity(0.06))
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .padding(16)
+        .frame(width: cardWidth)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
+    @ViewBuilder
+    private func completedCard() -> some View {
+        let items = completedGoals
+
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Spacer()
+                Label("Completed", systemImage: "checkmark.circle.fill")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+            }
+            .padding(.bottom, 8)
+
+            VStack(alignment: .leading, spacing: 12) {
+                if items.isEmpty {
+                    HStack {
+                        Text("No completed goals")
                             .foregroundStyle(.secondary)
                             .font(.caption)
                     }

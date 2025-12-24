@@ -905,6 +905,7 @@ class Account: ObservableObject {
     var caloriesBurnGoal: Int = 800
     var stepsGoal: Int = 10_000
     var distanceGoal: Double = 3_000 // meters
+    var workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
     var workoutSupplements: [Supplement] = []
@@ -942,6 +943,7 @@ class Account: ObservableObject {
         activityLevel: String? = nil,
         startWeekOn: String? = nil,
         autoRestDayIndices: [Int] = [],
+        workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults,
         trackedMacros: [TrackedMacro] = [],
         cravings: [CravingItem] = [],
         groceryItems: [GroceryItem] = GroceryItem.sampleItems(),
@@ -981,6 +983,7 @@ class Account: ObservableObject {
         self.activityLevel = activityLevel
         self.startWeekOn = startWeekOn
         self.autoRestDayIndices = autoRestDayIndices
+        self.workoutSchedule = workoutSchedule
         self.caloriesBurnGoal = caloriesBurnGoal
         self.stepsGoal = stepsGoal
         self.distanceGoal = distanceGoal

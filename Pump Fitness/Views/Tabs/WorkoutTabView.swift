@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import HealthKit
+import PhotosUI
 
 private extension WorkoutTabView {
     func fetchDayTakenWorkoutSupplements() {
@@ -248,11 +249,6 @@ struct WorkoutTabView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showCalendar = false
     @Binding var selectedDate: Date
-    @Binding var weeklyProgress: [WorkoutCheckInStatus]
-    @Binding var autoRestDayIndices: Set<Int>
-    let currentDayIndex: Int
-    var onUpdateCheckInStatus: (WorkoutCheckInStatus) -> Void
-    var onUpdateAutoRestDays: (Set<Int>) -> Void
     @Binding var caloriesBurnGoal: Int
     @Binding var stepsGoal: Int
     @Binding var distanceGoal: Double
@@ -261,14 +257,25 @@ struct WorkoutTabView: View {
     @Binding var distanceTravelledToday: Double
     @Binding var weightGroups: [WeightGroupDefinition]
     @Binding var weightEntries: [WeightExerciseValue]
+    @Binding var weeklyCheckInStatuses: [WorkoutCheckInStatus]
+    @Binding var autoRestDayIndices: Set<Int>
+    // Weekly progress state (persisted via Account + Firestore)
+    @State private var weeklyEntries: [WeeklyProgressEntry] = []
+    @State private var weeklySelectedEntry: WeeklyProgressEntry? = nil
+    @State private var weeklyShowEditor: Bool = false
+    @State private var previewImageEntry: WeeklyProgressEntry? = nil
+    @State private var showAddSheet = false
+    @State private var showRestDaySheet = false
     var lastWeightEntryByExerciseId: [UUID: WeightExerciseValue]
     var onUpdateDailyActivity: (_ calories: Double?, _ steps: Double?, _ distance: Double?) -> Void
     var onUpdateDailyGoals: (_ calorieGoal: Int, _ stepsGoal: Int, _ distanceGoal: Double) -> Void
     var onUpdateWeightGroups: ([WeightGroupDefinition]) -> Void
     var onUpdateWeightEntries: ([WeightExerciseValue]) -> Void
+    var onSelectCheckInStatus: (WorkoutCheckInStatus, Int?) -> Void
+    var onUpdateAutoRestDays: (Set<Int>) -> Void
+    var onClearWeekCheckIns: () -> Void
     @State private var showAccountsView = false
-    @State private var workoutSchedule: [WorkoutScheduleItem] = coachingWeeklySchedule
-    @State private var showRestDaySheet = false
+    @State private var workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults
     // Use Account.workoutSupplements as the canonical source of workout supplement definitions
     // no local supplement store — use `account.workoutSupplements`
     @State private var showSupplementEditor = false
@@ -294,11 +301,6 @@ struct WorkoutTabView: View {
     init(
         account: Binding<Account>,
         selectedDate: Binding<Date>,
-        weeklyProgress: Binding<[WorkoutCheckInStatus]>,
-        autoRestDayIndices: Binding<Set<Int>>,
-        currentDayIndex: Int,
-        onUpdateCheckInStatus: @escaping (WorkoutCheckInStatus) -> Void,
-        onUpdateAutoRestDays: @escaping (Set<Int>) -> Void,
         caloriesBurnGoal: Binding<Int>,
         stepsGoal: Binding<Int>,
         distanceGoal: Binding<Double>,
@@ -307,19 +309,19 @@ struct WorkoutTabView: View {
         distanceTravelledToday: Binding<Double>,
         weightGroups: Binding<[WeightGroupDefinition]>,
         weightEntries: Binding<[WeightExerciseValue]>,
+        weeklyCheckInStatuses: Binding<[WorkoutCheckInStatus]>,
+        autoRestDayIndices: Binding<Set<Int>>,
         lastWeightEntryByExerciseId: [UUID: WeightExerciseValue],
         onUpdateDailyActivity: @escaping (_ calories: Double?, _ steps: Double?, _ distance: Double?) -> Void,
         onUpdateDailyGoals: @escaping (_ calorieGoal: Int, _ stepsGoal: Int, _ distanceGoal: Double) -> Void,
         onUpdateWeightGroups: @escaping ([WeightGroupDefinition]) -> Void,
-        onUpdateWeightEntries: @escaping ([WeightExerciseValue]) -> Void
+        onUpdateWeightEntries: @escaping ([WeightExerciseValue]) -> Void,
+        onSelectCheckInStatus: @escaping (WorkoutCheckInStatus, Int?) -> Void,
+        onUpdateAutoRestDays: @escaping (Set<Int>) -> Void,
+        onClearWeekCheckIns: @escaping () -> Void
     ) {
         _account = account
         _selectedDate = selectedDate
-        _weeklyProgress = weeklyProgress
-        _autoRestDayIndices = autoRestDayIndices
-        self.currentDayIndex = currentDayIndex
-        self.onUpdateCheckInStatus = onUpdateCheckInStatus
-        self.onUpdateAutoRestDays = onUpdateAutoRestDays
         _caloriesBurnGoal = caloriesBurnGoal
         _stepsGoal = stepsGoal
         _distanceGoal = distanceGoal
@@ -328,11 +330,16 @@ struct WorkoutTabView: View {
         _distanceTravelledToday = distanceTravelledToday
         _weightGroups = weightGroups
         _weightEntries = weightEntries
+        _weeklyCheckInStatuses = weeklyCheckInStatuses
+        _autoRestDayIndices = autoRestDayIndices
         self.lastWeightEntryByExerciseId = lastWeightEntryByExerciseId
         self.onUpdateDailyActivity = onUpdateDailyActivity
         self.onUpdateDailyGoals = onUpdateDailyGoals
         self.onUpdateWeightGroups = onUpdateWeightGroups
         self.onUpdateWeightEntries = onUpdateWeightEntries
+        self.onSelectCheckInStatus = onSelectCheckInStatus
+        self.onUpdateAutoRestDays = onUpdateAutoRestDays
+        self.onClearWeekCheckIns = onClearWeekCheckIns
     }
 
     private var stepsProgress: Double {
@@ -361,6 +368,12 @@ struct WorkoutTabView: View {
         String(format: "Goal %.1f km", distanceGoal / 1000)
     }
 
+    private var currentDayIndex: Int {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: selectedDate)
+        return (weekday + 5) % 7 // anchor to Monday = 0
+    }
+
     private var lastWeightPlaceholderVersion: String {
         lastWeightEntryByExerciseId
             .sorted { $0.key.uuidString < $1.key.uuidString }
@@ -372,7 +385,7 @@ struct WorkoutTabView: View {
         ZStack {
             backgroundView
             ScrollView {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
                         .environmentObject(account)
 
@@ -384,22 +397,21 @@ struct WorkoutTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
 
-                    CoachingWorkoutProgressSection(
-                        weeklyProgress: $weeklyProgress,
+                    DailyCheckInSection(
+                        weeklyProgress: $weeklyCheckInStatuses,
                         accentColor: accentOverride ?? .accentColor,
                         currentDayIndex: currentDayIndex,
                         onEditRestDays: { showRestDaySheet = true },
-                        onSelectStatus: { status in
-                            if weeklyProgress.indices.contains(currentDayIndex) {
-                                weeklyProgress[currentDayIndex] = status
-                            }
-                            onUpdateCheckInStatus(status)
-                        }
+                        onSelectStatus: { status in onSelectCheckInStatus(status, nil) },
+                        onSelectStatusAtIndex: { status, idx in onSelectCheckInStatus(status, idx) }
                     )
-                    
+
                     WeeklyWorkoutScheduleCard(
                         schedule: $workoutSchedule,
-                        accentColor: accentOverride ?? .accentColor
+                        accentColor: accentOverride ?? .accentColor,
+                        onSave: { updated in
+                            persistWorkoutSchedule(updated)
+                        }
                     )
                     
                     HStack {
@@ -618,6 +630,38 @@ struct WorkoutTabView: View {
                         focusBinding: $isWeightsInputFocused
                     )
 
+                    // HStack {
+                    //     Text("Weekly Progress")
+                    //         .font(.title3)
+                    //         .fontWeight(.semibold)
+                    //         .foregroundStyle(.primary)
+
+                    //     Spacer()
+
+                    //     Button {
+                    //         showAddSheet = true
+                    //     } label: {
+                    //         Label("Add", systemImage: "plus")
+                    //             .font(.callout)
+                    //             .fontWeight(.medium)
+                    //             .padding(.horizontal, 12)
+                    //             .padding(.vertical, 8)
+                    //             .glassEffect(in: .rect(cornerRadius: 18.0))
+                    //     }
+                    //     .buttonStyle(.plain)
+                    // }
+                    // .frame(maxWidth: .infinity)
+                    // .padding(.horizontal, 18)
+                    // .padding(.top, 48)
+
+                    // WeeklyProgressCarousel(accentColorOverride: accentOverride,
+                    //                         entries: $weeklyEntries,
+                    //                         selectedEntry: $weeklySelectedEntry,
+                    //                         showEditor: $weeklyShowEditor,
+                    //                         previewImageEntry: $previewImageEntry)
+                    //     .padding(.horizontal, 18)
+                    //     .padding(.top, 12)
+
                     // Coaching inquiry card
                     CoachingInquiryCTA()
                         .padding(.top, 48)
@@ -639,12 +683,31 @@ struct WorkoutTabView: View {
         }
         .navigationTitle("Workout")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showAddSheet) {
+            WeeklyProgressAddSheet(
+                tint: accentOverride ?? .accentColor,
+                onSave: { entry in
+                    weeklyEntries.append(entry)
+                    weeklyEntries.sort { $0.date < $1.date }
+                    persistWeeklyProgressEntries()
+                    scheduleProgressReminder()
+                    showAddSheet = false
+                },
+                onCancel: {
+                    showAddSheet = false
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showRestDaySheet) {
             RestDayPickerSheet(
-                autoRestDayIndices: $autoRestDayIndices,
-                tint: accentOverride ?? .accentColor
-            ) {
-                onUpdateAutoRestDays(autoRestDayIndices)
+                initialAutoRestDayIndices: autoRestDayIndices,
+                tint: accentOverride ?? .accentColor,
+                onClearWeek: { onClearWeekCheckIns() }
+            ) { newSet in
+                autoRestDayIndices = newSet
+                onUpdateAutoRestDays(newSet)
                 showRestDaySheet = false
             }
             .presentationDetents([.medium, .large])
@@ -669,6 +732,26 @@ struct WorkoutTabView: View {
                 showingAdjustSheet = false
             }
         }
+        .sheet(item: $weeklySelectedEntry) { entry in
+            WeeklyProgressAddSheet(
+                tint: accentOverride ?? .accentColor,
+                initialEntry: entry,
+                onSave: { updatedEntry in
+                    if let idx = weeklyEntries.firstIndex(where: { $0.id == updatedEntry.id }) {
+                        weeklyEntries[idx] = updatedEntry
+                    }
+                    weeklyEntries.sort { $0.date < $1.date }
+                    persistWeeklyProgressEntries()
+                    scheduleProgressReminder()
+                    weeklySelectedEntry = nil
+                },
+                onCancel: {
+                    weeklySelectedEntry = nil
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showDailySummaryEditor) {
             DailySummaryGoalSheet(
                 calorieGoal: $caloriesBurnGoal,
@@ -692,6 +775,7 @@ struct WorkoutTabView: View {
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: lastWeightPlaceholderVersion) { _, _ in rebuildBodyPartsFromModel() }
+        .onChange(of: account.workoutSchedule) { _, _ in hydrateWorkoutScheduleFromAccount() }
         .onChange(of: bodyParts) { _, _ in persistBodyPartsChanges() }
         .onChange(of: isWeightsInputFocused) { _, newValue in
             if newValue == nil {
@@ -710,10 +794,8 @@ struct WorkoutTabView: View {
             )
         }
         .onAppear {
-            if weeklyProgress.count != 7 {
-                weeklyProgress = Array(repeating: .notLogged, count: 7)
-            }
             rebuildBodyPartsFromModel()
+            hydrateWorkoutScheduleFromAccount()
             // request HealthKit authorization and load values
             healthKitService.requestAuthorization { ok in
                 DispatchQueue.main.async {
@@ -724,6 +806,257 @@ struct WorkoutTabView: View {
                         // load any manual overrides for today
                         loadManualOverrides()
                     }
+                }
+            }
+        }
+        .onAppear {
+            reloadWeeklyProgressFromAccount()
+            ensurePlaceholderIfNeeded(persist: true)
+            refreshProgressFromRemote()
+        }
+        .onChange(of: account.weeklyProgress) { _, _ in
+            reloadWeeklyProgressFromAccount()
+            ensurePlaceholderIfNeeded(persist: false)
+            scheduleProgressReminder()
+        }
+        
+        .fullScreenCover(item: $previewImageEntry) { entry in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let data = entry.photoData, let ui = UIImage(data: data) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
+                        .ignoresSafeArea()
+                } else {
+                    Image("placeholder")
+                        .resizable()
+                        .scaledToFit()
+                        .ignoresSafeArea()
+                }
+
+                // Close button in the top-right corner
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            previewImageEntry = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.white)
+                                .opacity(0.95)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 18)
+                        .padding(.top, 44)
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    func hydrateWorkoutScheduleFromAccount() {
+        let resolved = account.workoutSchedule.isEmpty ? WorkoutScheduleItem.defaults : account.workoutSchedule
+        workoutSchedule = resolved
+    }
+
+    func persistWorkoutSchedule(_ updated: [WorkoutScheduleItem]) {
+        workoutSchedule = updated
+        account.workoutSchedule = updated
+        do {
+            try modelContext.save()
+        } catch {
+            print("WorkoutTabView: failed to save workout schedule locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success {
+                print("WorkoutTabView: failed to sync workout schedule to Firestore")
+            }
+        }
+    }
+
+    func scheduleProgressReminder() {
+        let baseDate = weeklyEntries.last?.date ?? Date()
+        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
+        var components = Calendar.current.dateComponents([.weekday], from: nextDate)
+        if components.weekday == nil {
+            components.weekday = Calendar.current.component(.weekday, from: Date())
+        }
+        components.hour = 9
+        components.minute = 0
+
+        let requestId = "weekly-progress-photo-reminder"
+        let center = UNUserNotificationCenter.current()
+
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            guard error == nil, granted else { return }
+
+            center.removePendingNotificationRequests(withIdentifiers: [requestId])
+
+            let content = UNMutableNotificationContent()
+            content.title = "Weekly Progress Photo"
+            content.body = "Time to capture this week's progress photo at 9 AM."
+            content.sound = .default
+
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+            let request = UNNotificationRequest(identifier: requestId, content: content, trigger: trigger)
+            center.add(request) { addError in
+                if let addError = addError {
+                    print("NutritionTabView: failed to schedule reminder: \(addError)")
+                }
+            }
+        }
+    }
+
+    func reloadWeeklyProgressFromAccount() {
+        weeklyEntries = account.weeklyProgress
+            .map {
+                WeeklyProgressEntry(
+                    id: UUID(uuidString: $0.id) ?? UUID(),
+                    date: $0.date,
+                    weight: $0.weight,
+                    waterPercent: $0.waterPercent,
+                    bodyFatPercent: $0.bodyFatPercent,
+                    photoData: $0.photoData
+                )
+            }
+            .sorted { $0.date < $1.date }
+    }
+
+    func ensurePlaceholderIfNeeded(persist: Bool) {
+        weeklyEntries.sort { $0.date < $1.date }
+
+        // Do not create placeholder entries; only persist real data.
+        if persist {
+            persistWeeklyProgressEntries()
+        }
+
+        if !weeklyEntries.isEmpty {
+            scheduleProgressReminder()
+        }
+    }
+
+    // Downsample + recompress photos to keep Firestore documents within limits and avoid invalid nested entity errors.
+    private func compressImageDataIfNeeded(_ data: Data?, maxBytes: Int = 450_000) -> Data? {
+        guard let data, !data.isEmpty else { return data }
+
+        // If already under the limit, keep as-is.
+        if data.count <= maxBytes { return data }
+
+        guard let image = UIImage(data: data) else { return data }
+
+        // Downscale to a reasonable portrait size to shrink payloads.
+        let targetWidth: CGFloat = 900
+        let scale = targetWidth / image.size.width
+        let targetHeight = image.size.height * scale
+        let targetSize = CGSize(width: targetWidth, height: targetHeight)
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let scaledImage = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        // Try a few quality levels to stay under the byte cap.
+        let qualities: [CGFloat] = [0.6, 0.5, 0.4, 0.3]
+        for quality in qualities {
+            if let compressed = scaledImage.jpegData(compressionQuality: quality), compressed.count <= maxBytes {
+                return compressed
+            }
+        }
+
+        // Fallback: return the smallest attempt even if still large.
+        return scaledImage.jpegData(compressionQuality: 0.25) ?? data
+    }
+
+    func persistWeeklyProgressEntries() {
+        let filteredEntries = weeklyEntries.filter { entry in
+            entry.weight != 0 || entry.waterPercent != nil || entry.bodyFatPercent != nil || entry.photoData != nil
+        }
+
+        var mergedById: [UUID: WeeklyProgressEntry] = [:]
+
+        // Start with locally edited entries.
+        for entry in filteredEntries {
+            mergedById[entry.id] = entry
+        }
+
+        // Preserve any existing account entries that aren't currently in memory to avoid accidental overwrites.
+        for record in account.weeklyProgress {
+            let uuid = UUID(uuidString: record.id) ?? UUID()
+            if mergedById[uuid] == nil {
+                mergedById[uuid] = WeeklyProgressEntry(
+                    id: uuid,
+                    date: record.date,
+                    weight: record.weight,
+                    waterPercent: record.waterPercent,
+                    bodyFatPercent: record.bodyFatPercent,
+                    photoData: record.photoData
+                )
+            }
+        }
+
+        let mergedEntries = mergedById.values.sorted { $0.date < $1.date }
+        weeklyEntries = mergedEntries
+
+        account.weeklyProgress = mergedEntries.map {
+            WeeklyProgressRecord(
+                id: $0.id.uuidString,
+                date: $0.date,
+                weight: $0.weight,
+                waterPercent: $0.waterPercent,
+                bodyFatPercent: $0.bodyFatPercent,
+                photoData: compressImageDataIfNeeded($0.photoData)
+            )
+        }
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save weekly progress locally: \(error)")
+        }
+
+        guard !mergedEntries.isEmpty else { return }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if success {
+            } else {
+                print("NutritionTabView: failed to sync weekly progress to Firestore")
+            }
+        }
+    }
+
+    func refreshProgressFromRemote() {
+        guard let id = account.id else { return }
+        accountFirestoreService.fetchAccount(withId: id) { fetched in
+            guard let fetched else { return }
+            DispatchQueue.main.async {
+                if !fetched.workoutSchedule.isEmpty {
+                    account.workoutSchedule = fetched.workoutSchedule
+                    workoutSchedule = fetched.workoutSchedule
+                }
+
+                let remoteProgress = fetched.weeklyProgress
+                let localProgress = account.weeklyProgress
+
+                if !remoteProgress.isEmpty {
+                    // Prefer remote when it actually has data.
+                    account.weeklyProgress = remoteProgress
+                    reloadWeeklyProgressFromAccount()
+                    ensurePlaceholderIfNeeded(persist: false)
+                } else if !localProgress.isEmpty {
+                    // Preserve local entries instead of wiping them with an empty payload.
+                    reloadWeeklyProgressFromAccount()
+                    persistWeeklyProgressEntries()
+                } else {
+                    weeklyEntries.removeAll()
+                }
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("NutritionTabView: failed to cache remote weekly progress: \(error)")
                 }
             }
         }
@@ -1073,275 +1406,12 @@ private let coachingDefaultSupplements: [Supplement] = [
     Supplement(name: "Electrolytes", amountLabel: "1 scoop")
 ]
 
-// Sample weekly schedule for coaching tab
-private let coachingWeeklySchedule: [WorkoutScheduleItem] = [
-    .init(day: "Mon", sessions: [.init(name: "Chest", colorHex: "#D84A4A")]),
-    .init(day: "Tue", sessions: [
-        .init(name: "Back", colorHex: "#4FB6C6"),
-        .init(name: "Run")
-    ]),
-    .init(day: "Wed", sessions: []),
-    .init(day: "Thu", sessions: [.init(name: "Legs", colorHex: "#7A5FD1")]),
-    .init(day: "Fri", sessions: [.init(name: "Shoulders", colorHex: "#E6C84F")]),
-    .init(day: "Sat", sessions: [.init(name: "Abs", colorHex: "#4CAF6A")]),
-    .init(day: "Sun", sessions: [])
-]
-
-private extension WorkoutCheckInStatus {
-    var timelineSymbol: String? {
-        switch self {
-        case .checkIn: return "circle.fill"
-        case .rest: return "circle.fill"
-        case .notLogged: return "circle"
-        }
-    }
-
-    var shouldHideTimelineNode: Bool { false }
-
-    var accentColor: Color {
-        switch self {
-        case .checkIn:
-            return Color.yellow
-        case .rest:
-            return Color(.systemGray3)
-        case .notLogged:
-            return Color(.systemGray3)
-        }
-    }
-}
-
-private struct CoachingWorkoutProgressTimelineView: View {
-    let daySymbols: [String]
-    let statuses: [WorkoutCheckInStatus]
-    let accentColor: Color
-
-    private let nodeHeight: CGFloat = 56
-    private let symbolSize: CGFloat = 20
-    private let connectorColor = Color.black.opacity(0.55)
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    let totalWidth = proxy.size.width
-                    let safeCount = max(daySymbols.count, 1)
-                    let cellWidth = totalWidth / CGFloat(safeCount)
-                    let connectorWidth = max(cellWidth - symbolSize, 0)
-                    let yPosition = symbolSize / 2
-
-                    ForEach(0..<max(daySymbols.count - 1, 0), id: \.self) { index in
-                        if shouldDrawConnector(at: index) {
-                            Rectangle()
-                                .fill(connectorColor)
-                                .frame(width: connectorWidth, height: 1)
-                                .position(x: cellWidth * (CGFloat(index) + 1), y: yPosition)
-                        }
-                    }
-                }
-                .frame(height: nodeHeight)
-                .allowsHitTesting(false)
-
-                HStack(alignment: .center, spacing: 0) {
-                    ForEach(Array(daySymbols.enumerated()), id: \.0) { index, label in
-                        timelineNode(for: index, label: label)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 16)
-    }
-
-    @ViewBuilder
-    private func timelineNode(for index: Int, label: String) -> some View {
-        let status = statuses.indices.contains(index) ? statuses[index] : .notLogged
-        let isHidden = status.shouldHideTimelineNode
-        VStack(spacing: 6) {
-            if let symbol = status.timelineSymbol {
-                Image(systemName: symbol)
-                    .font(.system(size: symbolSize, weight: .semibold))
-                    .frame(height: symbolSize)
-                    .foregroundStyle(status.accentColor)
-                    .fixedSize()
-            } else {
-                Color.clear.frame(height: symbolSize)
-            }
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.primary)
-        }
-        .frame(height: nodeHeight, alignment: .top)
-        .opacity(isHidden ? 0 : 1)
-    }
-
-    private func shouldDrawConnector(at index: Int) -> Bool {
-        let current = status(at: index)
-        let next = status(at: index + 1)
-        return !current.shouldHideTimelineNode && !next.shouldHideTimelineNode
-    }
-
-    private func status(at index: Int) -> WorkoutCheckInStatus {
-        guard statuses.indices.contains(index) else { return .notLogged }
-        return statuses[index]
-    }
-}
-
-private struct CoachingWorkoutProgressSection: View {
-    @Binding var weeklyProgress: [WorkoutCheckInStatus]
-    let accentColor: Color
-    let currentDayIndex: Int
-    var onEditRestDays: () -> Void
-    var onSelectStatus: (WorkoutCheckInStatus) -> Void
-
-    private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-    var body: some View {
-        let tint = accentColor
-
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                Text("Daily Check-In")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                Spacer()
-                Button(action: { onEditRestDays() }) {
-                    Label("Edit", systemImage: "pencil")
-                        .font(.callout)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                }
-                .buttonStyle(.plain)
-            }
-
-            CoachingWorkoutProgressTimelineView(daySymbols: daySymbols, statuses: weeklyProgress, accentColor: tint)
-                .padding(.bottom, -20)
-
-            HStack(spacing: 12) {
-                Button(action: { updateStatus(.checkIn) }) {
-                    Text("Check-In")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(CoachingWorkoutProgressButtonStyle(background: .regularMaterial))
-
-                Button(action: { updateStatus(.rest) }) {
-                    Text("Rest")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(CoachingWorkoutProgressButtonStyle(background: .regularMaterial))
-            }
-        }
-        .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-    }
-
-    private func updateStatus(_ status: WorkoutCheckInStatus) {
-        guard weeklyProgress.indices.contains(currentDayIndex) else { return }
-        weeklyProgress[currentDayIndex] = status
-        onSelectStatus(status)
-    }
-}
-
-private struct CoachingWorkoutProgressButtonStyle: ButtonStyle {
-    let background: Material
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .glassEffect(in: .rect(cornerRadius: 12.0))
-    }
-}
-
-private struct RestDayPickerSheet: View {
-    @Binding var autoRestDayIndices: Set<Int>
-    var tint: Color
-    var onDone: () -> Void
-
-    private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Rest Days")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-
-                        LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
-                            ForEach(Array(daySymbols.enumerated()), id: \.0) { index, label in
-                                SelectablePillComponent(
-                                    label: label,
-                                    isSelected: autoRestDayIndices.contains(index),
-                                    selectedTint: tint
-                                ) {
-                                    toggleDay(at: index)
-                                }
-                            }
-                        }
-                    }
-
-                    Text("Pick which days should default to Rest at the start of each week. Those days will be marked grey in your weekly timeline.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-            }
-            .navigationTitle("Edit Rest Days")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { onDone() }
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    private func toggleDay(at index: Int) {
-        if autoRestDayIndices.contains(index) {
-            autoRestDayIndices.remove(index)
-        } else {
-            autoRestDayIndices.insert(index)
-        }
-    }
-}
-
-// MARK: - Weekly schedule models & views moved from WorkoutTabView
-
-struct WorkoutScheduleItem: Identifiable {
-    let id = UUID()
-    let day: String
-    var sessions: [WorkoutSession]
-}
-
-struct WorkoutSession: Identifiable {
-    let id = UUID()
-    var name: String
-
-    var colorHex: String = ""
-
-    init(name: String, colorHex: String = "") {
-        self.name = name
-        self.colorHex = colorHex
-    }
-}
+// MARK: - Weekly schedule views
 
 private struct WeeklyWorkoutScheduleCard: View {
     @Binding var schedule: [WorkoutScheduleItem]
     let accentColor: Color
+    var onSave: ([WorkoutScheduleItem]) -> Void
 
     @State private var showEditSheet = false
 
@@ -1364,7 +1434,7 @@ private struct WeeklyWorkoutScheduleCard: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 20) {
                     ForEach(schedule) { day in
                         VStack(spacing: 10) {
                             Text(day.day)
@@ -1406,6 +1476,7 @@ private struct WeeklyWorkoutScheduleCard: View {
                 accentColor: accentColor
             ) { updated in
                 schedule = updated
+                onSave(updated)
                 showEditSheet = false
             }
         }
@@ -1419,10 +1490,11 @@ private struct WorkoutScheduleEditorSheet: View {
     var onSave: ([WorkoutScheduleItem]) -> Void
 
     @State private var working: [WorkoutScheduleItem] = []
-    @State private var hasLoaded = false
 
     @State private var newName: String = ""
     @State private var newColorHex: String = ""
+    @State private var newHour: Int = 9
+    @State private var newMinute: Int = 0
     @State private var selectedDayIndex: Int = 0
 
     @State private var showColorPickerSheet = false
@@ -1501,6 +1573,21 @@ private struct WorkoutScheduleEditorSheet: View {
                                                             .font(.subheadline.weight(.semibold))
 
                                                         HStack(spacing: 8) {
+                                                            DatePicker(
+                                                                "",
+                                                                selection: Binding<Date>(
+                                                                    get: { binding.wrappedValue.dateForToday },
+                                                                    set: { newValue in
+                                                                        let comps = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                                                                        binding.hour.wrappedValue = comps.hour ?? binding.hour.wrappedValue
+                                                                        binding.minute.wrappedValue = comps.minute ?? binding.minute.wrappedValue
+                                                                    }
+                                                                ),
+                                                                displayedComponents: .hourAndMinute
+                                                            )
+                                                            .labelsHidden()
+                                                            .tint(accentColor)
+                                                            
                                                             Menu {
                                                                 ForEach(Array(daySymbols.enumerated()), id: \.0) { moveIndex, label in
                                                                     Button(label) {
@@ -1615,6 +1702,21 @@ private struct WorkoutScheduleEditorSheet: View {
                                 .disabled(!canAddCustom)
                             }
 
+                            DatePicker(
+                                "",
+                                selection: Binding<Date>(
+                                    get: { newActivityDate },
+                                    set: { newValue in
+                                        let comps = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                                        newHour = comps.hour ?? newHour
+                                        newMinute = comps.minute ?? newMinute
+                                    }
+                                ),
+                                displayedComponents: .hourAndMinute
+                            )
+                            .labelsHidden()
+                            .tint(accentColor)
+
                             Text("You can add activities to any day.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
@@ -1653,10 +1755,15 @@ private struct WorkoutScheduleEditorSheet: View {
         !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedDayIndex < working.count
     }
 
+    private var newActivityDate: Date {
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = newHour
+        comps.minute = newMinute
+        return Calendar.current.date(from: comps) ?? Date()
+    }
+
     private func loadInitial() {
-        guard !hasLoaded else { return }
-        working = schedule.isEmpty ? coachingWeeklySchedule : schedule
-        hasLoaded = true
+        working = schedule.isEmpty ? WorkoutScheduleItem.defaults : schedule
     }
 
     private func addPreset(_ preset: WorkoutSession, to dayIndex: Int) {
@@ -1670,11 +1777,15 @@ private struct WorkoutScheduleEditorSheet: View {
         guard !trimmed.isEmpty else { return }
         let newSession = WorkoutSession(
             name: trimmed,
-            colorHex: newColorHex
+            colorHex: newColorHex,
+            hour: newHour,
+            minute: newMinute
         )
         working[selectedDayIndex].sessions.append(newSession)
         newName = ""
         newColorHex = ""
+        newHour = 9
+        newMinute = 0
     }
 
     private func removeSession(dayIndex: Int, sessionId: UUID) {
@@ -1716,14 +1827,293 @@ private struct WeeklySessionCard: View {
     }
 
     var body: some View {
-        Text(session.name)
-            .font(.footnote)
-            .fontWeight(.medium)
-            .lineLimit(2)
-            .frame(width: 70, alignment: .center)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
-            .glassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
+        VStack(spacing: 4) {
+            Text(session.name)
+                .font(.footnote)
+                .fontWeight(.medium)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity)
+
+            Text(session.formattedTime)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 80, alignment: .center)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .glassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
+    }
+}
+
+// MARK: - Daily Check-In UI (UI-only, no persistence)
+
+private extension WorkoutCheckInStatus {
+    var timelineSymbol: String? {
+        switch self {
+        case .checkIn: return "circle.fill"
+        case .rest: return "circle.fill"
+        case .notLogged: return "circle"
+        }
+    }
+
+    var shouldHideTimelineNode: Bool { false }
+
+    var accentColor: Color {
+        switch self {
+        case .checkIn:
+            return Color.yellow
+        case .rest:
+            return Color(.systemGray3)
+        case .notLogged:
+            return Color(.systemGray3)
+        }
+    }
+}
+
+private struct DailyCheckInTimelineView: View {
+    let daySymbols: [String]
+    let statuses: [WorkoutCheckInStatus]
+    let accentColor: Color
+    var onNodeTap: ((Int) -> Void)? = nil
+
+    private let nodeHeight: CGFloat = 56
+    private let symbolSize: CGFloat = 20
+    private let connectorColor = Color.black.opacity(0.55)
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                GeometryReader { proxy in
+                    let totalWidth = proxy.size.width
+                    let safeCount = max(daySymbols.count, 1)
+                    let cellWidth = totalWidth / CGFloat(safeCount)
+                    let connectorWidth = max(cellWidth - symbolSize, 0)
+                    let yPosition = symbolSize / 2
+
+                    ForEach(0..<max(daySymbols.count - 1, 0), id: \.self) { index in
+                        if shouldDrawConnector(at: index) {
+                            Rectangle()
+                                .fill(connectorColor)
+                                .frame(width: connectorWidth, height: 1)
+                                .position(x: cellWidth * (CGFloat(index) + 1), y: yPosition)
+                        }
+                    }
+                }
+                .frame(height: nodeHeight)
+                .allowsHitTesting(false)
+
+                HStack(alignment: .center, spacing: 0) {
+                    ForEach(Array(daySymbols.enumerated()), id: \.0) { index, label in
+                        timelineNode(for: index, label: label)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onNodeTap?(index)
+                            }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 18)
+        .padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private func timelineNode(for index: Int, label: String) -> some View {
+        let status = statuses.indices.contains(index) ? statuses[index] : .notLogged
+        let isHidden = status.shouldHideTimelineNode
+        VStack(spacing: 6) {
+            if let symbol = status.timelineSymbol {
+                Image(systemName: symbol)
+                    .font(.system(size: symbolSize, weight: .semibold))
+                    .frame(height: symbolSize)
+                    .foregroundStyle(status.accentColor)
+                    .fixedSize()
+            } else {
+                Color.clear.frame(height: symbolSize)
+            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.primary)
+        }
+        .frame(height: nodeHeight, alignment: .top)
+        .opacity(isHidden ? 0 : 1)
+    }
+
+    private func shouldDrawConnector(at index: Int) -> Bool {
+        let current = status(at: index)
+        let next = status(at: index + 1)
+        return !current.shouldHideTimelineNode && !next.shouldHideTimelineNode
+    }
+
+    private func status(at index: Int) -> WorkoutCheckInStatus {
+        guard statuses.indices.contains(index) else { return .notLogged }
+        return statuses[index]
+    }
+}
+
+private struct DailyCheckInSection: View {
+    @Binding var weeklyProgress: [WorkoutCheckInStatus]
+    let accentColor: Color
+    let currentDayIndex: Int
+    var onEditRestDays: () -> Void
+    var onSelectStatus: (WorkoutCheckInStatus) -> Void
+    var onSelectStatusAtIndex: (WorkoutCheckInStatus, Int) -> Void
+
+    private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    var body: some View {
+        let tint = accentColor
+
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Text("Daily Check-In")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button(action: { onEditRestDays() }) {
+                    Label("Edit", systemImage: "pencil")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                }
+                .buttonStyle(.plain)
+            }
+
+            DailyCheckInTimelineView(daySymbols: daySymbols, statuses: weeklyProgress, accentColor: tint, onNodeTap: { index in
+                nodeTapped(at: index)
+            })
+                .padding(.bottom, -20)
+
+            HStack(spacing: 12) {
+                Button(action: { updateStatus(.checkIn) }) {
+                    Text("Check-In")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(DailyCheckInButtonStyle(background: .regularMaterial))
+
+                Button(action: { updateStatus(.rest) }) {
+                    Text("Rest")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(DailyCheckInButtonStyle(background: .regularMaterial))
+            }
+        }
+        .padding(20)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+    }
+
+    private func updateStatus(_ status: WorkoutCheckInStatus) {
+        guard weeklyProgress.indices.contains(currentDayIndex) else { return }
+        weeklyProgress[currentDayIndex] = status
+        onSelectStatus(status)
+    }
+
+    private func nodeTapped(at index: Int) {
+        guard weeklyProgress.indices.contains(index) else { return }
+        let current = weeklyProgress[index]
+        switch current {
+        case .checkIn, .rest:
+            weeklyProgress[index] = .notLogged
+            onSelectStatusAtIndex(.notLogged, index)
+        case .notLogged:
+            break
+        }
+    }
+}
+
+private struct DailyCheckInButtonStyle: ButtonStyle {
+    let background: Material
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .glassEffect(in: .rect(cornerRadius: 12.0))
+    }
+}
+
+private struct RestDayPickerSheet: View {
+    var initialAutoRestDayIndices: Set<Int>
+    var tint: Color
+    var onClearWeek: () -> Void
+    var onDone: (Set<Int>) -> Void
+
+    @State private var workingIndices: Set<Int> = []
+
+    private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Rest Days")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
+                            ForEach(Array(daySymbols.enumerated()), id: \.0) { index, label in
+                                SelectablePillComponent(
+                                    label: label,
+                                    isSelected: workingIndices.contains(index),
+                                    selectedTint: tint
+                                ) {
+                                    toggleDay(at: index)
+                                }
+                            }
+                        }
+                    }
+
+                    Text("Pick which days should default to Rest at the start of each week. Those days will be marked grey in your weekly timeline.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle("Edit Rest Days")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDone(workingIndices)
+                    }
+                    .fontWeight(.semibold)
+                }
+                // ToolbarItem(placement: .bottomBar) {
+                //     Button(role: .destructive) {
+                //         onClearWeek()
+                //     } label: {
+                //         Label("Clear This Week", systemImage: "trash")
+                //     }
+                // }
+            }
+        }
+        .onAppear { workingIndices = initialAutoRestDayIndices }
+    }
+
+    @Environment(\.dismiss) private var dismiss
+
+    private func toggleDay(at index: Int) {
+        if workingIndices.contains(index) {
+            workingIndices.remove(index)
+        } else {
+            workingIndices.insert(index)
+        }
     }
 }
 
@@ -2357,6 +2747,421 @@ private struct KeyboardDismissBar: View {
             } else {
                 EmptyView()
                     .frame(height: 0)
+            }
+        }
+    }
+}
+
+private struct WeeklyProgressCarousel: View {
+    var accentColorOverride: Color?
+
+    @Binding var entries: [WeeklyProgressEntry]
+    @Binding var selectedEntry: WeeklyProgressEntry?
+    @Binding var showEditor: Bool
+    @Binding var previewImageEntry: WeeklyProgressEntry?
+    
+    private var dateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "E, d MMM"
+        return f
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    let tint = accentColorOverride ?? .accentColor
+
+                    ForEach(entries) { entry in
+                        VStack(alignment: .center, spacing: 8) {
+                            // Date centered at top
+                            Text(dateFormatter.string(from: entry.date))
+                                .font(.footnote)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 8)
+
+                            Spacer()
+
+                            // Weight shown only when present
+                            if entry.weight > 0 {
+                                Text(String(format: "%.1f kg", entry.weight))
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
+                            } else {
+                                Text("No data yet")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            // Optional additional info — reserve a fixed height so absence
+                            // of both values doesn't shift the weight vertically.
+                            HStack(spacing: 10) {
+                                if let water = entry.waterPercent {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "drop.fill")
+                                            .foregroundStyle(tint)
+                                        Text(String(format: "%.0f%%", water))
+                                    }
+                                }
+
+                                if let bf = entry.bodyFatPercent {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "scalemass")
+                                            .foregroundStyle(tint)
+                                        Text(String(format: "%.1f%%", bf))
+                                    }
+                                }
+
+                                // If neither metric is present, add an invisible placeholder
+                                // that preserves the row height to avoid layout shifts.
+                                if entry.waterPercent == nil && entry.bodyFatPercent == nil {
+                                    Color.clear
+                                        .frame(height: 18)
+                                }
+                            }
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(minHeight: 18)
+
+                            // Photo (placed under the additional info)
+                            if let data = entry.photoData, let uiImage = UIImage(data: data) {
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 180, height: 240)
+                                    .aspectRatio(3/4, contentMode: .fill)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .onTapGesture {
+                                        previewImageEntry = entry
+                                    }
+                                    .accessibilityLabel("Progress photo")
+                                    .padding(.top, 6)
+                            } else {
+                                // Rounded Rectangle placeholder with .glassEffect
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(0.05))
+                                    .frame(width: 180, height: 240)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .overlay(
+                                        Text("No Photo")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    )
+                                    .padding(.top, 6)
+                            }
+
+                            HStack {
+                                Spacer()
+                                Button {
+                                    selectedEntry = entry
+                                    showEditor = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
+                                Spacer()
+                            }
+                            .padding(.top, 8)
+                            .padding(.bottom, 8)
+                        }
+                        .padding(16)
+                        .frame(width: 220)
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .id(entry.id)
+                    }
+
+                    // Upcoming tile: shows next expected entry date (last entry date + 7 days)
+                    VStack(alignment: .center, spacing: 8) {
+                        Text("Upcoming")
+                            .font(.footnote)
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 8)
+
+                        Spacer()
+
+                        // Compute next expected date (7 days after last entry)
+                        let baseDate = entries.last?.date ?? Date()
+                        let nextDate = Calendar.current.date(byAdding: .day, value: 7, to: baseDate) ?? baseDate
+
+                        VStack(spacing: 12) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 28))
+                                .foregroundStyle(tint)
+
+                            Text("Next expected:")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            Text(dateFormatter.string(from: nextDate))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(16)
+                    .frame(width: 220)
+                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                    .id("weekly-upcoming")
+                }
+                .padding(.vertical, 6)
+                .padding(.leading, 2)
+            }
+            .onAppear {
+                if let last = entries.last {
+                    proxy.scrollTo(last.id, anchor: .trailing)
+                }
+            }
+            .onChange(of: entries) { _, newEntries in
+                if let last = newEntries.last {
+                    withAnimation(.easeOut) {
+                        proxy.scrollTo(last.id, anchor: .trailing)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct WeeklyProgressAddSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var date: Date = Date()
+    @State private var weightText: String = ""
+    @State private var waterText: String = ""
+    @State private var bodyFatText: String = ""
+
+    @State private var photoItem: PhotosPickerItem? = nil
+    @State private var photoData: Data? = nil
+
+    var tint: Color = .accentColor
+    var initialEntry: WeeklyProgressEntry? = nil
+    var onSave: (WeeklyProgressEntry) -> Void
+    var onCancel: () -> Void = {}
+
+    init(
+        tint: Color = .accentColor,
+        initialEntry: WeeklyProgressEntry? = nil,
+        onSave: @escaping (WeeklyProgressEntry) -> Void,
+        onCancel: @escaping () -> Void = {}
+    ) {
+        self.tint = tint
+        self.initialEntry = initialEntry
+        self.onSave = onSave
+        self.onCancel = onCancel
+
+        _date = State(initialValue: initialEntry?.date ?? Date())
+        _weightText = State(initialValue: initialEntry != nil ? String(format: "%.1f", initialEntry!.weight) : "")
+        _waterText = State(initialValue: initialEntry?.waterPercent != nil ? String(format: "%.0f", initialEntry!.waterPercent!) : "")
+        _bodyFatText = State(initialValue: initialEntry?.bodyFatPercent != nil ? String(format: "%.1f", initialEntry!.bodyFatPercent!) : "")
+        _photoData = State(initialValue: initialEntry?.photoData)
+        _photoItem = State(initialValue: nil)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Date")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        
+                        DateComponent(
+                            date: Binding(
+                                get: { date },
+                                set: { date = $0 }
+                            ),
+                            range: PumpDateRange.birthdate
+                        )
+                        .surfaceCard(12)
+                    }
+
+
+                    // Weight input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Weight")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack {
+                            TextField("Weight", text: $weightText)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("kg")
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .surfaceCard(16)
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    HStack {
+                        // Water % input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Body Water")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                TextField("e.g. 50", text: $waterText)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.plain)
+                                Text("%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .surfaceCard(16)
+                            .frame(maxWidth: .infinity)
+                        }
+
+                        Spacer()
+
+                        // Body fat % input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Body Fat")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            HStack {
+                                TextField("e.g. 18.5", text: $bodyFatText)
+                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(.plain)
+                                Text("%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .surfaceCard(16)
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+
+                    // Photo controls: Upload/Replace (PhotosPicker) and Remove
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Photo")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 12) {
+                            let uploadLabel = (photoData == nil) ? "Upload" : "Replace"
+
+                            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                                SelectablePillComponent(
+                                    label: uploadLabel,
+                                    isSelected: false,
+                                    selectedTint: tint
+                                ) {
+                                    // PhotosPicker will present the picker when tapped
+                                }
+                                .allowsHitTesting(false)
+                            }
+
+                            if photoData != nil {
+                                SelectablePillComponent(
+                                    label: "Remove",
+                                    isSelected: false,
+                                    selectedTint: tint
+                                ) {
+                                    photoData = nil
+                                    photoItem = nil
+                                }
+                            }
+                        }
+                        .padding(.bottom, 8)
+
+                        if let data = photoData, let ui = UIImage(data: data) {
+                            HStack {
+                                Spacer()
+                                Image(uiImage: ui)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 180, height: 240)
+                                    .aspectRatio(3/4, contentMode: .fill)
+                                    .clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                Spacer()
+                            }
+                            .padding(.top, 6)
+                        } else {
+                            HStack {
+                                Spacer()
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(0.05))
+                                    .frame(width: 180, height: 240)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(tint.opacity(0.12), lineWidth: 1)
+                                    )
+                                    .overlay(
+                                        Text("No photo")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    )
+                                Spacer()
+                            }
+                            .padding(.top, 6)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+            }
+            .navigationTitle(initialEntry != nil ? "Edit Progress" : "Add Progress")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        let weight = Double(weightText) ?? 0
+                        let water = Double(waterText)
+                        let bf = Double(bodyFatText)
+                        let entry = WeeklyProgressEntry(
+                            id: initialEntry?.id ?? UUID(),
+                            date: date,
+                            weight: weight,
+                            waterPercent: water,
+                            bodyFatPercent: bf,
+                            photoData: photoData
+                        )
+                        onSave(entry)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .onChange(of: photoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            photoData = data
+                        }
+                    }
+                }
             }
         }
     }

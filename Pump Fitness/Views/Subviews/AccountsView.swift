@@ -785,13 +785,6 @@ private struct IdentitySection: View {
                         .tint(.red)
                     } else {
                         uploadMenuButton(title: "Upload")
-
-                        Button(action: viewModel.shuffleAvatarColor) {
-                            actionLabel(text: "Shuffle", systemImage: "die.face.5")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.primary)
-                        .tint(.primary)
                     }
                 }
             }

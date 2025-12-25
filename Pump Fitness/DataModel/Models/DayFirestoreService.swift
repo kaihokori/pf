@@ -12,19 +12,31 @@ class DayFirestoreService {
     /// Pending day keys (dd-MM-yyyy) that were created locally while unauthenticated and should be uploaded when a user signs in.
     private var pendingDayKeys = Set<String>()
 
-    private func dateKey(for date: Date) -> String {
-        // Always derive the key from a UTC-normalized start-of-day to avoid
-        // mixing calendars (local components + UTC calendar) that can shift
-        // the day backward/forward in some time zones.
+    private func dateKey(forLocal date: Date) -> String {
+        // Use local calendar to extract YMD, then construct UTC date.
+        let localCal = Calendar.current
+        let components = localCal.dateComponents([.year, .month, .day], from: date)
+        
         var utcCal = Calendar(identifier: .gregorian)
         utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
-        let dayStartInUTC = utcCal.startOfDay(for: date)
+        let dayStartInUTC = utcCal.date(from: components) ?? utcCal.startOfDay(for: date)
 
         let fmt = DateFormatter()
         fmt.calendar = utcCal
         fmt.timeZone = utcCal.timeZone
         fmt.dateFormat = "dd-MM-yyyy"
         return fmt.string(from: dayStartInUTC)
+    }
+
+    private func dateKey(forUTC date: Date) -> String {
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        
+        let fmt = DateFormatter()
+        fmt.calendar = utcCal
+        fmt.timeZone = utcCal.timeZone
+        fmt.dateFormat = "dd-MM-yyyy"
+        return fmt.string(from: date)
     }
 
     private func encodeMacroConsumptions(_ macros: [MacroConsumption]) -> [[String: Any]] {
@@ -224,7 +236,7 @@ class DayFirestoreService {
         teamMetrics: [TeamMetric]? = nil,
         completion: @escaping (Day?) -> Void
     ) {
-        let key = dateKey(for: date)
+        let key = dateKey(forLocal: date)
 
         // Choose docRef: user-scoped `accounts/{userID}/days/{dayDate}` when signed in, otherwise legacy `days/{dayDate}`
         let docRef: DocumentReference
@@ -489,11 +501,11 @@ class DayFirestoreService {
             return
         }
 
-        // Normalize start-of-day to UTC to match `dateKey(for:)` behavior
+        // Normalize start-of-day to UTC
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
         let dayStart = cal.startOfDay(for: day.date)
-        let key = dateKey(for: dayStart)
+        let key = dateKey(forUTC: dayStart)
         // Build a payload only containing the fields we intend to write.
         // Do not write `macroFocus` when it's nil (avoid setting it to null),
         // and use Firestore's merge option so we don't accidentally overwrite
@@ -874,7 +886,7 @@ class DayFirestoreService {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
         let dayStart = cal.startOfDay(for: day.date)
-        let key = dateKey(for: dayStart)
+        let key = dateKey(forUTC: dayStart)
 
         if let uid = Auth.auth().currentUser?.uid {
             let path = "accounts/\(uid)/days/\(key)"

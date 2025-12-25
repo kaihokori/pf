@@ -522,9 +522,14 @@ class Day {
     }
 
     static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil, soloMetrics: [SoloMetric]? = nil, teamMetrics: [TeamMetric]? = nil) -> Day {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        let dayStart = cal.startOfDay(for: date)
+        // Use local calendar to extract YMD, then construct UTC date.
+        // This ensures that "Thursday" local always maps to "Thursday" UTC-normalized Day.
+        let localCal = Calendar.current
+        let components = localCal.dateComponents([.year, .month, .day], from: date)
+        
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = utcCal.date(from: components) ?? utcCal.startOfDay(for: date)
 
         let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == dayStart })
         do {
@@ -543,7 +548,7 @@ class Day {
         }
 
         do {
-            let nextDay = cal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            let nextDay = utcCal.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
             let rangeRequest = FetchDescriptor<Day>(predicate: #Predicate { $0.date >= dayStart && $0.date < nextDay })
             let rangeResults = try context.fetch(rangeRequest)
             if let existing = rangeResults.first {

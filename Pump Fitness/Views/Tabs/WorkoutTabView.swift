@@ -1275,12 +1275,16 @@ private extension WorkoutTabView {
     }
 
     func dateKey(for date: Date) -> String {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        let dayStart = Calendar.current.startOfDay(for: date)
+        let localCal = Calendar.current
+        let components = localCal.dateComponents([.year, .month, .day], from: date)
+        
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = utcCal.date(from: components) ?? utcCal.startOfDay(for: date)
+        
         let fmt = DateFormatter()
-        fmt.calendar = cal
-        fmt.timeZone = cal.timeZone
+        fmt.calendar = utcCal
+        fmt.timeZone = utcCal.timeZone
         fmt.dateFormat = "dd-MM-yyyy"
         return fmt.string(from: dayStart)
     }

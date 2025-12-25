@@ -2786,11 +2786,10 @@ struct DailyMealLogSection: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .dayDataDidChange)) { note in
             if let info = note.userInfo as? [String: Any], let date = info["date"] as? Date {
-                var cal = Calendar(identifier: .gregorian)
-                cal.timeZone = TimeZone(secondsFromGMT: 0)!
-                let a = cal.startOfDay(for: date)
-                let b = cal.startOfDay(for: selectedDate)
-                if a == b {
+                let localCal = Calendar.current
+                let compsA = localCal.dateComponents([.year, .month, .day], from: date)
+                let compsB = localCal.dateComponents([.year, .month, .day], from: selectedDate)
+                if compsA == compsB {
                     refreshMeals()
                 }
             } else {

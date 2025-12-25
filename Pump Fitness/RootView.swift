@@ -714,7 +714,6 @@ private extension RootView {
 
         // First, populate UI from local SwiftData to avoid waiting on Firestore.
         let localDates = datesForWeek(containing: anchorDate)
-        let localCalendar = Calendar.current
         var localStatuses: [WorkoutCheckInStatus] = Array(repeating: .notLogged, count: 7)
         var localExpenses: [ExpenseEntry] = []
         var localSleep: [SleepDayEntry] = []

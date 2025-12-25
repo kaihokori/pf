@@ -116,6 +116,7 @@ struct ActivityTimersSection: View {
     var timers: [ActivityTimerItem]
 
     @AppStorage("activityTimers.runStates.json") private var storedRunStates: String = ""
+    @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = false
     @State private var runStates: [String: Date] = [:]
     @State private var now: Date = Date()
 
@@ -150,8 +151,13 @@ struct ActivityTimersSection: View {
     private func toggleTimer(_ item: ActivityTimerItem) {
         if let endDate = runStates[item.id], endDate > now {
             runStates[item.id] = nil
+            NotificationsHelper.removeActivityTimerNotification(id: item.id)
         } else {
-            runStates[item.id] = Date().addingTimeInterval(Double(item.durationMinutes * 60))
+            let end = Date().addingTimeInterval(Double(item.durationMinutes * 60))
+            runStates[item.id] = end
+            if activityTimersAlertsEnabled {
+                NotificationsHelper.scheduleActivityTimerNotification(id: item.id, name: item.name, endDate: end)
+            }
         }
         persistRunStates()
     }
@@ -218,6 +224,19 @@ struct ActivityTimersSection: View {
         .onReceive(ticker) { value in
             now = value
             removeExpiredTimers()
+        }
+        .onChange(of: activityTimersAlertsEnabled) { _, enabled in
+            if enabled {
+                for (id, endDate) in runStates {
+                    if endDate > now, let timer = timers.first(where: { $0.id == id }) {
+                        NotificationsHelper.scheduleActivityTimerNotification(id: id, name: timer.name, endDate: endDate)
+                    }
+                }
+            } else {
+                for (id, _) in runStates {
+                    NotificationsHelper.removeActivityTimerNotification(id: id)
+                }
+            }
         }
     }
 

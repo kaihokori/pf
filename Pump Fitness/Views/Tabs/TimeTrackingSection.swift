@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UserNotifications
 
 struct TimeTrackingConfig: Equatable, Codable {
     var stopwatchName: String
@@ -25,6 +26,7 @@ struct TimeTrackingSection: View {
     @AppStorage("timetracking.stopwatchStart") private var storedStopwatchStart: Double = 0
     @AppStorage("timetracking.stopwatchAccum") private var storedStopwatchAccum: Double = 0
     @AppStorage("timetracking.timerEnd") private var storedTimerEnd: Double = 0
+    @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = false
 
     @State private var stopwatchStart: Date?
     @State private var stopwatchAccumulated: TimeInterval = 0
@@ -111,6 +113,34 @@ struct TimeTrackingSection: View {
                 storedTimerEnd = 0
             }
         }
+        .onChange(of: timeTrackingAlertsEnabled) { _, enabled in
+            if enabled {
+                // Schedule if running
+                if let start = stopwatchStart {
+                    let remaining = stopwatchTargetSeconds - (stopwatchAccumulated + now.timeIntervalSince(start))
+                    if remaining > 0 {
+                        let finishDate = now.addingTimeInterval(remaining)
+                        NotificationsHelper.scheduleTimeTrackingNotification(
+                            id: "stopwatch",
+                            title: "\(config.stopwatchName) Target Reached",
+                            body: "You've reached your target of \(config.stopwatchTargetMinutes) minutes!",
+                            endDate: finishDate
+                        )
+                    }
+                }
+                if let end = timerEndDate, end > now {
+                    NotificationsHelper.scheduleTimeTrackingNotification(
+                        id: "timer",
+                        title: "\(config.timerName) Finished",
+                        body: "Your \(config.timerDurationMinutes) minute timer is up!",
+                        endDate: end
+                    )
+                }
+            } else {
+                NotificationsHelper.removeTimeTrackingNotification(id: "stopwatch")
+                NotificationsHelper.removeTimeTrackingNotification(id: "timer")
+            }
+        }
     }
 
     private func toggleStopwatch() {
@@ -119,9 +149,23 @@ struct TimeTrackingSection: View {
             stopwatchStart = nil
             storedStopwatchStart = 0
             storedStopwatchAccum = stopwatchAccumulated
+            NotificationsHelper.removeTimeTrackingNotification(id: "stopwatch")
         } else {
             stopwatchStart = now
             storedStopwatchStart = now.timeIntervalSince1970
+            
+            if timeTrackingAlertsEnabled {
+                let remaining = stopwatchTargetSeconds - stopwatchAccumulated
+                if remaining > 0 {
+                    let finishDate = now.addingTimeInterval(remaining)
+                    NotificationsHelper.scheduleTimeTrackingNotification(
+                        id: "stopwatch",
+                        title: "\(config.stopwatchName) Target Reached",
+                        body: "You've reached your target of \(config.stopwatchTargetMinutes) minutes!",
+                        endDate: finishDate
+                    )
+                }
+            }
         }
     }
 
@@ -130,21 +174,33 @@ struct TimeTrackingSection: View {
         stopwatchAccumulated = 0
         storedStopwatchStart = 0
         storedStopwatchAccum = 0
+        NotificationsHelper.removeTimeTrackingNotification(id: "stopwatch")
     }
 
     private func toggleTimer() {
         if timerIsRunning {
             timerEndDate = nil
             storedTimerEnd = 0
+            NotificationsHelper.removeTimeTrackingNotification(id: "timer")
         } else {
             timerEndDate = now.addingTimeInterval(timerTotalSeconds)
             storedTimerEnd = timerEndDate?.timeIntervalSince1970 ?? 0
+            
+            if timeTrackingAlertsEnabled, let end = timerEndDate {
+                NotificationsHelper.scheduleTimeTrackingNotification(
+                    id: "timer",
+                    title: "\(config.timerName) Finished",
+                    body: "Your \(config.timerDurationMinutes) minute timer is up!",
+                    endDate: end
+                )
+            }
         }
     }
 
     private func resetTimer() {
         timerEndDate = nil
         storedTimerEnd = 0
+        NotificationsHelper.removeTimeTrackingNotification(id: "timer")
     }
 
     private func restorePersistedTimeTracking() {

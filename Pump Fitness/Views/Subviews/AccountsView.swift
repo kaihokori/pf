@@ -14,15 +14,6 @@ import UIKit
 import FirebaseAuth
 import HealthKit
 
-enum AlertType: String, CaseIterable, Identifiable {
-    case mealTracking = "Meal Tracking"
-    case fastingTimer = "Fasting Timer"
-    case dailyTasks = "Daily Tasks"
-    case activityTimers = "Activity Timers"
-    case dailyCheckIn = "Daily Check-In"
-    var id: String { rawValue }
-}
-
 struct AccountsView: View {
     @Binding var account: Account
     @StateObject private var viewModel: AccountsViewModel
@@ -40,10 +31,17 @@ struct AccountsView: View {
     @State private var showValidationAlert = false
     @State private var validationMessage = ""
     @State private var showMaintenanceExplainer = false
+    @State private var showActivityExplainer = false
     @State private var showHealthKitStatusAlert = false
     @State private var healthKitStatusMessage = ""
     @State private var showAlertsSheet = false
-    @State private var selectedAlerts: Set<AlertType> = []
+    @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
+    @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
+    @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = false
+    @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = false
+    @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = false
+    @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
+    @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
 
     init(account: Binding<Account>) {
         _account = account
@@ -118,6 +116,23 @@ struct AccountsView: View {
                                 )
                                 .surfaceCard(12)
                             }
+
+                            ActivityLevelPicker(selectedLevel: Binding(
+                                get: { viewModel.draft.activityLevel },
+                                set: { viewModel.draft.activityLevel = $0 }
+                            ))
+
+                            // Explanation tappable hint
+                            Button(action: { showActivityExplainer = true }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "info.circle")
+                                    Text("Tap for Explanation")
+                                    Spacer()
+                                }
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
                         
                         SectionCard(title: "Measurements") {
@@ -164,12 +179,16 @@ struct AccountsView: View {
                                         Button {
                                             Task { await MainActor.run { viewModel.calculateMaintenanceCalories() } }
                                         } label: {
-                                            Text("Auto")
-                                                .font(.subheadline)
-                                                .fontWeight(.semibold)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 8)
-                                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                                                Text("Auto")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 14)
+                                                    .padding(.vertical, 8)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                                            .fill(currentAccent)
+                                                    )
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -328,6 +347,89 @@ struct AccountsView: View {
         .onAppear {
             syncFromAccount()
             viewModel.applyExternalTheme(themeManager.selectedTheme)
+            // Ensure notifications state reflects saved preference
+            if dailyTasksAlertsEnabled {
+                NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks)
+            } else {
+                NotificationsHelper.removeDailyTaskNotifications()
+            }
+            
+            if !habitsAlertsEnabled {
+                NotificationsHelper.removeHabitNotifications()
+            }
+            
+            if !timeTrackingAlertsEnabled {
+                NotificationsHelper.removeTimeTrackingNotification(id: "stopwatch")
+                NotificationsHelper.removeTimeTrackingNotification(id: "timer")
+            }
+            
+            if !dailyCheckInAlertsEnabled {
+                NotificationsHelper.removeDailyCheckInNotifications()
+            }
+
+            if fastingAlertsEnabled {
+                // Fasting scheduling happens from the fasting timer when active; nothing to schedule now.
+            } else {
+                NotificationsHelper.removeFastingNotifications()
+            }
+            if mealsAlertsEnabled {
+                NotificationsHelper.scheduleMealNotifications(account.mealReminders)
+            } else {
+                NotificationsHelper.removeMealNotifications()
+            }
+            if !weeklyProgressAlertsEnabled {
+                NotificationsHelper.removeWeeklyProgressNotifications()
+            }
+        }
+        .onChange(of: dailyTasksAlertsEnabled) { _, newValue in
+            if newValue {
+                NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks)
+            } else {
+                NotificationsHelper.removeDailyTaskNotifications()
+            }
+        }
+        .onChange(of: habitsAlertsEnabled) { _, newValue in
+            if newValue {
+                // Habits scheduling requires completion status which isn't readily available here.
+                // It will be handled by RoutineTabView's onAppear/refreshNotifications.
+                // However, we can schedule a baseline notification with all habits if needed,
+                // but it's safer to let RoutineTabView handle it to be accurate.
+                // For now, we'll just remove if disabled.
+            } else {
+                NotificationsHelper.removeHabitNotifications()
+            }
+        }
+        .onChange(of: timeTrackingAlertsEnabled) { _, newValue in
+            if !newValue {
+                NotificationsHelper.removeTimeTrackingNotification(id: "stopwatch")
+                NotificationsHelper.removeTimeTrackingNotification(id: "timer")
+            }
+        }
+        .onChange(of: dailyCheckInAlertsEnabled) { _, newValue in
+            if !newValue {
+                NotificationsHelper.removeDailyCheckInNotifications()
+            }
+        }
+        .onChange(of: fastingAlertsEnabled) { _, newValue in
+            if newValue {
+                // Fasting notifications are scheduled by the fasting timer when active; nothing to do here.
+            } else {
+                NotificationsHelper.removeFastingNotifications()
+            }
+        }
+        .onChange(of: mealsAlertsEnabled) { _, newValue in
+            if newValue {
+                NotificationsHelper.scheduleMealNotifications(account.mealReminders)
+            } else {
+                NotificationsHelper.removeMealNotifications()
+            }
+        }
+        .onChange(of: weeklyProgressAlertsEnabled) { _, newValue in
+            if newValue {
+                // Weekly reminder scheduling happens from WorkoutTabView when entries exist; nothing to schedule here.
+            } else {
+                NotificationsHelper.removeWeeklyProgressNotifications()
+            }
         }
         .onChange(of: themeManager.selectedTheme) { _, newTheme in
             viewModel.applyExternalTheme(newTheme)
@@ -367,44 +469,135 @@ struct AccountsView: View {
         .sheet(isPresented: $showMaintenanceExplainer) {
             MaintenanceCaloriesExplainer()
         }
+        .sheet(isPresented: $showActivityExplainer) {
+            ActivityLevelExplainer()
+        }
         .sheet(isPresented: $showAlertsSheet) {
-            AlertSheetView(selectedAlerts: $selectedAlerts)
+            AlertSheetView()
         }
     }
     
     struct AlertSheetView: View {
-        @Binding var selectedAlerts: Set<AlertType>
         let pillColumns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
         @Environment(\.dismiss) private var dismiss
+        @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
+        @AppStorage("alerts.dailyTasksSilenceCompleted") private var silenceCompletedTasks: Bool = true
+        @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
+        @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = false
+        @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = false
+        @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = false
+        @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = false
+        @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
+        @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
         var body: some View {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Select which types of alerts you would like to receive.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(AlertType.allCases) { alert in
-                                HStack {
-                                    Text(alert.rawValue)
-                                        .font(.headline.weight(.semibold))
-                                        .multilineTextAlignment(.leading)
-                                    Spacer()
-                                    Toggle(isOn: Binding(
-                                        get: { selectedAlerts.contains(alert) },
-                                        set: { isOn in
-                                            if isOn {
-                                                selectedAlerts.insert(alert)
-                                            } else {
-                                                selectedAlerts.remove(alert)
-                                            }
-                                        }
-                                    )) {
-                                        EmptyView()
-                                    }
-                                    .labelsHidden()
-                                }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle(isOn: $dailyTasksAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Daily Task")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive local reminders for tasks in your Daily Tasks list.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $silenceCompletedTasks) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Silence Completed Tasks")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Don't send reminders for tasks you've already completed today.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .opacity(dailyTasksAlertsEnabled ? 1.0 : 0.5)
+                        .disabled(!dailyTasksAlertsEnabled)
+
+                        Toggle(isOn: $activityTimersAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Activity Timers")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive a notification when an activity timer finishes.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $habitsAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Habits")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive a daily reminder at 9 AM with your remaining habits.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $timeTrackingAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Time Tracking")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive a notification when your timer or stopwatch target is reached.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $dailyCheckInAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Daily Check-In")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive a reminder at 6 PM to check in on your workout days.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $fastingAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Intermittent Fasting")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive a notification when your fasting window ends.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $mealsAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Meal Reminders")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive reminders to log meals at scheduled times.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        Toggle(isOn: $weeklyProgressAlertsEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Weekly Progress")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Receive a weekly reminder to capture your progress photo.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                    }
                     Spacer()
                 }
                 .padding(.horizontal, 20)
@@ -419,7 +612,6 @@ struct AccountsView: View {
                 }
                 .navigationTitle("Alert Preferences")
                 .navigationBarTitleDisplayMode(.inline)
-                .presentationDetents([.height(300), .medium])
             }
         }
     }
@@ -853,6 +1045,29 @@ private struct GenderSelector: View {
                     .font(.caption)
                     .foregroundColor(.red)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct ActivityLevelPicker: View {
+    @Binding var selectedLevel: ActivityLevelOption
+    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Activity Level")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                ForEach(ActivityLevelOption.allCases) { option in
+                    SelectablePillComponent(
+                        label: option.displayName,
+                        isSelected: selectedLevel == option
+                    ) {
+                        selectedLevel = option
+                    }
+                }
             }
         }
     }

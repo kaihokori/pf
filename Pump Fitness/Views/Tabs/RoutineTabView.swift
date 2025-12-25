@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 fileprivate struct HabitItem: Identifiable {
     var id: UUID
@@ -370,6 +371,9 @@ struct RoutineTabView: View {
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
+    @AppStorage("alerts.dailyTasksSilenceCompleted") private var silenceCompletedTasks: Bool = true
+    @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
+    @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -687,6 +691,7 @@ struct RoutineTabView: View {
         .onAppear {
             loadDailyTasks()
             loadHabitWeek()
+            refreshNotifications()
         }
         .onChange(of: selectedDate) { _, _ in
             loadDailyTasks()
@@ -705,6 +710,12 @@ struct RoutineTabView: View {
         }
         .onChange(of: goals) { _, newValue in
             onUpdateGoals(newValue)
+        }
+        .onChange(of: silenceCompletedTasks) { _, newValue in
+            guard dailyTasksAlertsEnabled else { return }
+            let day = ensureCurrentDay()
+            let completedIds = Set(day.dailyTaskCompletions.filter { $0.isCompleted }.map { $0.id })
+            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: newValue)
         }
     }
 }
@@ -2076,6 +2087,14 @@ extension RoutineTabView {
             pruneHabitCompletions(for: day)
         }
         rebuildHabitProgress(using: currentDay)
+        
+        if habitsAlertsEnabled {
+            let day = ensureCurrentDay()
+            let completedHabitIds = Set(day.habitCompletions.filter { $0.isCompleted }.map { $0.habitId })
+            NotificationsHelper.scheduleHabitNotifications(resolved, completedHabitIds: completedHabitIds)
+        } else {
+            NotificationsHelper.removeHabitNotifications()
+        }
     }
 
     private func ensureCurrentDay() -> Day {
@@ -2085,6 +2104,20 @@ extension RoutineTabView {
         let created = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros)
         currentDay = created
         return created
+    }
+
+    private func refreshNotifications() {
+        let day = ensureCurrentDay()
+        
+        if dailyTasksAlertsEnabled {
+            let completedIds = Set(day.dailyTaskCompletions.filter { $0.isCompleted }.map { $0.id })
+            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: silenceCompletedTasks)
+        }
+        
+        if habitsAlertsEnabled {
+            let completedHabitIds = Set(day.habitCompletions.filter { $0.isCompleted }.map { $0.habitId })
+            NotificationsHelper.scheduleHabitNotifications(account.habits, completedHabitIds: completedHabitIds)
+        }
     }
 
     private func applyTaskEditorChanges(_ items: [DailyTaskItem]) {
@@ -2106,9 +2139,20 @@ extension RoutineTabView {
 
         day.dailyTaskCompletions = completions
         persistDay(day)
+        
+        // Replace scheduled notifications for daily tasks with the updated set
+        if dailyTasksAlertsEnabled {
+            let completedIds = Set(completions.filter { $0.isCompleted }.map { $0.id })
+            NotificationsHelper.scheduleDailyTaskNotifications(definitions, completedTaskIds: completedIds, silenceCompleted: silenceCompletedTasks)
+        } else {
+            NotificationsHelper.removeDailyTaskNotifications()
+        }
+
         rebuildDailyTaskItems(using: currentDay)
         rebuildHabitProgress(using: currentDay)
     }
+
+    
 
     private func handleTaskToggle(id: String, isCompleted: Bool) {
         let day = ensureCurrentDay()
@@ -2118,6 +2162,12 @@ extension RoutineTabView {
             day.dailyTaskCompletions.append(DailyTaskCompletion(id: id, isCompleted: isCompleted))
         }
         persistDay(day)
+        
+        // Update notifications
+        if dailyTasksAlertsEnabled {
+            let completedIds = Set(day.dailyTaskCompletions.filter { $0.isCompleted }.map { $0.id })
+            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: silenceCompletedTasks)
+        }
     }
 
     private func handleHabitToggle(habitId: UUID, isCompleted: Bool) {
@@ -2134,6 +2184,11 @@ extension RoutineTabView {
         let weekdayIndex = weekdayIndex(for: selectedDate)
         if let habitIdx = habitItems.firstIndex(where: { $0.id == habitId }), habitItems[habitIdx].weeklyProgress.indices.contains(weekdayIndex) {
             habitItems[habitIdx].weeklyProgress[weekdayIndex] = isCompleted ? .tracked : .notTracked
+        }
+        
+        if habitsAlertsEnabled {
+            let completedHabitIds = Set(day.habitCompletions.filter { $0.isCompleted }.map { $0.habitId })
+            NotificationsHelper.scheduleHabitNotifications(account.habits, completedHabitIds: completedHabitIds)
         }
     }
 

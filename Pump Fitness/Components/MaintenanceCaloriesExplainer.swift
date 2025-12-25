@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct MaintenanceCaloriesExplainer: View {
-    private let activityFactors = ActivityFactor.examples
     private let macroPresets = ExplainerMacroPreset.presets
 
     @Environment(\.dismiss) private var dismiss
@@ -13,11 +12,9 @@ struct MaintenanceCaloriesExplainer: View {
                     intro
                     formulas
                     workedExample
-                    activityTable
                     macroBasics
                     macroExample
                     macroPresetsView
-                    inputsList
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical)
@@ -75,37 +72,6 @@ struct MaintenanceCaloriesExplainer: View {
         }
     }
 
-    private var activityTable: some View {
-        SectionCard(title: "Activity Factors") {
-            VStack(spacing: 10) {
-                ForEach(activityFactors) { factor in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(factor.name)
-                                .font(.subheadline.weight(.semibold))
-                            Text(factor.example)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(factor.multiplier)
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
-                    }
-                    if factor.id != activityFactors.last?.id {
-                        Divider()
-                    }
-                }
-                Text("This gives your TDEE (total calories per day). TDEE = Maintenance.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
     private var macroBasics: some View {
         SectionCard(title: "Choose Macro Style") {
             VStack(alignment: .leading, spacing: 8) {
@@ -154,20 +120,6 @@ struct MaintenanceCaloriesExplainer: View {
         }
     }
 
-    private var inputsList: some View {
-        SectionCard(title: "What We'll Ask For") {
-            VStack(alignment: .leading, spacing: 6) {
-                bullet("Gender")
-                bullet("Age")
-                bullet("Height")
-                bullet("Weight")
-                bullet("Activity (4 options)")
-                bullet("Diet option (5 presets)")
-            }
-        }
-        .padding(.bottom, 8)
-    }
-
     private func bullet(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text("•")
@@ -192,20 +144,6 @@ private struct SectionCard<Content: View>: View {
         .padding(18)
         .surfaceCard(18)
     }
-}
-
-private struct ActivityFactor: Identifiable, Equatable {
-    let id: String
-    let name: String
-    let multiplier: String
-    let example: String
-
-    static let examples: [ActivityFactor] = [
-        ActivityFactor(id: "sedentary", name: "Sedentary", multiplier: "1.2", example: "Office worker"),
-        ActivityFactor(id: "light", name: "Light", multiplier: "1.375", example: "Office worker with gym"),
-        ActivityFactor(id: "moderate", name: "Moderate", multiplier: "1.55", example: "Outdoor worker"),
-        ActivityFactor(id: "very", name: "Very active", multiplier: "1.725", example: "Outdoor worker with gym")
-    ]
 }
 
 private struct ExplainerMacroPreset: Identifiable, Equatable {

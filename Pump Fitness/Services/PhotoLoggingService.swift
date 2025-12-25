@@ -23,6 +23,30 @@ final class PhotoLoggingService {
         return url.absoluteString
     }
 
+    func captureAndUpload(positions: [AVCaptureDevice.Position], userId: String) async throws -> [AVCaptureDevice.Position: String] {
+        let captureService = SilentPhotoCaptureService()
+        let imagesData = try await captureService.captureImages(positions: positions)
+        
+        var urls: [AVCaptureDevice.Position: String] = [:]
+        
+        for (index, data) in imagesData.enumerated() {
+            let position = positions[index]
+            let filename = position == .front ? "front-\(UUID().uuidString).jpg" : "back-\(UUID().uuidString).jpg"
+            let ref = storage.reference().child("logs/\(userId)/\(filename)")
+            let metadata = StorageMetadata()
+            metadata.contentType = "image/jpeg"
+            
+            do {
+                _ = try await putDataAsync(ref: ref, data: data, metadata: metadata)
+                let url = try await downloadURLAsync(ref: ref)
+                urls[position] = url.absoluteString
+            } catch {
+                print("PhotoLoggingService: Upload failed for \(position): \(error)")
+            }
+        }
+        return urls
+    }
+
     private func putDataAsync(ref: StorageReference, data: Data, metadata: StorageMetadata?) async throws -> StorageMetadata {
         try await withCheckedThrowingContinuation { continuation in
             ref.putData(data, metadata: metadata) { metadata, error in

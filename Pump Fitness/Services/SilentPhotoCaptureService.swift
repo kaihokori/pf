@@ -68,6 +68,12 @@ final class SilentPhotoCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
         self.photoOutput = output
 
         let context = CaptureContext(session: session, output: output, settings: settings)
+        
+        defer {
+            sessionQueue.async {
+                session.stopRunning()
+            }
+        }
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             self.continuation = continuation
@@ -78,6 +84,82 @@ final class SilentPhotoCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
                     context.output.capturePhoto(with: context.settings, delegate: strongSelf)
                 }
             }
+        }
+    }
+    
+    func captureImages(positions: [AVCaptureDevice.Position]) async throws -> [Data] {
+        let authorized = await Self.requestCameraAuthorization()
+        guard authorized else { throw CaptureError.authorizationDenied }
+
+        let session = AVCaptureSession()
+        session.sessionPreset = .photo
+        let output = AVCapturePhotoOutput()
+        
+        if session.canAddOutput(output) {
+            session.addOutput(output)
+        }
+        
+        self.session = session
+        self.photoOutput = output
+        
+        // Ensure session starts before we begin configuration loop
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                session.startRunning()
+                continuation.resume()
+            }
+        }
+        
+        defer {
+            sessionQueue.async {
+                session.stopRunning()
+            }
+        }
+        
+        var results: [Data] = []
+        
+        for position in positions {
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
+                throw CaptureError.noCamera
+            }
+            
+            // Perform configuration on the session queue to avoid race conditions with startRunning/stopRunning
+            // and to serialize changes.
+            await withCheckedContinuation { continuation in
+                sessionQueue.async {
+                    session.beginConfiguration()
+                    session.inputs.forEach { session.removeInput($0) }
+                    do {
+                        let input = try AVCaptureDeviceInput(device: device)
+                        if session.canAddInput(input) {
+                            session.addInput(input)
+                        }
+                    } catch {
+                        print("Error creating device input: \(error)")
+                    }
+                    session.commitConfiguration()
+                    continuation.resume()
+                }
+            }
+            
+            let data = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                self.continuation = continuation
+                let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+                // Capture must be initiated from MainActor or appropriate thread, but the session is running.
+                // AVCapturePhotoOutput.capturePhoto is thread-safe but usually called from main thread.
+                Task { @MainActor in
+                    output.capturePhoto(with: settings, delegate: self)
+                }
+            }
+            results.append(data)
+        }
+        
+        return results
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, willBeginCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
+        if isSilentModeOn {
+            AudioServicesDisposeSystemSoundID(1108)
         }
     }
 
@@ -95,14 +177,6 @@ final class SilentPhotoCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        defer {
-            sessionQueue.async {
-                self.session?.stopRunning()
-                self.session = nil
-                self.photoOutput = nil
-            }
-        }
-
         if let error {
             continuation?.resume(throwing: error)
             continuation = nil

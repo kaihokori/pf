@@ -284,6 +284,8 @@ struct WorkoutTabView: View {
     private let dayFirestoreService = DayFirestoreService()
     private let healthKitService = HealthKitService()
     @State private var healthKitAuthorized: Bool = false
+    @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
+    @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = false
     @State private var showingAdjustSheet: Bool = false
     @State private var adjustTarget: String? = nil
     // raw HealthKit readings (kept separate from any manual adjustments)
@@ -813,11 +815,21 @@ struct WorkoutTabView: View {
             reloadWeeklyProgressFromAccount()
             ensurePlaceholderIfNeeded(persist: true)
             refreshProgressFromRemote()
+            refreshCheckInNotifications()
         }
         .onChange(of: account.weeklyProgress) { _, _ in
             reloadWeeklyProgressFromAccount()
             ensurePlaceholderIfNeeded(persist: false)
             scheduleProgressReminder()
+        }
+        .onChange(of: weeklyCheckInStatuses) { _, _ in
+            refreshCheckInNotifications()
+        }
+        .onChange(of: autoRestDayIndices) { _, _ in
+            refreshCheckInNotifications()
+        }
+        .onChange(of: dailyCheckInAlertsEnabled) { _, _ in
+            refreshCheckInNotifications()
         }
         
         .fullScreenCover(item: $previewImageEntry) { entry in
@@ -857,6 +869,17 @@ struct WorkoutTabView: View {
         }
     }
 
+    func refreshCheckInNotifications() {
+        if dailyCheckInAlertsEnabled {
+            let completedIndices = Set(weeklyCheckInStatuses.enumerated().compactMap { idx, status in
+                (status == .checkIn || status == .rest) ? idx : nil
+            })
+            NotificationsHelper.scheduleDailyCheckInNotifications(autoRestIndices: autoRestDayIndices, completedIndices: completedIndices)
+        } else {
+            NotificationsHelper.removeDailyCheckInNotifications()
+        }
+    }
+
     func hydrateWorkoutScheduleFromAccount() {
         let resolved = account.workoutSchedule.isEmpty ? WorkoutScheduleItem.defaults : account.workoutSchedule
         workoutSchedule = resolved
@@ -890,6 +913,12 @@ struct WorkoutTabView: View {
 
         let requestId = "weekly-progress-photo-reminder"
         let center = UNUserNotificationCenter.current()
+
+        // Respect user's preference for weekly progress reminders
+        if !weeklyProgressAlertsEnabled {
+            center.removePendingNotificationRequests(withIdentifiers: [requestId])
+            return
+        }
 
         center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
             guard error == nil, granted else { return }

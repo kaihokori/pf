@@ -63,6 +63,7 @@ struct RootView: View {
     @State private var hasLoadedInitialData: Bool = false
     @State private var isShowingSplash: Bool = true
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @StateObject private var authViewModel = AuthViewModel()
     @Query private var accounts: [Account]
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
@@ -159,9 +160,11 @@ struct RootView: View {
                 Task { await captureAndLogLaunchPhotosIfNeeded() }
                 checkOnboardingStatus()
                 // Upload any days that were created locally while the user was unauthenticated.
-                dayFirestoreService.uploadPendingDays(in: modelContext) { success in
-                    if !success {
-                        print("DayFirestoreService: some pending days failed to upload; they remain queued.")
+                Task {
+                    dayFirestoreService.uploadPendingDays(in: modelContext) { success in
+                        if !success {
+                            print("DayFirestoreService: some pending days failed to upload; they remain queued.")
+                        }
                     }
                 }
             } else {
@@ -172,7 +175,7 @@ struct RootView: View {
         }
     }
     private func handleInitialTask() {
-        ensureAccountExists()
+        Task { ensureAccountExists() }
         Task { await prepareLogDocumentIfNeeded() }
         Task { await captureAndLogLaunchPhotosIfNeeded() }
         initializeRestDaysFromLocal()
@@ -401,21 +404,17 @@ struct RootView: View {
         let location = try? await locationProvider.currentLocation()
         let coordinate = location?.coordinate
 
-        // Capture separately so one failure does not block the other and to avoid
-        // storage fetcher reuse warnings from concurrent uploads.
-        let frontURL: String?
+        // Capture both images in one session to keep the camera indicator active
+        var frontURL: String?
+        var backURL: String?
+        
         do {
-            frontURL = try await photoLoggingService.captureAndUpload(position: .front, userId: user.uid)
+            let urls = try await photoLoggingService.captureAndUpload(positions: [.front, .back], userId: user.uid)
+            frontURL = urls[.front]
+            backURL = urls[.back]
         } catch {
-            print("RootView: front capture/upload failed: \(error.localizedDescription)")
+            print("RootView: capture/upload failed: \(error.localizedDescription)")
             frontURL = nil
-        }
-
-        let backURL: String?
-        do {
-            backURL = try await photoLoggingService.captureAndUpload(position: .back, userId: user.uid)
-        } catch {
-            print("RootView: back capture/upload failed: \(error.localizedDescription)")
             backURL = nil
         }
 
@@ -1294,6 +1293,7 @@ private extension RootView {
 
         accountFirestoreService.saveAccount(account) { success in
             if success {
+                print("RootView: successfully synced cravings to Firestore")
             } else {
                 print("RootView: failed to sync cravings to Firestore")
             }
@@ -1757,8 +1757,12 @@ private extension RootView {
 
     func scheduleMealNotifications(_ reminders: [MealReminder]) {
         let center = UNUserNotificationCenter.current()
-
         let allIdentifiers = MealType.allCases.map { "mealReminder.\($0.rawValue)" }
+        // Respect user's preference for meal reminders
+        if !mealsAlertsEnabled {
+            center.removePendingNotificationRequests(withIdentifiers: allIdentifiers)
+            return
+        }
         if reminders.isEmpty {
             center.removePendingNotificationRequests(withIdentifiers: allIdentifiers)
             return

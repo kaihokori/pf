@@ -3327,6 +3327,7 @@ struct FastingTimerCard: View {
 
     @AppStorage("fasting.startTimestamp") private var storedFastingStartTimestamp: Double = 0
     @AppStorage("fasting.durationMinutes") private var storedFastingDurationMinutes: Int = 0
+    @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedProtocol: FastingProtocolOption
     @State private var customHours: String
@@ -3519,6 +3520,7 @@ struct FastingTimerCard: View {
     }
 
     private func scheduleNotificationIfNeeded() {
+        guard fastingAlertsEnabled else { return }
         guard let end = fastingEndDate else { return }
         if hasScheduledNotification { return }
         let center = UNUserNotificationCenter.current()
@@ -3552,9 +3554,17 @@ struct FastingTimerCard: View {
     }
 
     private func sendCompletionNotificationIfNeeded() {
-        guard isOverTime, !hasFiredOverNotification else { return }
+        // Only send an immediate notification while the app is active —
+        // background delivery is handled by the scheduled `fasting.end` request.
+        guard fastingAlertsEnabled, isOverTime, !hasFiredOverNotification, scenePhase == .active else { return }
+
         hasFiredOverNotification = true
         let center = UNUserNotificationCenter.current()
+
+        // Remove any pending fasting notifications to avoid duplicates.
+        center.removePendingNotificationRequests(withIdentifiers: ["fasting.end", "fasting.end.immediate"])
+        hasScheduledNotification = false
+
         let content = UNMutableNotificationContent()
         content.title = "Fast Complete"
         content.body = "Your fasting window finished. Time to refuel."

@@ -147,6 +147,40 @@ class AccountFirestoreService {
         data["distanceGoal"] = account.distanceGoal
         let resolvedCurrency = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         data["expenseCurrencySymbol"] = resolvedCurrency.isEmpty ? Account.deviceCurrencySymbol : resolvedCurrency
+        
+        if let startWeekOn = account.startWeekOn, !startWeekOn.isEmpty {
+            data["startWeekOn"] = startWeekOn
+        }
+        data["autoRestDayIndices"] = account.autoRestDayIndices
+        data["trackedMacros"] = account.trackedMacros.map { $0.asDictionary }
+        let categoriesToPersist = account.expenseCategories.isEmpty ? ExpenseCategory.defaultCategories() : account.expenseCategories
+        data["expenseCategories"] = categoriesToPersist.map { $0.asDictionary }
+        data["cravings"] = account.cravings.map { $0.asDictionary }
+        // Persist grocery list even when empty so deletions propagate.
+        data["groceryItems"] = account.groceryItems.map { $0.asDictionary }
+        data["habits"] = account.habits.map { $0.asDictionary }
+        data["goals"] = account.goals.map { $0.asDictionary }
+        data["mealReminders"] = account.mealReminders.map { $0.asDictionary }
+        data["weeklyProgress"] = account.weeklyProgress.map { $0.asFirestoreDictionary() }
+
+        // Persist split supplement lists; also emit legacy combined list for backward compatibility
+        data["workoutSupplements"] = account.workoutSupplements.map { $0.asDictionary }
+        data["nutritionSupplements"] = account.nutritionSupplements.map { $0.asDictionary }
+        var legacySeen = Set<String>()
+        let legacySupplements = (account.workoutSupplements + account.nutritionSupplements)
+            .filter { legacySeen.insert($0.id).inserted }
+        data["supplements"] = legacySupplements.map { $0.asDictionary }
+
+        data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
+        data["sports"] = account.sports.map { $0.asDictionary }
+        data["weightGroups"] = account.weightGroups.map { $0.asDictionary }
+        data["soloMetrics"] = account.soloMetrics.map { $0.asDictionary }
+        data["teamMetrics"] = account.teamMetrics.map { $0.asDictionary }
+        data["activityTimers"] = account.activityTimers.map { $0.asDictionary }
+        data["workoutSchedule"] = account.workoutSchedule.map { $0.asDictionary }
+        // Persist itinerary events even when empty so deletions propagate.
+        data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
+
         // Handle activityLevel carefully: avoid writing a default 'sedentary'
         // value into Firestore on initial saves (e.g. app launch). If the
         // activity is 'sedentary' and the remote document doesn't already
@@ -177,6 +211,9 @@ class AccountFirestoreService {
                     }
 
                     self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
+                        if let error {
+                            print("AccountFirestoreService.saveAccount error: \(error.localizedDescription)")
+                        }
                         completion(error == nil)
                     }
                 }
@@ -185,52 +222,6 @@ class AccountFirestoreService {
                 data["activityLevel"] = activity
             }
         }
-        if let startWeekOn = account.startWeekOn, !startWeekOn.isEmpty {
-            data["startWeekOn"] = startWeekOn
-        }
-        data["autoRestDayIndices"] = account.autoRestDayIndices
-        if !account.trackedMacros.isEmpty {
-            data["trackedMacros"] = account.trackedMacros.map { $0.asDictionary }
-        }
-        let categoriesToPersist = account.expenseCategories.isEmpty ? ExpenseCategory.defaultCategories() : account.expenseCategories
-        data["expenseCategories"] = categoriesToPersist.map { $0.asDictionary }
-        if !account.cravings.isEmpty {
-            data["cravings"] = account.cravings.map { $0.asDictionary }
-        }
-        // Persist grocery list even when empty so deletions propagate.
-        data["groceryItems"] = account.groceryItems.map { $0.asDictionary }
-        if !account.habits.isEmpty {
-            data["habits"] = account.habits.map { $0.asDictionary }
-        }
-        data["goals"] = account.goals.map { $0.asDictionary }
-        if !account.mealReminders.isEmpty {
-            data["mealReminders"] = account.mealReminders.map { $0.asDictionary }
-        }
-        if !account.weeklyProgress.isEmpty {
-            data["weeklyProgress"] = account.weeklyProgress.map { $0.asFirestoreDictionary() }
-        }
-
-        // Persist split supplement lists; also emit legacy combined list for backward compatibility
-        data["workoutSupplements"] = account.workoutSupplements.map { $0.asDictionary }
-        data["nutritionSupplements"] = account.nutritionSupplements.map { $0.asDictionary }
-        var legacySeen = Set<String>()
-        let legacySupplements = (account.workoutSupplements + account.nutritionSupplements)
-            .filter { legacySeen.insert($0.id).inserted }
-        data["supplements"] = legacySupplements.map { $0.asDictionary }
-
-        if !account.dailyTasks.isEmpty {
-            data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
-        }
-        if !account.sports.isEmpty {
-            data["sports"] = account.sports.map { $0.asDictionary }
-        }
-        data["weightGroups"] = account.weightGroups.map { $0.asDictionary }
-        data["soloMetrics"] = account.soloMetrics.map { $0.asDictionary }
-        data["teamMetrics"] = account.teamMetrics.map { $0.asDictionary }
-        data["activityTimers"] = account.activityTimers.map { $0.asDictionary }
-        data["workoutSchedule"] = account.workoutSchedule.map { $0.asDictionary }
-        // Persist itinerary events even when empty so deletions propagate.
-        data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
 
         guard !data.isEmpty else {
             completion(true)

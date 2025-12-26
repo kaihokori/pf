@@ -10,80 +10,98 @@ struct GroceryListSection: View {
 
     private let itemCardWidth: CGFloat = 200
 
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No grocery items yet", systemImage: "cart")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add items using the Edit button to build your grocery list.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Horizontal scroll of columns, each column contains up to 5 items
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    let perColumn = 5
-                    let columnCount = (items.count + (perColumn - 1)) / perColumn
-                    ForEach(0..<max(1, columnCount), id: \.self) { colIdx in
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(0..<min(perColumn, max(0, items.count - colIdx * perColumn)), id: \.self) { rowIdx in
-                                let absIndex = colIdx * perColumn + rowIdx
-                                let item = items[absIndex]
-                                let isChecked = item.isChecked
+            if items.isEmpty {
+                emptyState
+            } else {
+                // Horizontal scroll of columns, each column contains up to 5 items
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        let perColumn = 5
+                        let columnCount = (items.count + (perColumn - 1)) / perColumn
+                        ForEach(0..<max(1, columnCount), id: \.self) { colIdx in
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(0..<min(perColumn, max(0, items.count - colIdx * perColumn)), id: \.self) { rowIdx in
+                                    let absIndex = colIdx * perColumn + rowIdx
+                                    let item = items[absIndex]
+                                    let isChecked = item.isChecked
 
-                                Button {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        items[absIndex].isChecked.toggle()
-                                    }
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        // Checklist on the left
-                                        ZStack {
-                                            Circle()
-                                                .stroke(tint.opacity(0.12), lineWidth: 2)
-                                                .frame(width: 36, height: 36)
-                                            if isChecked {
+                                    Button {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                            items[absIndex].isChecked.toggle()
+                                        }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            // Checklist on the left
+                                            ZStack {
                                                 Circle()
-                                                    .fill(tint)
+                                                    .stroke(tint.opacity(0.12), lineWidth: 2)
                                                     .frame(width: 36, height: 36)
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 14, weight: .semibold))
-                                                    .foregroundStyle(.white)
+                                                if isChecked {
+                                                    Circle()
+                                                        .fill(tint)
+                                                        .frame(width: 36, height: 36)
+                                                    Image(systemName: "checkmark")
+                                                        .font(.system(size: 14, weight: .semibold))
+                                                        .foregroundStyle(.white)
+                                                }
                                             }
-                                        }
 
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(item.title)
-                                                .font(.subheadline.weight(.semibold))
-                                                .strikethrough(isChecked, color: .secondary)
-                                                .foregroundStyle(isChecked ? .secondary : .primary)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(item.title)
+                                                    .font(.subheadline.weight(.semibold))
+                                                    .strikethrough(isChecked, color: .secondary)
+                                                    .foregroundStyle(isChecked ? .secondary : .primary)
 
-                                            if !item.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                                Text(item.note)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
+                                                if !item.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                                    Text(item.note)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                }
                                             }
-                                        }
 
-                                        Spacer()
+                                            Spacer()
+                                        }
+                                        .padding(12)
+                                        .frame(width: itemCardWidth)
+                                        .background(
+                                            Group {
+                                                if isChecked {
+                                                    tint.opacity(0.06)
+                                                } else {
+                                                    Color.clear
+                                                }
+                                            }
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                     }
-                                    .padding(12)
-                                    .frame(width: itemCardWidth)
-                                    .background(
-                                        Group {
-                                            if isChecked {
-                                                tint.opacity(0.06)
-                                            } else {
-                                                Color.clear
-                                            }
-                                        }
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
+                                    .buttonStyle(.plain)
 
-                                if rowIdx != min(perColumn, max(0, items.count - colIdx * perColumn)) - 1 {
-                                    Divider()
-                                        .padding(.leading, 12)
+                                    if rowIdx != min(perColumn, max(0, items.count - colIdx * perColumn)) - 1 {
+                                        Divider()
+                                            .padding(.leading, 12)
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
             }
         }
         .padding(16)

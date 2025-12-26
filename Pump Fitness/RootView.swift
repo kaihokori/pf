@@ -22,6 +22,7 @@ struct RootView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .nutrition
+    @AppStorage("isPro") private var isPro: Bool = true
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0
@@ -58,6 +59,7 @@ struct RootView: View {
     @State private var isHydratingTrackedMacros: Bool = false
     @State private var weeklyCheckInStatuses: [WorkoutCheckInStatus] = Array(repeating: .notLogged, count: 7)
     @State private var weeklyCheckInsLoadToken: UUID = UUID()
+    @State private var hasLoadedCravingsFromRemote: Bool = false
     @State private var autoRestDayIndices: Set<Int> = []
     @State private var hasQueuedDeferredWeekLoad: Bool = false
     @State private var hasLoadedInitialData: Bool = false
@@ -170,6 +172,7 @@ struct RootView: View {
             } else {
                 hasCompletedOnboarding = false
                 Task { await MainActor.run { didPrepareLogDocument = false } }
+                hasLoadedCravingsFromRemote = false
             }
             updateSplashVisibility()
         }
@@ -178,6 +181,8 @@ struct RootView: View {
         Task { ensureAccountExists() }
         Task { await prepareLogDocumentIfNeeded() }
         Task { await captureAndLogLaunchPhotosIfNeeded() }
+        // Hydrate cravings immediately from the local snapshot to avoid flicker
+        loadCravingsFromLocal()
         initializeRestDaysFromLocal()
         initializeDailyGoalsFromLocal()
         initializeWeightTrackingFromLocal()
@@ -300,7 +305,8 @@ struct RootView: View {
     }
 
     private func handleCravingsChange(_ newValue: [CravingItem]) {
-        persistCravings(newValue)
+        // In-memory only for now; persistence will be reintroduced later.
+        cravings = newValue
     }
 
     private func handleSportsConfigsChange(_ newValue: [SportConfig]) {
@@ -473,11 +479,9 @@ struct RootView: View {
                         }
                         fetched.itineraryEvents = resolvedItineraryEvents
 
-                        var resolvedCravings = fetched.cravings
-                        if resolvedCravings.isEmpty, let localAccount = fetchAccount(), !localAccount.cravings.isEmpty {
-                            resolvedCravings = localAccount.cravings
-                        }
-                        fetched.cravings = resolvedCravings
+                        // Cravings precedence: Firestore → in-memory (if already loaded this run) → local cache.
+                        // Keep existing in-memory cravings; ignore remote for now to avoid overwrites.
+                        fetched.cravings = cravings
 
                         upsertLocalAccount(with: fetched)
                         autoRestDayIndices = Set(fetched.autoRestDayIndices)
@@ -489,6 +493,7 @@ struct RootView: View {
                         }
                         hydrateTrackedMacros(fetched.trackedMacros)
                         cravings = fetched.cravings
+                        hasLoadedCravingsFromRemote = true
                         if fetched.mealReminders.isEmpty {
                             mealReminders = MealReminder.defaults
                         } else {
@@ -638,41 +643,35 @@ private extension RootView {
     func initializeTrackedMacrosFromLocal() {
         guard let account = fetchAccount() else {
             hydrateTrackedMacros(TrackedMacro.defaults)
-            cravings = []
+            if !hasLoadedCravingsFromRemote {
+                cravings = []
+            }
             maintenanceCalories = 0
             calorieGoal = 0
                 sportsConfigs = SportConfig.defaults
             return
         }
 
-        if account.trackedMacros.isEmpty {
-            account.trackedMacros = TrackedMacro.defaults
-            hydrateTrackedMacros(account.trackedMacros)
-            do {
-                try modelContext.save()
-            } catch {
-                print("RootView: failed to save default tracked macros locally: \(error)")
-            }
-        } else {
-            hydrateTrackedMacros(account.trackedMacros)
+        // Respect an explicitly-empty tracked macros list from the account (do not fallback to defaults)
+        hydrateTrackedMacros(account.trackedMacros)
+
+            // Respect an explicitly-empty sports list from the account (do not fallback to defaults)
+            sportsConfigs = account.sports
+
+        if !hasLoadedCravingsFromRemote {
+            cravings = account.cravings
         }
-
-            sportsConfigs = account.sports.isEmpty ? SportConfig.defaults : account.sports
-            if account.sports.isEmpty {
-                account.sports = sportsConfigs
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("RootView: failed to save default sports configs: \(error)")
-                }
-            }
-
-        cravings = account.cravings
         maintenanceCalories = account.maintenanceCalories
         calorieGoal = account.calorieGoal
         if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
             selectedMacroFocus = mf
         }
+    }
+
+    /// Load cravings quickly from the local Account snapshot without touching Firestore.
+    private func loadCravingsFromLocal() {
+        guard !hasLoadedCravingsFromRemote, let account = fetchAccount() else { return }
+        cravings = account.cravings
     }
 
     func initializeItineraryEventsFromLocal() {
@@ -697,7 +696,8 @@ private extension RootView {
             activityTimers = ActivityTimerItem.defaultTimers
             return
         }
-        activityTimers = account.activityTimers.isEmpty ? ActivityTimerItem.defaultTimers : account.activityTimers
+        // Respect an explicitly-empty timers list from the account (do not fallback to defaults)
+        activityTimers = account.activityTimers
     }
 
     func initializeHabitsFromLocal() {
@@ -705,24 +705,8 @@ private extension RootView {
             habits = HabitDefinition.defaults
             return
         }
-
-        let resolved = account.habits.isEmpty ? HabitDefinition.defaults : account.habits
-        habits = resolved
-
-        if account.habits.isEmpty {
-            account.habits = resolved
-            do {
-                try modelContext.save()
-            } catch {
-                print("RootView: failed to save default habits to local account: \(error)")
-            }
-
-            accountFirestoreService.saveAccount(account) { success in
-                if !success {
-                    print("RootView: failed to sync default habits to Firestore")
-                }
-            }
-        }
+        // Respect an explicitly-empty habits list from the account (do not fallback to defaults)
+        habits = account.habits
     }
 
     func initializeGoalsFromLocal() {
@@ -730,24 +714,8 @@ private extension RootView {
             goals = GoalItem.sampleDefaults()
             return
         }
-
-        let resolved = account.goals.isEmpty ? GoalItem.sampleDefaults() : account.goals
-        goals = resolved
-
-        if account.goals.isEmpty {
-            account.goals = resolved
-            do {
-                try modelContext.save()
-            } catch {
-                print("RootView: failed to save default goals to local account: \(error)")
-            }
-
-            accountFirestoreService.saveAccount(account) { success in
-                if !success {
-                    print("RootView: failed to sync default goals to Firestore")
-                }
-            }
-        }
+        // Respect an explicitly-empty goals list from the account (do not fallback to defaults)
+        goals = account.goals
     }
 
     func initializeGroceryListFromLocal() {
@@ -755,24 +723,8 @@ private extension RootView {
             groceryItems = GroceryItem.sampleItems()
             return
         }
-
-        let resolved = account.groceryItems.isEmpty ? GroceryItem.sampleItems() : account.groceryItems
-        groceryItems = resolved
-
-        if account.groceryItems.isEmpty {
-            account.groceryItems = resolved
-            do {
-                try modelContext.save()
-            } catch {
-                print("RootView: failed to save default grocery items locally: \(error)")
-            }
-
-            accountFirestoreService.saveAccount(account) { success in
-                if !success {
-                    print("RootView: failed to sync default grocery items to Firestore")
-                }
-            }
-        }
+        // Respect an explicitly-empty grocery list from the account (do not fallback to defaults)
+        groceryItems = account.groceryItems
     }
 
     func initializeExpenseCategoriesFromLocal() {
@@ -818,7 +770,8 @@ private extension RootView {
 
     func initializeWeightTrackingFromLocal() {
         if let account = fetchAccount() {
-            weightGroups = account.weightGroups.isEmpty ? WeightGroupDefinition.defaults : account.weightGroups
+            // Respect an explicitly-empty weight groups list from the account (do not fallback to defaults)
+            weightGroups = account.weightGroups
         }
         refreshWeightHistoryCache()
     }
@@ -1287,24 +1240,8 @@ private extension RootView {
         }
     }
 
-    func persistCravings(_ updatedCravings: [CravingItem]) {
-        guard let account = fetchAccount() else { return }
-
-        account.cravings = updatedCravings
-        do {
-            try modelContext.save()
-        } catch {
-            print("RootView: failed to save cravings locally: \(error)")
-        }
-
-        accountFirestoreService.saveAccount(account) { success in
-            if success {
-                print("RootView: successfully synced cravings to Firestore")
-            } else {
-                print("RootView: failed to sync cravings to Firestore")
-            }
-        }
-    }
+    // Cravings persistence temporarily disabled; keep state-only until rewritten.
+    func persistCravings(_ updatedCravings: [CravingItem]) {}
 
     func persistSports(_ configs: [SportConfig]) {
         guard let account = fetchAccount() else { return }
@@ -1611,7 +1548,8 @@ private extension RootView {
 
     func persistWeightGroups(_ groups: [WeightGroupDefinition]) {
         guard let account = fetchAccount() else { return }
-        weightGroups = groups.isEmpty ? WeightGroupDefinition.defaults : groups
+        // Persist exactly what the caller provided; allow an empty array to be saved
+        weightGroups = groups
         account.weightGroups = weightGroups
         do {
             try modelContext.save()
@@ -1627,7 +1565,8 @@ private extension RootView {
 
     func persistActivityTimers(_ timers: [ActivityTimerItem]) {
         guard let account = fetchAccount() else { return }
-        activityTimers = timers.isEmpty ? ActivityTimerItem.defaultTimers : timers
+        // Persist exactly what the caller provided; allow an empty array to be saved
+        activityTimers = timers
         account.activityTimers = activityTimers
         do {
             try modelContext.save()
@@ -2023,6 +1962,12 @@ private extension RootView {
                                         local.goals = newAccount.goals
                                         local.habits = newAccount.habits
                                         local.activityTimers = newAccount.activityTimers
+                                        local.dailyTasks = newAccount.dailyTasks
+                                        local.workoutSupplements = newAccount.workoutSupplements
+                                        local.nutritionSupplements = newAccount.nutritionSupplements
+                                        local.sports = newAccount.sports
+                                        local.soloMetrics = newAccount.soloMetrics
+                                        local.teamMetrics = newAccount.teamMetrics
                                         try modelContext.save()
                                         mealReminders = newAccount.mealReminders
                                         autoRestDayIndices = Set(newAccount.autoRestDayIndices)
@@ -2056,7 +2001,8 @@ private extension RootView {
                                     cravings: $cravings,
                                     mealReminders: $mealReminders,
                                     checkedMeals: $checkedMeals,
-                                    maintenanceCalories: $maintenanceCalories
+                                    maintenanceCalories: $maintenanceCalories,
+                                    isPro: isPro
                                 )
                                 .onAppear { handleTabAppear(.nutrition) }
                             }
@@ -2078,6 +2024,7 @@ private extension RootView {
                                     nightSleepSeconds: $nightSleepSecondsToday,
                                     napSleepSeconds: $napSleepSecondsToday,
                                     weeklySleepEntries: $weeklySleepEntries,
+                                    isPro: isPro,
                                     onUpdateActivityTimers: { timers in
                                         persistActivityTimers(timers)
                                     },
@@ -2129,6 +2076,7 @@ private extension RootView {
                                     weightEntries: $weightEntries,
                                     weeklyCheckInStatuses: $weeklyCheckInStatuses,
                                     autoRestDayIndices: $autoRestDayIndices,
+                                    isPro: isPro,
                                     lastWeightEntryByExerciseId: lastWeightEntryByExerciseId,
                                     onUpdateDailyActivity: { calories, steps, distance in
                                         persistDailyActivity(calories: calories, steps: steps, distance: distance)
@@ -2173,7 +2121,8 @@ private extension RootView {
                                     account: accountBinding,
                                     sportConfigs: $sportsConfigs,
                                     sportActivities: $sportActivities,
-                                    selectedDate: $selectedDate
+                                    selectedDate: $selectedDate,
+                                    isPro: isPro
                                 )
                                 .onAppear { handleTabAppear(.sports) }
                             }
@@ -2182,7 +2131,7 @@ private extension RootView {
                                 systemImage: AppTab.travel.systemImage,
                                 value: AppTab.travel,
                             ) {
-                                TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate)
+                                TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate, isPro: isPro)
                                     .onAppear { handleTabAppear(.travel) }
                             }
                         }

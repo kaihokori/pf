@@ -7,6 +7,7 @@ struct TravelTabView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showCalendar = false
     @Binding var selectedDate: Date
+    var isPro: Bool
     @State private var showAccountsView = false
     @State private var isShowingEditor = false
     @State private var editorSeedDate: Date = Date()
@@ -20,8 +21,9 @@ struct TravelTabView: View {
                     HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
                         .environmentObject(account)
 
-                    HStack {
-                        Text("Itinerary Tracking")
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("Itinerary Tracking")
                             .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
@@ -63,8 +65,36 @@ struct TravelTabView: View {
                         }
                     )
                         .padding(.horizontal, 18)
+                    }
+                    .opacity(isPro ? 1 : 0.5)
+                    .disabled(!isPro)
                 }
                 .padding(.bottom, 24)
+            }
+            .overlay {
+                if !isPro {
+                    ZStack {
+                        Color.black.opacity(0.001)
+                            .onTapGesture {}
+                        VStack(spacing: 8) {
+                            Image(systemName: "lock.fill")
+                                .font(.title2)
+                                .foregroundStyle(.white)
+                                .padding(12)
+                                .background(Circle().fill(Color.accentColor))
+                            Text("Pro Feature")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text("Upgrade to unlock the Travel tab")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                    }
+                }
             }
 
             if showCalendar {

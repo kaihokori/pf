@@ -1007,6 +1007,45 @@ class Account: ObservableObject {
         self.activityTimers = activityTimers
         
     }
+
+    /// Safely sync cravings from Firestore on first appear. This will only
+    /// replace local `cravings` when the local list is empty and the remote
+    /// list has values — avoiding accidental overwrites on view appear.
+    @MainActor
+    func syncCravingsIfNeeded(service: AccountFirestoreService, completion: ((Bool) -> Void)? = nil) {
+        guard let id = self.id, !id.isEmpty else {
+            completion?(false)
+            return
+        }
+
+        service.fetchCravings(withId: id) { remote in
+            guard let remote = remote else {
+                completion?(false)
+                return
+            }
+
+            // Only adopt remote cravings when local is empty to avoid
+            // overwriting user or cached data that may be intentionally set.
+            if self.cravings.isEmpty && !remote.isEmpty {
+                Task { @MainActor in
+                    self.cravings = remote
+                    completion?(true)
+                }
+            } else {
+                completion?(false)
+            }
+        }
+    }
+
+    /// Explicitly persist cravings to Firestore. Call this only when the
+    /// user has intentionally modified cravings (e.g. Save/Done).
+    func saveCravings(service: AccountFirestoreService, completion: @escaping (Bool) -> Void) {
+        guard let id = self.id, !id.isEmpty else {
+            completion(false)
+            return
+        }
+        service.updateCravings(withId: id, cravings: self.cravings, completion: completion)
+    }
 }
 
 // MARK: - Color helpers

@@ -13,81 +13,98 @@ struct DailyTasksSection: View {
     var onRemove: (String) -> Void
     var day: Binding<Day?>? = nil
 
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No daily tasks yet", systemImage: "checklist")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add tasks using the Edit button to start building a daily routine.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
     var body: some View {
 
         VStack(spacing: 16) {
+            if tasks.isEmpty {
+                emptyState
+            } else {
+                // GeometryReader to compute center of the viewport for scaling
+                GeometryReader { outerGeo in
+                    let centerX = outerGeo.frame(in: .global).midX
 
-            // GeometryReader to compute center of the viewport for scaling
-            GeometryReader { outerGeo in
-                let centerX = outerGeo.frame(in: .global).midX
-
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        // allow first and last items to center by adding side insets
-                        let sideInset = max(0, (outerGeo.size.width - 92) / 2 - 22)
-                        HStack(spacing: 12) {
-                            Spacer(minLength: 8)
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            // allow first and last items to center by adding side insets
+                            let sideInset = max(0, (outerGeo.size.width - 92) / 2 - 22)
+                            HStack(spacing: 12) {
+                                Spacer(minLength: 8)
 
 
-                            ForEach(tasks) { task in
-                                GeometryReader { itemGeo in
-                                    let itemMidX = itemGeo.frame(in: .global).midX
-                                    let distance = abs(itemMidX - centerX)
-                                    // snap between two discrete scales (snappy behavior)
-                                    let maxScale: CGFloat = 1.6
-                                    let minScale: CGFloat = 0.85
-                                    let threshold: CGFloat = 40 // within this many pts we consider the item "centered"
-                                    let isCentered = distance < threshold
-                                    let scale = isCentered ? maxScale : minScale
+                                ForEach(tasks) { task in
+                                    GeometryReader { itemGeo in
+                                        let itemMidX = itemGeo.frame(in: .global).midX
+                                        let distance = abs(itemMidX - centerX)
+                                        // snap between two discrete scales (snappy behavior)
+                                        let maxScale: CGFloat = 1.6
+                                        let minScale: CGFloat = 0.85
+                                        let threshold: CGFloat = 40 // within this many pts we consider the item "centered"
+                                        let isCentered = distance < threshold
+                                        let scale = isCentered ? maxScale : minScale
 
-                                    VStack(spacing: 4) {
-                                        DailyTaskCircle(item: task, isCentered: isCentered) {
-                                            toggleTask(withId: task.id)
-                                        } onCenter: {
-                                            withAnimation(.spring()) {
-                                                proxy.scrollTo(task.id, anchor: .center)
+                                        VStack(spacing: 4) {
+                                            DailyTaskCircle(item: task, isCentered: isCentered) {
+                                                toggleTask(withId: task.id)
+                                            } onCenter: {
+                                                withAnimation(.spring()) {
+                                                    proxy.scrollTo(task.id, anchor: .center)
+                                                }
+                                            } onRemove: {
+                                                removeTask(withId: task.id)
                                             }
-                                        } onRemove: {
-                                            removeTask(withId: task.id)
+                                            Text(task.name)
+                                                .font(.caption)
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(.secondary)
+                                                .multilineTextAlignment(.center)
+                                                .lineLimit(2)
+                                                .minimumScaleFactor(0.8)
+                                                .frame(width: 92, alignment: .top)
                                         }
-                                        Text(task.name)
-                                            .font(.caption)
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.center)
-                                            .lineLimit(2)
-                                            .minimumScaleFactor(0.8)
-                                            .frame(width: 92, alignment: .top)
+                                        .padding(.top, 30)
+                                        .frame(width: 92)
+                                        .scaleEffect(scale)
+                                        .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.7, blendDuration: 0), value: isCentered)
                                     }
-                                    .padding(.top, 30)
-                                    .frame(width: 92)
-                                    .scaleEffect(scale)
-                                    .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.7, blendDuration: 0), value: isCentered)
+                                    .frame(width: 92, height: tileMinHeight)
                                 }
-                                .frame(width: 92, height: tileMinHeight)
-                            }
 
-                            Spacer(minLength: 8)
+                                Spacer(minLength: 8)
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.leading, sideInset)
+                            .padding(.trailing, sideInset)
                         }
-                        .padding(.vertical, 6)
-                        .padding(.leading, sideInset)
-                        .padding(.trailing, sideInset)
-                    }
-                    .padding(.horizontal, 6)
-                    .onAppear {
-                        // Start scrolled to the center task
-                        guard !tasks.isEmpty else { return }
-                        let middleIndex = tasks.count / 2
-                        if middleIndex < tasks.count {
-                            let targetId = tasks[middleIndex].id
-                            DispatchQueue.main.async {
-                                proxy.scrollTo(targetId, anchor: .center)
+                        .padding(.horizontal, 6)
+                        .onAppear {
+                            // Start scrolled to the center task
+                            guard !tasks.isEmpty else { return }
+                            let middleIndex = tasks.count / 2
+                            if middleIndex < tasks.count {
+                                let targetId = tasks[middleIndex].id
+                                DispatchQueue.main.async {
+                                    proxy.scrollTo(targetId, anchor: .center)
+                                }
                             }
                         }
                     }
                 }
+                .frame(height: tileMinHeight)
             }
-            .frame(height: tileMinHeight)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)

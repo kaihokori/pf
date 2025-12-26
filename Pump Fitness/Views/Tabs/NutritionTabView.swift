@@ -39,6 +39,7 @@ struct NutritionTabView: View {
     @State private var weeklyEntries: [WeeklyProgressEntry] = []
 
     @Binding var maintenanceCalories: Int
+    var isPro: Bool
 
     private let accountFirestoreService = AccountFirestoreService()
     private let dayFirestoreService = DayFirestoreService()
@@ -54,7 +55,8 @@ struct NutritionTabView: View {
         cravings: Binding<[CravingItem]>,
         mealReminders: Binding<[MealReminder]>,
         checkedMeals: Binding<Set<String>>,
-        maintenanceCalories: Binding<Int>
+        maintenanceCalories: Binding<Int>,
+        isPro: Bool
     ) {
         _account = account
         _consumedCalories = consumedCalories
@@ -67,6 +69,7 @@ struct NutritionTabView: View {
         _mealReminders = mealReminders
         _checkedMeals = checkedMeals
         _maintenanceCalories = maintenanceCalories
+        self.isPro = isPro
     }
 
     private let caloriesBurnedToday: Int = 620
@@ -112,7 +115,9 @@ struct NutritionTabView: View {
             print("NutritionTabView: failed to save cravings locally: \(error)")
         }
 
-        accountFirestoreService.saveAccount(account) { success in
+        // Persist cravings explicitly (avoid calling saveAccount without
+        // includeCravings to prevent accidental overwrites).
+        account.saveCravings(service: accountFirestoreService) { success in
             if !success { print("NutritionTabView: failed to sync cravings to Firestore") }
         }
     }
@@ -133,23 +138,22 @@ struct NutritionTabView: View {
     /// Cravings are no longer auto-seeded here to avoid overwriting server data
     /// before the app finishes hydrating from Firestore.
     private func ensureDefaultSupplements() {
-        if account.nutritionSupplements.isEmpty {
-            account.nutritionSupplements = [
-                Supplement(name: "Vitamin D", amountLabel: "50 μg"),
-                Supplement(name: "Magnesium", amountLabel: "200 mg"),
-                Supplement(name: "Fish Oil", amountLabel: "1000 mg")
-            ]
+        // Intentionally left blank: do not auto-seed supplements here.
+        // Supplements should be preserved exactly as stored on the Account (including empty arrays).
+    }
 
-            do {
-                try modelContext.save()
-            } catch {
-                print("NutritionTabView: failed to save default supplements: \(error)")
-            }
-
-            accountFirestoreService.saveAccount(account) { success in
-                if !success { print("NutritionTabView: failed to sync default supplements to Firestore") }
-            }
+    private var cravingsEmptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No cravings yet", systemImage: "heart.slash")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add cravings using the Edit button to track foods you want to watch.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
     }
     var body: some View {
         NavigationStack {
@@ -359,128 +363,204 @@ struct NutritionTabView: View {
                             fetchDayTakenSupplements()
                         }
 
-                        HStack {
-                            Text("Cravings")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            Button {
-                                showCravingEditor = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
-
+                        // MARK: - Cravings Section
                         VStack(spacing: 0) {
-                            ForEach(Array(cravings.enumerated()), id: \.element.id) { idx, _ in
-                                let binding = $cravings[idx]
-                                let isChecked = binding.wrappedValue.isChecked
+                            HStack {
+                                Text("Cravings")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
 
                                 Button {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                        binding.isChecked.wrappedValue.toggle()
-                                    }
-                                    saveCravings()
+                                    showCravingEditor = true
                                 } label: {
-                                    HStack(spacing: 12) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(binding.name.wrappedValue)
-                                                .font(.subheadline)
-                                                .fontWeight(.semibold)
-                                                .strikethrough(isChecked, color: .secondary)
-                                                .foregroundStyle(isChecked ? .secondary : .primary)
-
-                                            Text("\(binding.calories.wrappedValue) cal")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-
-                                        Spacer()
-
-                                        ZStack {
-                                            Circle()
-                                                .fill(isChecked ? (accentOverride ?? .accentColor).opacity(0.16) : Color.clear)
-                                                .frame(width: 40, height: 40)
-
-                                            Image(systemName: isChecked ? "checkmark.circle.fill" : "checkmark.circle")
-                                                .font(.title3)
-                                                .foregroundStyle(isChecked ? (accentOverride ?? .accentColor) : Color(.systemGray3))
-                                                .scaleEffect(isChecked ? 1.15 : 1.0)
-                                                .rotationEffect(.degrees(isChecked ? 0 : 0))
-                                                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isChecked)
-                                        }
-                                    }
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity)
-                                    .background(
-                                        Group {
-                                            if isChecked {
-                                                (accentOverride ?? .accentColor).opacity(0.06)
-                                            } else {
-                                                Color.clear
-                                            }
-                                        }
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 48)
 
-                                if idx != cravings.indices.last {
-                                    Divider()
-                                        .padding(.leading, 12)
+                            if cravings.isEmpty {
+                                cravingsEmptyState
+                                    .padding(.horizontal, 18)
+                                    .padding(.top, 12)
+                            } else {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(cravings.enumerated()), id: \.element.id) { idx, _ in
+                                        let binding = $cravings[idx]
+                                        let isChecked = binding.wrappedValue.isChecked
+
+                                        Button {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                                binding.isChecked.wrappedValue.toggle()
+                                            }
+                                            saveCravings()
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(binding.name.wrappedValue)
+                                                        .font(.subheadline)
+                                                        .fontWeight(.semibold)
+                                                        .strikethrough(isChecked, color: .secondary)
+                                                        .foregroundStyle(isChecked ? .secondary : .primary)
+
+                                                    Text("\(binding.calories.wrappedValue) cal")
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                }
+
+                                                Spacer()
+
+                                                ZStack {
+                                                    Circle()
+                                                        .fill(isChecked ? (accentOverride ?? .accentColor).opacity(0.16) : Color.clear)
+                                                        .frame(width: 40, height: 40)
+
+                                                    Image(systemName: isChecked ? "checkmark.circle.fill" : "checkmark.circle")
+                                                        .font(.title3)
+                                                        .foregroundStyle(isChecked ? (accentOverride ?? .accentColor) : Color(.systemGray3))
+                                                        .scaleEffect(isChecked ? 1.15 : 1.0)
+                                                        .rotationEffect(.degrees(isChecked ? 0 : 0))
+                                                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isChecked)
+                                                }
+                                            }
+                                            .padding(12)
+                                            .frame(maxWidth: .infinity)
+                                            .background(
+                                                Group {
+                                                    if isChecked {
+                                                        (accentOverride ?? .accentColor).opacity(0.06)
+                                                    } else {
+                                                        Color.clear
+                                                    }
+                                                }
+                                            )
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        if idx != cravings.indices.last {
+                                            Divider()
+                                                .padding(.leading, 12)
+                                        }
+                                    }
+                                }
+                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                .padding(.horizontal, 18)
+                                .padding(.top, 12)
+                            }
+                        }
+                        .opacity(isPro ? 1 : 0.5)
+                        .disabled(!isPro)
+                        .overlay {
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001) // Capture taps
+                                        .onTapGesture {
+                                            // Optional: Trigger upgrade flow
+                                        }
+                                    
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(.white)
+                                            .padding(12)
+                                            .background(Circle().fill(Color.accentColor))
+                                        
+                                        Text("Pro Feature")
+                                            .font(.headline)
+                                            .foregroundStyle(.primary)
+                                        
+                                        Text("Upgrade to unlock Cravings")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                                 }
                             }
                         }
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                        .padding(.horizontal, 18)
-                        .padding(.top, 12)
 
-                        HStack {
-                            Text("Intermittent Fasting")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
+                        // MARK: - Intermittent Fasting Section
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("Intermittent Fasting")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
 
-                            Spacer()
+                                Spacer()
 
-                            Button {
-                                showProtocolSheet = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                Button {
+                                    showProtocolSheet = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 48)
+
+                            FastingTimerCard(
+                                accentColorOverride: accentOverride,
+                                showProtocolSheet: $showProtocolSheet,
+                                currentFastingMinutes: account.intermittentFastingMinutes,
+                                onProtocolChanged: { minutes in
+                                    persistIntermittentFasting(minutes: minutes)
+                                }
+                            )
+                            .padding(.horizontal, 18)
+                            .padding(.top, 12)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
-
-                        FastingTimerCard(
-                            accentColorOverride: accentOverride,
-                            showProtocolSheet: $showProtocolSheet,
-                            currentFastingMinutes: account.intermittentFastingMinutes,
-                            onProtocolChanged: { minutes in
-                                persistIntermittentFasting(minutes: minutes)
+                        .opacity(isPro ? 1 : 0.5)
+                        .disabled(!isPro)
+                        .overlay {
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001) // Capture taps
+                                        .onTapGesture {
+                                            // Optional: Trigger upgrade flow
+                                        }
+                                    
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(.white)
+                                            .padding(12)
+                                            .background(Circle().fill(Color.accentColor))
+                                        
+                                        Text("Pro Feature")
+                                            .font(.headline)
+                                            .foregroundStyle(.primary)
+                                        
+                                        Text("Upgrade to unlock Fasting")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                                }
                             }
-                        )
-                        .padding(.horizontal, 18)
-                        .padding(.top, 12)
+                        }
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
@@ -499,7 +579,16 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
-            ensureDefaultSupplements()
+            // Safely hydrate cravings from Firestore if needed without
+            // overwriting local changes. When the account adopts remote
+            // cravings, reflect that into this view's binding.
+            account.syncCravingsIfNeeded(service: accountFirestoreService) { updated in
+                if updated {
+                    DispatchQueue.main.async {
+                        cravings = account.cravings
+                    }
+                }
+            }
         }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
@@ -509,6 +598,7 @@ struct NutritionTabView: View {
                 tint: accentOverride ?? .accentColor,
                 isMultiColourTheme: themeManager.selectedTheme == .multiColour,
                 macroFocus: selectedMacroFocus,
+                isPro: isPro,
                 onDone: { showMacroEditorSheet = false }
             )
             .presentationDetents([.large])
@@ -556,6 +646,7 @@ struct NutritionTabView: View {
             SupplementEditorSheet(
                 supplements: supplementsBinding,
                 tint: accentOverride ?? .orange,
+                isPro: isPro,
                 onDone: { showSupplementEditor = false }
             )
             .presentationDetents([.large, .medium])
@@ -609,7 +700,7 @@ private enum NutritionLayout {
 }
 
 private enum NutritionMacroLimits {
-    static let maxTrackedMacros = 12
+    static let freeTrackedMacros = 8
 }
 
 private extension NutritionTabView {
@@ -1127,6 +1218,7 @@ struct CravingEditorSheet: View {
 struct SupplementEditorSheet: View {
     @Binding var supplements: [Supplement]
     var tint: Color
+    var isPro: Bool
     var onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -1155,9 +1247,12 @@ struct SupplementEditorSheet: View {
         ]
     }
 
-    private let maxTrackedSupplements = 12
+    private let freeTrackedSupplements = 8
 
-    private var canAddMore: Bool { working.count < maxTrackedSupplements }
+    private var canAddMore: Bool {
+        if isPro { return true }
+        return working.count < freeTrackedSupplements
+    }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -1276,9 +1371,11 @@ struct SupplementEditorSheet: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("You can track up to \(maxTrackedSupplements) supplements.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !isPro {
+                                Text("You can track up to \(freeTrackedSupplements) supplements.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
 
@@ -1373,81 +1470,99 @@ struct MacroSummary: View {
     var onEditMacros: () -> Void
     var onMacroTap: (MacroMetric) -> Void
 
-    var body: some View {
-        VStack(spacing: 12) {
-            let items: [MacroSummaryItem] = macros.map { .metric($0) }
-
-            let macroRows: [[MacroSummaryItem]] = {
-                let count = items.count
-                if count <= 4 {
-                    return [items]
-                } else if count == 5 {
-                    return [Array(items.prefix(3)), Array(items.suffix(2))]
-                } else if count == 6 {
-                    return [Array(items.prefix(3)), Array(items.suffix(3))]
-                } else if count == 7 {
-                    return [Array(items.prefix(4)), Array(items.suffix(3))]
-                } else {
-                    // For 8+, split into rows of 4
-                    return stride(from: 0, to: count, by: 4).map { i in
-                        Array(items[i..<min(i+4, count)])
-                    }
-                }
-            }()
-
-            VStack(spacing: 16) {
-                ForEach(macroRows.indices, id: \.self) { rowIdx in
-                    HStack {
-                        Spacer(minLength: 0)
-                        ForEach(macroRows[rowIdx]) { item in
-                            switch item {
-                            case let .metric(metric):
-                                Button {
-                                    onMacroTap(metric)
-                                } label: {
-                                    let displayColor = accentColorOverride ?? metric.color
-                                    VStack(spacing: 2) {
-                                        ZStack {
-                                            Circle()
-                                                .stroke(displayColor.opacity(0.18), lineWidth: 6)
-                                                .frame(width: 54, height: 54)
-                                            Circle()
-                                                .trim(from: 0, to: metric.percent)
-                                                .stroke(displayColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                                                .rotationEffect(.degrees(-90))
-                                                .frame(width: 54, height: 54)
-                                            Text(metric.consumedLabel)
-                                                .font(.system(size: 12, weight: .semibold))
-                                                .foregroundColor(displayColor)
-                                        }
-                                        .padding(.bottom, 10)
-                                        Text("\(metric.allowedLabel)")
-                                            .font(.caption)
-                                            .foregroundStyle(.tertiary)
-                                        Text(metric.title)
-                                            .font(.caption)
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(.secondary)
-                                            .padding(.top, 0)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: NutritionLayout.macroTileMinHeight, alignment: .top)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.bottom, -30)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.bottom, 20)
-                }
-                .padding(.top, 10)
-            }
-            .padding(.horizontal)
-            .padding(.top, 16)
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No macros tracked yet", systemImage: "chart.bar.doc.horizontal")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add macros using the Edit button to start tracking nutrition.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
         .glassEffect(in: .rect(cornerRadius: 16.0))
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
+    }
+
+    var body: some View {
+        if macros.isEmpty {
+            emptyState
+        } else {
+            VStack(spacing: 12) {
+                let items: [MacroSummaryItem] = macros.map { .metric($0) }
+                
+                let macroRows: [[MacroSummaryItem]] = {
+                    let count = items.count
+                    if count <= 4 {
+                        return [items]
+                    } else if count == 5 {
+                        return [Array(items.prefix(3)), Array(items.suffix(2))]
+                    } else if count == 6 {
+                        return [Array(items.prefix(3)), Array(items.suffix(3))]
+                    } else if count == 7 {
+                        return [Array(items.prefix(4)), Array(items.suffix(3))]
+                    } else {
+                        // For 8+, split into rows of 4
+                        return stride(from: 0, to: count, by: 4).map { i in
+                            Array(items[i..<min(i+4, count)])
+                        }
+                    }
+                }()
+                
+                VStack(spacing: 16) {
+                    ForEach(macroRows.indices, id: \.self) { rowIdx in
+                        HStack {
+                            Spacer(minLength: 0)
+                            ForEach(macroRows[rowIdx]) { item in
+                                switch item {
+                                case let .metric(metric):
+                                    Button {
+                                        onMacroTap(metric)
+                                    } label: {
+                                        let displayColor = accentColorOverride ?? metric.color
+                                        VStack(spacing: 2) {
+                                            ZStack {
+                                                Circle()
+                                                    .stroke(displayColor.opacity(0.18), lineWidth: 6)
+                                                    .frame(width: 54, height: 54)
+                                                Circle()
+                                                    .trim(from: 0, to: metric.percent)
+                                                    .stroke(displayColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                                                    .rotationEffect(.degrees(-90))
+                                                    .frame(width: 54, height: 54)
+                                                Text(metric.consumedLabel)
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(displayColor)
+                                            }
+                                            .padding(.bottom, 10)
+                                            Text("\(metric.allowedLabel)")
+                                                .font(.caption)
+                                                .foregroundStyle(.tertiary)
+                                            Text(metric.title)
+                                                .font(.caption)
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(.secondary)
+                                                .padding(.top, 0)
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: NutritionLayout.macroTileMinHeight, alignment: .top)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.bottom, -30)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.bottom, 20)
+                    }
+                    .padding(.top, 10)
+                }
+                .padding(.horizontal)
+                .padding(.top, 16)
+            }
+            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+        }
     }
 }
 
@@ -1834,6 +1949,7 @@ struct MacroEditorSheet: View {
     var tint: Color
     var isMultiColourTheme: Bool
     var macroFocus: MacroFocusOption?
+    var isPro: Bool
     var onDone: () -> Void
 
     @State private var workingMacros: [MacroMetric] = []
@@ -1842,7 +1958,8 @@ struct MacroEditorSheet: View {
     @State private var hasLoadedState = false
 
     private var canAddMoreMacros: Bool {
-        workingMacros.count < NutritionMacroLimits.maxTrackedMacros
+        if isPro { return true }
+        return workingMacros.count < NutritionMacroLimits.freeTrackedMacros
     }
 
     private var canAddCustomMacro: Bool {
@@ -1962,9 +2079,11 @@ struct MacroEditorSheet: View {
                                 .opacity(!canAddCustomMacro ? 0.4 : 1)
                             }
 
-                            Text("You can track up to \(NutritionMacroLimits.maxTrackedMacros) macros.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !isPro {
+                                Text("You can track up to \(NutritionMacroLimits.freeTrackedMacros) macros.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
 

@@ -57,32 +57,48 @@ struct SupplementTrackingView: View {
         }()
 
         VStack(spacing: 16) {
-            VStack(spacing: 16) {
-                ForEach(rows.indices, id: \.self) { rowIdx in
-                    HStack {
-                        Spacer(minLength: 0)
-                        ForEach(rows[rowIdx]) { item in
-                            switch item {
-                            case let .supplement(_, supplement):
-                                SupplementRing(
-                                    itemName: supplement.name,
-                                    amountLabel: supplement.amountLabel,
-                                    isTaken: takenSupplementIDs.contains(supplement.id),
-                                    tint: supplementTint,
-                                    minHeight: tileMinHeight,
-                                    onToggle: { onToggle(supplement) },
-                                    onRemove: { onRemove(supplement) }
-                                )
+            if supplements.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No supplements yet", systemImage: "pills")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("Add supplements in the Edit screen to track them here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .glassEffect(in: .rect(cornerRadius: 16.0))
+            } else {
+                VStack(spacing: 16) {
+                    VStack(spacing: 16) {
+                        ForEach(rows.indices, id: \.self) { rowIdx in
+                            HStack {
+                                Spacer(minLength: 0)
+                                ForEach(rows[rowIdx]) { item in
+                                    switch item {
+                                    case let .supplement(_, supplement):
+                                        SupplementRing(
+                                            itemName: supplement.name,
+                                            amountLabel: supplement.amountLabel,
+                                            isTaken: takenSupplementIDs.contains(supplement.id),
+                                            tint: supplementTint,
+                                            minHeight: tileMinHeight,
+                                            onToggle: { onToggle(supplement) },
+                                            onRemove: { onRemove(supplement) }
+                                        )
+                                    }
+                                }
+                                Spacer(minLength: 0)
                             }
                         }
-                        Spacer(minLength: 0)
+                        .padding(.bottom, -10)
                     }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    .padding(.bottom, -30)
                 }
-                .padding(.bottom, -10)
             }
-            .padding(.horizontal)
-            .padding(.top, 10)
-            .padding(.bottom, -30)
         }
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)

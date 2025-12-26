@@ -31,6 +31,7 @@ private struct MacroEditorSectionHeader: View {
 struct ExerciseSupplementEditorSheet: View {
     @Binding var supplements: [Supplement]
     var tint: Color
+    var isPro: Bool
     var onDone: () -> Void
 
     // local working state
@@ -51,9 +52,12 @@ struct ExerciseSupplementEditorSheet: View {
         ]
     }
 
-    private let maxTrackedSupplements = 12
+    private let freeTrackedSupplements = 8
 
-    private var canAddMore: Bool { working.count < maxTrackedSupplements }
+    private var canAddMore: Bool {
+        if isPro { return true }
+        return working.count < freeTrackedSupplements
+    }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -173,9 +177,11 @@ struct ExerciseSupplementEditorSheet: View {
                                     .opacity(!canAddCustom ? 0.4 : 1)
                                 }
 
-                                Text("You can track up to \(maxTrackedSupplements) supplements.")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                if !isPro {
+                                    Text("You can track up to \(freeTrackedSupplements) supplements.")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
 
@@ -259,6 +265,7 @@ struct WorkoutTabView: View {
     @Binding var weightEntries: [WeightExerciseValue]
     @Binding var weeklyCheckInStatuses: [WorkoutCheckInStatus]
     @Binding var autoRestDayIndices: Set<Int>
+    var isPro: Bool
     // Weekly progress state (persisted via Account + Firestore)
     @State private var weeklyEntries: [WeeklyProgressEntry] = []
     @State private var weeklySelectedEntry: WeeklyProgressEntry? = nil
@@ -313,6 +320,7 @@ struct WorkoutTabView: View {
         weightEntries: Binding<[WeightExerciseValue]>,
         weeklyCheckInStatuses: Binding<[WorkoutCheckInStatus]>,
         autoRestDayIndices: Binding<Set<Int>>,
+        isPro: Bool,
         lastWeightEntryByExerciseId: [UUID: WeightExerciseValue],
         onUpdateDailyActivity: @escaping (_ calories: Double?, _ steps: Double?, _ distance: Double?) -> Void,
         onUpdateDailyGoals: @escaping (_ calorieGoal: Int, _ stepsGoal: Int, _ distanceGoal: Double) -> Void,
@@ -334,6 +342,7 @@ struct WorkoutTabView: View {
         _weightEntries = weightEntries
         _weeklyCheckInStatuses = weeklyCheckInStatuses
         _autoRestDayIndices = autoRestDayIndices
+        self.isPro = isPro
         self.lastWeightEntryByExerciseId = lastWeightEntryByExerciseId
         self.onUpdateDailyActivity = onUpdateDailyActivity
         self.onUpdateDailyGoals = onUpdateDailyGoals
@@ -567,18 +576,7 @@ struct WorkoutTabView: View {
                         }
                     )
                     .onAppear {
-                        // Seed account supplements with coaching defaults if empty
-                        if account.workoutSupplements.isEmpty {
-                            account.workoutSupplements = coachingDefaultSupplements
-                            do {
-                                try modelContext.save()
-                            } catch {
-                                print("WorkoutTabView: failed to save Account after seeding workout supplements: \(error)")
-                            }
-                            accountFirestoreService.saveAccount(account) { success in
-                                if !success { print("WorkoutTabView: failed to sync seeded workout supplements to Firestore") }
-                            }
-                        }
+                        // Respect an explicitly-empty `workoutSupplements`; do not auto-seed defaults here.
                         fetchDayTakenWorkoutSupplements()
                     }
                     .onChange(of: selectedDate) { _, _ in
@@ -603,6 +601,7 @@ struct WorkoutTabView: View {
                         ExerciseSupplementEditorSheet(
                             supplements: supplementsBinding,
                             tint: .purple,
+                            isPro: isPro,
                             onDone: { showSupplementEditor = false }
                         )
                     }
@@ -632,37 +631,72 @@ struct WorkoutTabView: View {
                         focusBinding: $isWeightsInputFocused
                     )
 
-                    // HStack {
-                    //     Text("Weekly Progress")
-                    //         .font(.title3)
-                    //         .fontWeight(.semibold)
-                    //         .foregroundStyle(.primary)
+                    // MARK: - Weekly Progress Section
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("Weekly Progress")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
 
-                    //     Spacer()
+                            Spacer()
 
-                    //     Button {
-                    //         showAddSheet = true
-                    //     } label: {
-                    //         Label("Add", systemImage: "plus")
-                    //             .font(.callout)
-                    //             .fontWeight(.medium)
-                    //             .padding(.horizontal, 12)
-                    //             .padding(.vertical, 8)
-                    //             .glassEffect(in: .rect(cornerRadius: 18.0))
-                    //     }
-                    //     .buttonStyle(.plain)
-                    // }
-                    // .frame(maxWidth: .infinity)
-                    // .padding(.horizontal, 18)
-                    // .padding(.top, 48)
+                            Button {
+                                showAddSheet = true
+                            } label: {
+                                Label("Add", systemImage: "plus")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
 
-                    // WeeklyProgressCarousel(accentColorOverride: accentOverride,
-                    //                         entries: $weeklyEntries,
-                    //                         selectedEntry: $weeklySelectedEntry,
-                    //                         showEditor: $weeklyShowEditor,
-                    //                         previewImageEntry: $previewImageEntry)
-                    //     .padding(.horizontal, 18)
-                    //     .padding(.top, 12)
+                        WeeklyProgressCarousel(accentColorOverride: accentOverride,
+                                                entries: $weeklyEntries,
+                                                selectedEntry: $weeklySelectedEntry,
+                                                showEditor: $weeklyShowEditor,
+                                                previewImageEntry: $previewImageEntry)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 12)
+                    }
+                    .opacity(isPro ? 1 : 0.5)
+                    .disabled(!isPro)
+                    .overlay {
+                        if !isPro {
+                            ZStack {
+                                Color.black.opacity(0.001) // Capture taps
+                                    .onTapGesture {
+                                        // Optional: Trigger upgrade flow
+                                    }
+                                
+                                VStack(spacing: 8) {
+                                    Image(systemName: "lock.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.white)
+                                        .padding(12)
+                                        .background(Circle().fill(Color.accentColor))
+                                    
+                                    Text("Pro Feature")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    
+                                    Text("Upgrade to unlock Weekly Progress")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                            }
+                        }
+                    }
 
                     // Coaching inquiry card
                     CoachingInquiryCTA()
@@ -1234,7 +1268,9 @@ private extension WorkoutTabView {
 
     func rebuildBodyPartsFromModel() {
         isHydratingWeights = true
-        let resolvedGroups = weightGroups.isEmpty ? WeightGroupDefinition.defaults : weightGroups
+        // Use the stored weight groups exactly as-is so an explicit empty
+        // value isn't silently replaced by defaults.
+        let resolvedGroups = weightGroups
         let entriesByExercise = Dictionary(uniqueKeysWithValues: weightEntries.map { ($0.exerciseId, $0) })
 
         bodyParts = resolvedGroups.map { group in
@@ -1256,9 +1292,8 @@ private extension WorkoutTabView {
             return BodyPartWeights(id: group.id, name: group.name, exercises: exercises)
         }
 
-        if bodyParts.isEmpty {
-            bodyParts = BodyPartWeights.defaultGroups
-        }
+        // Leave `bodyParts` empty if there are no stored groups so we don't
+        // accidentally persist UI defaults back into the model.
         isHydratingWeights = false
     }
 

@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import TipKit
 
 fileprivate struct HabitItem: Identifiable {
     var id: UUID
@@ -26,6 +27,7 @@ fileprivate struct HabitItem: Identifiable {
 private struct HabitsEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var habits: [HabitItem]
+    var isPro: Bool
     var onSave: ([HabitItem]) -> Void
 
     @State private var working: [HabitItem] = []
@@ -35,8 +37,12 @@ private struct HabitsEditorView: View {
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: UUID?
 
-    private let maxHabits = 3
-    private var canAddMore: Bool { working.count < maxHabits }
+    private let freeHabits = 3
+    private let proHabits = 8
+    private var canAddMore: Bool {
+        if isPro { return working.count < proHabits }
+        return working.count < freeHabits
+    }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private let palette: [Color] = [.purple, .orange, .pink, .teal, .mint, .yellow, .green]
     private var presets: [HabitItem] {
@@ -151,9 +157,15 @@ private struct HabitsEditorView: View {
                                     .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("You can track up to \(maxHabits) habits.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !isPro {
+                                Text("You can track up to \(freeHabits) habits.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("You can track up to \(proHabits) habits.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -348,6 +360,7 @@ struct RoutineTabView: View {
     @Binding var nightSleepSeconds: TimeInterval
     @Binding var napSleepSeconds: TimeInterval
     @Binding var weeklySleepEntries: [SleepDayEntry]
+    var isPro: Bool
     var onUpdateActivityTimers: ([ActivityTimerItem]) -> Void
     var onUpdateHabits: ([HabitDefinition]) -> Void
     var onUpdateGoals: ([GoalItem]) -> Void
@@ -611,43 +624,78 @@ struct RoutineTabView: View {
 
                         GroceryListSection(accentColorOverride: accentOverride, items: $groceryItems)
 
-                        HStack {
-                            Text("Expense Tracker")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
+                        // MARK: - Expense Tracker Section
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("Expense Tracker")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
 
-                            Spacer()
+                                Spacer()
 
-                            Button {
-                                showExpenseCategoriesEditor = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                Button {
+                                    showExpenseCategoriesEditor = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 38)
+                            .padding(.horizontal, 18)
+
+                            ExpenseTrackerSection(
+                                accentColorOverride: accentOverride,
+                                currencySymbol: expenseCurrencySymbol,
+                                categories: $expenseCategories,
+                                weekEntries: $expenseEntries,
+                                anchorDate: selectedDate,
+                                onSaveEntry: { entry in
+                                    onSaveExpenseEntry(entry)
+                                },
+                                onDeleteEntry: { id in
+                                    onDeleteExpenseEntry(id)
+                                }
+                            )
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 38)
-                        .padding(.horizontal, 18)
-
-                        ExpenseTrackerSection(
-                            accentColorOverride: accentOverride,
-                            currencySymbol: expenseCurrencySymbol,
-                            categories: $expenseCategories,
-                            weekEntries: $expenseEntries,
-                            anchorDate: selectedDate,
-                            onSaveEntry: { entry in
-                                onSaveExpenseEntry(entry)
-                            },
-                            onDeleteEntry: { id in
-                                onDeleteExpenseEntry(id)
+                        .opacity(isPro ? 1 : 0.5)
+                        .disabled(!isPro)
+                        .overlay {
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001) // Capture taps
+                                        .onTapGesture {
+                                            // Optional: Trigger upgrade flow
+                                        }
+                                    
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(.white)
+                                            .padding(12)
+                                            .background(Circle().fill(Color.accentColor))
+                                        
+                                        Text("Pro Feature")
+                                            .font(.headline)
+                                            .foregroundStyle(.primary)
+                                        
+                                        Text("Upgrade to unlock Expenses")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding()
+                                    .background(.regularMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                                }
                             }
-                        )
+                        }
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
@@ -663,19 +711,19 @@ struct RoutineTabView: View {
                 }
             }
             .sheet(isPresented: $showDailyTasksEditor) {
-                DailyTasksEditorView(tasks: $dailyTaskItems, onSave: applyTaskEditorChanges)
+                DailyTasksEditorView(tasks: $dailyTaskItems, isPro: isPro, onSave: applyTaskEditorChanges)
             }
             .sheet(isPresented: $showActivityTimersEditor) {
-                ActivityTimersEditorView(timers: $activityTimers, onSave: applyActivityTimerChanges)
+                ActivityTimersEditorView(timers: $activityTimers, isPro: isPro, onSave: applyActivityTimerChanges)
             }
             .sheet(isPresented: $showGoalsEditor) {
-                GoalsEditorView(goals: $goals, onSave: applyGoalsEditorChanges)
+                GoalsEditorView(goals: $goals, isPro: isPro, onSave: applyGoalsEditorChanges)
             }
             .sheet(isPresented: $showGroceryListEditor) {
                 GroceryListEditorView(items: $groceryItems, onSave: applyGroceryListChanges)
             }
             .sheet(isPresented: $showHabitsEditor) {
-                HabitsEditorView(habits: $habitItems, onSave: applyHabitsEditorChanges)
+                HabitsEditorView(habits: $habitItems, isPro: isPro, onSave: applyHabitsEditorChanges)
             }
             .sheet(isPresented: $showExpenseCategoriesEditor) {
                 ExpenseCategoriesEditorView(categories: $expenseCategories, currencySymbol: $expenseCurrencySymbol, onSave: applyExpenseCategoryChanges)
@@ -722,6 +770,7 @@ struct RoutineTabView: View {
 private struct DailyTasksEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var tasks: [DailyTaskItem]
+    var isPro: Bool
     var onSave: ([DailyTaskItem]) -> Void
     @State private var working: [DailyTaskItem] = []
     @State private var newName: String = ""
@@ -742,8 +791,11 @@ private struct DailyTasksEditorView: View {
         ]
     }
 
-    private let maxTracked = 12
-    private var canAddMore: Bool { working.count < maxTracked }
+    private let freeTracked = 12
+    private var canAddMore: Bool {
+        if isPro { return true }
+        return working.count < freeTracked
+    }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -921,9 +973,11 @@ private struct DailyTasksEditorView: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("You can track up to \(maxTracked) tasks.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !isPro {
+                                Text("You can track up to \(freeTracked) tasks.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -959,7 +1013,8 @@ private struct DailyTasksEditorView: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        working = tasks.isEmpty ? DailyTaskItem.defaultTasks : tasks
+        // Preserve an explicitly empty `tasks` selection — do not replace with defaults.
+        working = tasks
         hasLoaded = true
     }
 
@@ -1024,6 +1079,7 @@ private struct DailyTasksEditorView: View {
 private struct ActivityTimersEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var timers: [ActivityTimerItem]
+    var isPro: Bool
     var onSave: ([ActivityTimerItem]) -> Void
     @State private var working: [ActivityTimerItem] = []
     @State private var newName: String = ""
@@ -1036,8 +1092,12 @@ private struct ActivityTimersEditorView: View {
     private let minDuration = 10
     private let maxDuration = 180
 
-    private let maxTimersAllowed = 2
-    private var canAddMore: Bool { working.count < maxTimersAllowed }
+    private let freeTimersAllowed = 2
+    private let proTimersAllowed = 6
+    private var canAddMore: Bool {
+        if isPro { return working.count < proTimersAllowed }
+        return working.count < freeTimersAllowed
+    }
     private var customDurationMinutes: Int? {
         let hours = Int(customHours) ?? 0
         let minutes = Int(customMinutes) ?? 0
@@ -1240,6 +1300,15 @@ private struct ActivityTimersEditorView: View {
                             }
 
                         }
+                        if !isPro {
+                            Text("You can track up to \(freeTimersAllowed) timers.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("You can track up to \(proTimersAllowed) timers.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -1274,8 +1343,10 @@ private struct ActivityTimersEditorView: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        let initial = timers.isEmpty ? ActivityTimerItem.defaultTimers : timers
-        working = Array(initial.prefix(maxTimersAllowed))
+        // Respect an explicitly-empty timers list; do not substitute defaults for UI editing.
+        let initial = timers
+        let limit = isPro ? proTimersAllowed : freeTimersAllowed
+        working = Array(initial.prefix(limit))
         hasLoaded = true
     }
 
@@ -1331,7 +1402,7 @@ private struct ActivityTimersEditorView: View {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let newTimer = ActivityTimerItem(name: trimmed, startTime: Date(), durationMinutes: duration, colorHex: "#4CAF6A")
-        guard working.count < maxTimersAllowed else { return }
+        guard canAddMore else { return }
         working.append(newTimer)
         newName = ""
     }
@@ -1342,7 +1413,8 @@ private struct ActivityTimersEditorView: View {
     }
 
     private func donePressed() {
-        onSave(Array(working.prefix(maxTimersAllowed)))
+        let limit = isPro ? proTimersAllowed : freeTimersAllowed
+        onSave(Array(working.prefix(limit)))
         dismiss()
     }
 }
@@ -1350,13 +1422,20 @@ private struct ActivityTimersEditorView: View {
 private struct GoalsEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var goals: [GoalItem]
+    var isPro: Bool
     var onSave: ([GoalItem]) -> Void
     @State private var working: [GoalItem] = []
     @State private var newName: String = ""
     @State private var newNote: String = ""
     @State private var newDate: Date = Date()
     @State private var hasLoaded: Bool = false
-    // Unlimited goals allowed
+    
+    private let freeGoals = 12
+    private var canAddMore: Bool {
+        if isPro { return true }
+        return working.count < freeGoals
+    }
+    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     private var presets: [GoalItem] {
         let cal = Calendar.current
@@ -1370,12 +1449,7 @@ private struct GoalsEditorView: View {
         ]
     }
 
-    private var canAddCustom: Bool {
-        // allow unlimited goals (only require a non-empty name)
-        !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
 
-    private var canAddMore: Bool { true }
 
     var body: some View {
         NavigationStack {
@@ -1534,6 +1608,11 @@ private struct GoalsEditorView: View {
                                 .disabled(!canAddCustom)
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
+                        }
+                        if !isPro {
+                            Text("You can track up to \(freeGoals) goals.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -2010,12 +2089,14 @@ extension RoutineTabView {
     }
 
     private func applyActivityTimerChanges(_ items: [ActivityTimerItem]) {
-        activityTimers = items.isEmpty ? ActivityTimerItem.defaultTimers : items
+        // Persist exactly what the user provided; allow empty arrays to be saved.
+        activityTimers = items
         onUpdateActivityTimers(activityTimers)
     }
 
     private func applyHabitsEditorChanges(_ items: [HabitItem]) {
-        habitItems = Array(items.prefix(3))
+        let limit = isPro ? 8 : 3
+        habitItems = Array(items.prefix(limit))
         let defs = habitItems.map { HabitDefinition(id: $0.id, name: $0.name, colorHex: $0.colorHex) }
         account.habits = defs
         onUpdateHabits(defs)
@@ -2231,7 +2312,8 @@ extension RoutineTabView {
     }
 
     private func rebuildHabitProgress(using days: [Date: Day]) {
-        let defs = account.habits.isEmpty ? HabitDefinition.defaults : account.habits
+        // Respect an explicitly-empty habits list; do not substitute defaults when enumerating.
+        let defs = account.habits
         let week = weekDates(for: selectedDate)
 
         let resolved: [HabitItem] = defs.enumerated().map { idx, def in
@@ -2399,38 +2481,58 @@ private struct HabitTrackingSection: View {
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No habits yet", systemImage: "checklist")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add habits using the Edit button to start tracking daily routines.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
     var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-            let palette: [Color] = [.purple, .orange, .pink, .teal, .mint, .yellow, .green]
-            ForEach(habits.indices, id: \.self) { idx in
-                let habit = habits[idx]
-                let rowColor: Color = {
-                    if !habit.colorHex.isEmpty, let c = Color(hex: habit.colorHex) {
-                        return c
-                    }
-                    return palette[idx % palette.count]
-                }()
+        VStack(spacing: 12) {
+            if habits.isEmpty {
+                emptyState
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    let palette: [Color] = [.purple, .orange, .pink, .teal, .mint, .yellow, .green]
+                    ForEach(habits.indices, id: \.self) { idx in
+                        let habit = habits[idx]
+                        let rowColor: Color = {
+                            if !habit.colorHex.isEmpty, let c = Color(hex: habit.colorHex) {
+                                return c
+                            }
+                            return palette[idx % palette.count]
+                        }()
 
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(habit.name)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .padding(.bottom, 8)
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(habit.name)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .padding(.bottom, 8)
 
-                        HabitProgressTimelineView(daySymbols: daySymbols, statuses: habit.weeklyProgress, accentColor: rowColor)
-                            .frame(height: 60)
-                    }
+                                HabitProgressTimelineView(daySymbols: daySymbols, statuses: habit.weeklyProgress, accentColor: rowColor)
+                                    .frame(height: 60)
+                            }
 
-                    Button(action: { checkIn(habitId: habit.id) }) {
-                        Image(systemName: (habit.weeklyProgress.indices.contains(currentDayIndex) && habit.weeklyProgress[currentDayIndex] == .tracked) ? "checkmark.circle.fill" : "checkmark.circle")
-                            .font(.title3)
-                            .foregroundStyle((habit.weeklyProgress.indices.contains(currentDayIndex) && habit.weeklyProgress[currentDayIndex] == .tracked) ? rowColor : Color(.systemGray3))
+                            Button(action: { checkIn(habitId: habit.id) }) {
+                                Image(systemName: (habit.weeklyProgress.indices.contains(currentDayIndex) && habit.weeklyProgress[currentDayIndex] == .tracked) ? "checkmark.circle.fill" : "checkmark.circle")
+                                    .font(.title3)
+                                    .foregroundStyle((habit.weeklyProgress.indices.contains(currentDayIndex) && habit.weeklyProgress[currentDayIndex] == .tracked) ? rowColor : Color(.systemGray3))
+                            }
+                            .buttonStyle(HabitCompactButtonStyle(background: Color(.systemBackground)))
+                        }
+                        .padding(.top, 6)
+                        .background(Color.clear)
                     }
-                    .buttonStyle(HabitCompactButtonStyle(background: Color(.systemBackground)))
                 }
-                .padding(.top, 6)
-                .background(Color.clear)
             }
         }
         .padding(16)

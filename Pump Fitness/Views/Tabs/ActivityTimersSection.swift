@@ -242,26 +242,17 @@ struct ActivityTimersSection: View {
 
     @ViewBuilder
     private var placeholder: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .strokeBorder(.secondary.opacity(0.18), lineWidth: 1)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(.regularMaterial)
-            )
-            .overlay(
-                VStack(spacing: 8) {
-                    Image(systemName: "timer")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                    Text("Add an activity timer")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text("Use the Edit button to configure timers.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(20)
-            )
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No activity timers yet", systemImage: "timer")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add timers using the Edit button to set up activity timers.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
     }
 }
 

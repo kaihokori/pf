@@ -266,38 +266,33 @@ struct AccountsView: View {
                                 // Update the view model's profile from draft
                                 viewModel.saveChanges()
 
-                                // Build a new Account and assign it to the binding so the
-                                // parent's binding `set` handler applies the changes and
-                                // persists them. This ensures RootView's observers
-                                // (including maintenanceCalories) are updated.
                                 await MainActor.run {
-                                    let updated = Account(
-                                        id: account.id,
-                                        profileImage: viewModel.profile.avatarImageData,
-                                        profileAvatar: String(describing: viewModel.profile.avatarColor.rawValue),
-                                        name: viewModel.profile.name,
-                                        gender: viewModel.profile.selectedGender?.rawValue,
-                                        dateOfBirth: viewModel.profile.birthDate,
-                                        height: Double(viewModel.profile.heightValue),
-                                        weight: Double(viewModel.profile.weightValue),
-                                        maintenanceCalories: Int(viewModel.profile.maintenanceCalories) ?? account.maintenanceCalories,
-                                        theme: viewModel.profile.appTheme.rawValue,
-                                        unitSystem: viewModel.profile.unitSystem.rawValue,
-                                        startWeekOn: viewModel.profile.weekStart.rawValue
-                                    )
+                                    account.profileImage = viewModel.profile.avatarImageData
+                                    account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
+                                    account.name = viewModel.profile.name
+                                    account.gender = viewModel.profile.selectedGender?.rawValue
+                                    account.dateOfBirth = viewModel.profile.birthDate
+                                    account.height = Double(viewModel.profile.heightValue)
+                                    account.weight = Double(viewModel.profile.weightValue)
+                                    account.maintenanceCalories = Int(viewModel.profile.maintenanceCalories) ?? account.maintenanceCalories
+                                    account.theme = viewModel.profile.appTheme.rawValue
+                                    account.unitSystem = viewModel.profile.unitSystem.rawValue
+                                    account.startWeekOn = viewModel.profile.weekStart.rawValue
+                                    account.activityLevel = viewModel.profile.activityLevel.rawValue
 
-                                    account = updated
                                     themeManager.setTheme(viewModel.profile.appTheme)
+                                    
+                                    do {
+                                        try modelContext.save()
+                                    } catch {
+                                        print("AccountsView: failed to save locally: \(error)")
+                                    }
                                 }
 
-                                // Save to Firestore using the authenticated user's UID
-                                if let firestoreAccount = viewModel.buildFirestoreAccount() {
-                                    let success = await viewModel.saveAccountToFirestore(firestoreAccount)
-                                    if !success {
-                                        print("Failed to save account to Firestore")
-                                    }
-                                } else {
-                                    print("No authenticated user; cannot save account to Firestore.")
+                                // Save to Firestore using the updated account
+                                let success = await viewModel.saveAccountToFirestore(account)
+                                if !success {
+                                    print("Failed to save account to Firestore")
                                 }
 
                                 await MainActor.run {

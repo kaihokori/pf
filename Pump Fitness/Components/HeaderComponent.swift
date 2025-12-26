@@ -7,6 +7,7 @@ struct HeaderComponent: View {
     @Binding var selectedDate: Date
     var onProfileTap: (() -> Void)? = nil
     @EnvironmentObject private var account: Account
+    @AppStorage("isPro") private var isPro: Bool = true
 
     var body: some View {
         HStack(alignment: .center) {
@@ -18,6 +19,11 @@ struct HeaderComponent: View {
                     .frame(height: 28)
                     .padding(.leading, 4)
                     .offset(y: 6)
+                Toggle("", isOn: $isPro)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .padding(.leading, 8)
+                    .offset(y: 6)
             } else {
                 Image("logo")
                     .resizable()
@@ -26,6 +32,11 @@ struct HeaderComponent: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(height: 28)
                     .padding(.leading, 4)
+                    .offset(y: 6)
+                Toggle("", isOn: $isPro)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .padding(.leading, 8)
                     .offset(y: 6)
             }
 

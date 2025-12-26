@@ -25,6 +25,7 @@ struct SportsTabView: View {
     private let dayService = DayFirestoreService()
     @State private var showCalendar = false
     @Binding var selectedDate: Date
+    var isPro: Bool
     @State private var showAccountsView = false
     @State private var showTimeTrackingEditor = false
     @State private var timeTrackingConfig = TimeTrackingConfig.defaultConfig
@@ -841,7 +842,8 @@ struct SportsTabView: View {
                             )
                             .environmentObject(account)
 
-                            if Calendar.current.isDateInToday(selectedDate) {
+                            VStack(spacing: 0) {
+                                if Calendar.current.isDateInToday(selectedDate) {
                                 HStack {
                                     Text("Weather")
                                         .font(.title3)
@@ -1176,10 +1178,43 @@ struct SportsTabView: View {
                             }
                             .padding(.top, -12)
                         }
+                            }
+                            .opacity(isPro ? 1 : 0.5)
+                            .disabled(!isPro)
 
                         ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
                             .padding(.horizontal, 18)
                             .padding(.vertical, 24)
+                    }
+                    .overlay {
+                        if !isPro {
+                            ZStack {
+                                Color.black.opacity(0.001) // Capture taps
+                                    .onTapGesture {
+                                        // Optional: Trigger upgrade flow
+                                    }
+                                
+                                VStack(spacing: 8) {
+                                    Image(systemName: "lock.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.white)
+                                        .padding(12)
+                                        .background(Circle().fill(Color.accentColor))
+                                    
+                                    Text("Pro Feature")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    
+                                    Text("Upgrade to unlock the Sports tab")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                            }
+                        }
                     }
 
                     Spacer()
@@ -1348,7 +1383,8 @@ private extension SportsTabView {
     func loadSoloMetricsFromAccount() {
         guard !hasLoadedSoloMetrics else { return }
         let source = account.soloMetrics
-        soloMetrics = source.isEmpty ? SoloMetric.defaultMetrics : source
+        // Respect an explicitly-empty solo metrics list from the account (do not fallback to defaults)
+        soloMetrics = source
         hasLoadedSoloMetrics = true
         syncSoloMetricStoreWithMetrics()
     }
@@ -1356,7 +1392,8 @@ private extension SportsTabView {
     func loadTeamMetricsFromAccount() {
         guard !hasLoadedTeamMetrics else { return }
         let source = account.teamMetrics
-        teamMetrics = source.isEmpty ? TeamMetric.defaultMetrics : source
+        // Respect an explicitly-empty team metrics list from the account (do not fallback to defaults)
+        teamMetrics = source
         hasLoadedTeamMetrics = true
         syncTeamMetricStoreWithMetrics()
     }
@@ -1669,43 +1706,61 @@ fileprivate struct SoloPlaySection: View {
     var focusBinding: FocusState<Bool>.Binding
     var onValueChange: (SoloMetric, String) -> Void
 
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No solo metrics yet", systemImage: "figure.walk")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add solo metrics using the Edit button to track individual performance.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
     var body: some View {
-        VStack(alignment: .center, spacing: 18) {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(rows(for: metrics), id: \.self) { row in
-                    HStack(spacing: 12) {
-                        ForEach(row) { metric in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(metric.name)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+        if metrics.isEmpty {
+            emptyState
+        } else {
+            VStack(alignment: .center, spacing: 18) {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(rows(for: metrics), id: \.self) { row in
+                        HStack(spacing: 12) {
+                            ForEach(row) { metric in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(metric.name)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
 
-                                TextField(
-                                    metric.name,
-                                    text: valueBinding(for: metric),
-                                    prompt: Text("Enter value…").foregroundStyle(.secondary)
-                                )
-                                .textInputAutocapitalization(.none)
-                                .keyboardType(.decimalPad)
-                                .focused(focusBinding)
-                                .padding()
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                    TextField(
+                                        metric.name,
+                                        text: valueBinding(for: metric),
+                                        prompt: Text("Enter value…").foregroundStyle(.secondary)
+                                    )
+                                    .textInputAutocapitalization(.none)
+                                    .keyboardType(.decimalPad)
+                                    .focused(focusBinding)
+                                    .padding()
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                }
+                                .frame(maxWidth: .infinity)
                             }
-                            .frame(maxWidth: .infinity)
-                        }
 
-                        if row.count == 1 {
-                            Spacer(minLength: 0)
+                            if row.count == 1 {
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
                 }
             }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 18)
+            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .onAppear(perform: syncValueStore)
+            .onChange(of: metrics) { _, _ in syncValueStore() }
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 18)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
-        .onAppear(perform: syncValueStore)
-        .onChange(of: metrics) { _, _ in syncValueStore() }
     }
 
     private func valueBinding(for metric: SoloMetric) -> Binding<String> {
@@ -1909,7 +1964,8 @@ private struct SoloPlayMetricsEditorSheet: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        working = metrics.isEmpty ? SoloMetric.defaultMetrics : metrics
+        // Respect an explicitly-empty metrics list when opening the solo metrics editor.
+        working = metrics
         hasLoaded = true
     }
 
@@ -2315,7 +2371,8 @@ private struct TeamPlayMetricsEditorSheet: View {
 
     private func loadInitial() {
         guard !hasLoaded else { return }
-        working = metrics.isEmpty ? TeamMetric.defaultMetrics : metrics
+        // Respect an explicitly-empty metrics list when opening the editor.
+        working = metrics
         hasLoaded = true
     }
 

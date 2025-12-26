@@ -469,6 +469,7 @@ struct AccountsView: View {
         .sheet(isPresented: $showAlertsSheet) {
             AlertSheetView()
         }
+        .toolbar(.hidden, for: .tabBar)
     }
     
     struct AlertSheetView: View {

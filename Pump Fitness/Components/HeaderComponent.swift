@@ -19,11 +19,21 @@ struct HeaderComponent: View {
                     .frame(height: 28)
                     .padding(.leading, 4)
                     .offset(y: 6)
-                Toggle("", isOn: $isPro)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .padding(.leading, 8)
-                    .offset(y: 6)
+                Button(action: { isPro.toggle() }) {
+                    Text("Pro")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(isPro ? .white : .primary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(isPro ? themeManager.selectedTheme.accent(for: colorScheme) : Color.secondary.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                .offset(y: 6)
             } else {
                 Image("logo")
                     .resizable()
@@ -33,11 +43,21 @@ struct HeaderComponent: View {
                     .frame(height: 28)
                     .padding(.leading, 4)
                     .offset(y: 6)
-                Toggle("", isOn: $isPro)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .padding(.leading, 8)
-                    .offset(y: 6)
+                Button(action: { isPro.toggle() }) {
+                    Text("Pro")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(isPro ? .white : .primary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(isPro ? themeManager.selectedTheme.accent(for: colorScheme) : Color.secondary.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                .offset(y: 6)
             }
 
             Spacer()

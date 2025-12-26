@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import HealthKit
 import PhotosUI
+import TipKit
 
 private extension WorkoutTabView {
     func fetchDayTakenWorkoutSupplements() {
@@ -395,18 +396,20 @@ struct WorkoutTabView: View {
     var body: some View {
         ZStack {
             backgroundView
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
-                        .environmentObject(account)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                            .environmentObject(account)
 
-                    Text("Schedule Tracking")
+                        Text("Schedule Tracking")
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
+                        .id("dailyCheckIn")
 
                     DailyCheckInSection(
                         weeklyProgress: $weeklyCheckInStatuses,
@@ -416,6 +419,13 @@ struct WorkoutTabView: View {
                         onSelectStatus: { status in onSelectCheckInStatus(status, nil) },
                         onSelectStatusAtIndex: { status, idx in onSelectCheckInStatus(status, idx) }
                     )
+                    .workoutTip(.dailyCheckIn, onStepChange: { step in
+                        if step == 1 {
+                            withAnimation {
+                                proxy.scrollTo("workoutSupplements", anchor: .top)
+                            }
+                        }
+                    })
 
                     WeeklyWorkoutScheduleCard(
                         schedule: $workoutSchedule,
@@ -535,6 +545,7 @@ struct WorkoutTabView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 18)
                     .padding(.top, 48)
+                    .id("workoutSupplements")
                     // Tappable cards: if HealthKit not authorized, allow manual adjust
                     .onTapGesture { /* noop */ }
                     SupplementTrackingView(
@@ -575,6 +586,13 @@ struct WorkoutTabView: View {
                             }
                         }
                     )
+                    .workoutTip(.workoutSupplements, onStepChange: { step in
+                        if step == 1 {
+                            withAnimation {
+                                proxy.scrollTo("weightsTracking", anchor: .top)
+                            }
+                        }
+                    })
                     .onAppear {
                         // Respect an explicitly-empty `workoutSupplements`; do not auto-seed defaults here.
                         fetchDayTakenWorkoutSupplements()
@@ -624,12 +642,20 @@ struct WorkoutTabView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 18)
                     .padding(.top, 48)
+                    .id("weightsTracking")
                     
                     // Weights tracking section
                     WeightsTrackingSection(
                         bodyParts: $bodyParts,
                         focusBinding: $isWeightsInputFocused
                     )
+                    .workoutTip(.weightsTracking, onStepChange: { step in
+                        if step == 1 {
+                            withAnimation {
+                                proxy.scrollTo("weeklyProgress", anchor: .top)
+                            }
+                        }
+                    })
 
                     // MARK: - Weekly Progress Section
                     VStack(spacing: 0) {
@@ -664,6 +690,8 @@ struct WorkoutTabView: View {
                                                 previewImageEntry: $previewImageEntry)
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
+                            .workoutTip(.weeklyProgress, onStepChange: { _ in })
+                            .id("weeklyProgress")
                     }
                     .opacity(isPro ? 1 : 0.5)
                     .disabled(!isPro)
@@ -706,6 +734,7 @@ struct WorkoutTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.bottom, 24)
                 }
+            }
             }
             if showCalendar {
                 Color.black.opacity(0.2)

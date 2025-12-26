@@ -40,6 +40,7 @@ private struct ItineraryGroupView: View {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, event in
                         NavigationLink {
                             ItineraryDetailView(event: event, onEdit: { updated in onEdit(updated) }, onDelete: { deleted in onDelete(deleted) })
+                                .toolbar(.hidden, for: .tabBar)
                         } label: {
                             ItineraryTrackingSection.itineraryRow(for: event, isFirst: index == 0, isLast: index == items.count - 1, coordinateSpaceName: csName)
                                 .contentShape(Rectangle())

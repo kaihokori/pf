@@ -394,12 +394,13 @@ struct RoutineTabView: View {
         NavigationStack {
             ZStack {
                 backgroundView
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
-                            .environmentObject(account)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                                .environmentObject(account)
 
-                        HStack {
+                            HStack {
                             Text("Daily Tasks")
                                 .font(.title3)
                                 .fontWeight(.semibold)
@@ -422,6 +423,7 @@ struct RoutineTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
                         .padding(.top, 38)
+                        .id("dailyTasks")
                         
                         DailyTasksSection(
                             accentColorOverride: accentOverride,
@@ -434,6 +436,13 @@ struct RoutineTabView: View {
                             },
                             day: $currentDay
                         )
+                        .routineTip(.dailyTasks, onStepChange: { step in
+                            if step == 1 {
+                                withAnimation {
+                                    proxy.scrollTo("goals", anchor: .top)
+                                }
+                            }
+                        })
                         .padding(.bottom, -30)
                         
                         HStack {
@@ -485,8 +494,16 @@ struct RoutineTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
                         .padding(.top, 38)
+                        .id("goals")
 
                         GoalsSection(accentColorOverride: accentOverride, goals: $goals)
+                            .routineTip(.goals, onStepChange: { step in
+                                if step == 2 {
+                                    withAnimation {
+                                        proxy.scrollTo("habits", anchor: .top)
+                                    }
+                                }
+                            })
 
                         HStack {
                             Text("Habits")
@@ -511,6 +528,7 @@ struct RoutineTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 38)
                         .padding(.horizontal, 18)
+                        .id("habits")
 
                         HabitTrackingSection(
                             habits: $habitItems,
@@ -520,6 +538,15 @@ struct RoutineTabView: View {
                                 handleHabitToggle(habitId: habitId, isCompleted: isCompleted)
                             }
                         )
+                        .routineTip(.habits, onStepChange: { step in
+                            if step == 3 {
+                                withAnimation {
+                                    // Scroll to Grocery List instead of Expense Tracker directly
+                                    // This provides roughly 200pt offset above the Expense Tracker section
+                                    proxy.scrollTo("groceryList", anchor: .top)
+                                }
+                            }
+                        })
 
                         HStack {
                             Text("Sleep Tracking")
@@ -621,6 +648,7 @@ struct RoutineTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 38)
                         .padding(.horizontal, 18)
+                        .id("groceryList")
 
                         GroceryListSection(accentColorOverride: accentOverride, items: $groceryItems)
 
@@ -649,6 +677,7 @@ struct RoutineTabView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 38)
                             .padding(.horizontal, 18)
+                            .id("expenseTracker")
 
                             ExpenseTrackerSection(
                                 accentColorOverride: accentOverride,
@@ -663,6 +692,7 @@ struct RoutineTabView: View {
                                     onDeleteExpenseEntry(id)
                                 }
                             )
+                            .routineTip(.expenseTracker)
                         }
                         .opacity(isPro ? 1 : 0.5)
                         .disabled(!isPro)
@@ -703,12 +733,17 @@ struct RoutineTabView: View {
                             .padding(.top, 38)
                     }
                 }
+                }
                 if showCalendar {
                     Color.black.opacity(0.2)
                         .ignoresSafeArea()
                         .onTapGesture { showCalendar = false }
                     CalendarComponent(selectedDate: $selectedDate, showCalendar: $showCalendar)
                 }
+            }
+            .navigationDestination(isPresented: $showAccountsView) {
+                AccountsView(account: $account)
+                    .toolbar(.hidden, for: .tabBar)
             }
             .sheet(isPresented: $showDailyTasksEditor) {
                 DailyTasksEditorView(tasks: $dailyTaskItems, isPro: isPro, onSave: applyTaskEditorChanges)

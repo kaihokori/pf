@@ -104,6 +104,19 @@ struct NutritionTabView: View {
         }
     }
 
+    private func saveCravings() {
+        account.cravings = cravings
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save cravings locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account) { success in
+            if !success { print("NutritionTabView: failed to sync cravings to Firestore") }
+        }
+    }
+
     private func fetchDayTakenSupplements() {
         dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { day in
             DispatchQueue.main.async {
@@ -116,9 +129,10 @@ struct NutritionTabView: View {
         }
     }
 
-    /// Ensure a small set of defaults are present for a new account / empty cravings list
-    private func ensureDefaultSupplementsAndCravings() {
-        // Add a few sensible defaults to Account.nutritionSupplements when empty
+    /// Seed a few sensible default supplements when the list is empty.
+    /// Cravings are no longer auto-seeded here to avoid overwriting server data
+    /// before the app finishes hydrating from Firestore.
+    private func ensureDefaultSupplements() {
         if account.nutritionSupplements.isEmpty {
             account.nutritionSupplements = [
                 Supplement(name: "Vitamin D", amountLabel: "50 μg"),
@@ -134,21 +148,6 @@ struct NutritionTabView: View {
 
             accountFirestoreService.saveAccount(account) { success in
                 if !success { print("NutritionTabView: failed to sync default supplements to Firestore") }
-            }
-        }
-
-        // Populate a few default cravings on first load so the UI isn't empty
-        if cravings.isEmpty {
-            cravings = [
-                CravingItem(name: "Chocolate Chip Cookie", calories: 220),
-                CravingItem(name: "Iced Latte", calories: 140),
-                CravingItem(name: "Protein Bar", calories: 210)
-            ]
-            // Attempt a local save in case cravings are backed by a model context
-            do {
-                try modelContext.save()
-            } catch {
-                // Not critical — cravings may be stored outside SwiftData
             }
         }
     }
@@ -393,6 +392,7 @@ struct NutritionTabView: View {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                                         binding.isChecked.wrappedValue.toggle()
                                     }
+                                    saveCravings()
                                 } label: {
                                     HStack(spacing: 12) {
                                         VStack(alignment: .leading, spacing: 4) {
@@ -499,7 +499,7 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
-            ensureDefaultSupplementsAndCravings()
+            ensureDefaultSupplements()
         }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
@@ -564,7 +564,10 @@ struct NutritionTabView: View {
             CravingEditorSheet(
                 cravings: $cravings,
                 tint: accentOverride ?? .accentColor,
-                onDone: { showCravingEditor = false }
+                onDone: {
+                    showCravingEditor = false
+                    saveCravings()
+                }
             )
             .presentationDetents([.large, .medium])
         }
@@ -2673,10 +2676,12 @@ struct DailyMealLogSection: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         // Use a non-scrolling List so swipe actions are available on iOS 16+.
-                        let rowHeight: CGFloat = 76
+                        // Increase estimated row height to prevent cut-off content for multi-line items.
+                        let rowHeight: CGFloat = 85
                         let headerHeight: CGFloat = 32
                         let totalRows = mealGroups.reduce(0) { $0 + $1.entries.count }
-                        let listHeight = CGFloat(totalRows) * rowHeight + CGFloat(mealGroups.count) * headerHeight
+                        // Add a buffer to the total height to account for list padding and potential text wrapping
+                        let listHeight = CGFloat(totalRows) * rowHeight + CGFloat(mealGroups.count) * headerHeight + 40
 
                         List {
                             ForEach(mealGroups) { group in
@@ -2897,8 +2902,19 @@ struct DailyMealLogSection: View {
             // to the ModelContext/Firestore completes asynchronously.
             if dayStart == selDayStart {
                 let calories = currentConsumedCalories
-                let macros: [MacroConsumption] = !currentMacroConsumptions.isEmpty ? currentMacroConsumptions : trackedMacros.map { tracked in
-                    MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: 0)
+                
+                // Align with trackedMacros to ensure consistency
+                let macros: [MacroConsumption] = trackedMacros.map { tracked in
+                    // 1. Try matching by ID
+                    if let match = currentMacroConsumptions.first(where: { $0.trackedMacroId == tracked.id }) {
+                        return match
+                    }
+                    // 2. Try matching by name (case-insensitive) to handle legacy data or ID mismatches
+                    if let match = currentMacroConsumptions.first(where: { $0.name.localizedCaseInsensitiveCompare(tracked.name) == .orderedSame }) {
+                        return MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: match.consumed)
+                    }
+                    // 3. Default to 0
+                    return MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: 0)
                 }
 
                 return WeeklyMacroSummary(
@@ -2915,14 +2931,20 @@ struct DailyMealLogSection: View {
 
             let calories = day?.caloriesConsumed ?? 0
             let calorieGoal = day?.calorieGoal ?? 0
-            let macros: [MacroConsumption]
-            if let d = day, !d.macroConsumptions.isEmpty {
-                macros = d.macroConsumptions
-            } else {
-                // Fall back to passed-in tracked macros so each tracked macro shows a row (with 0 consumed)
-                macros = trackedMacros.map { tracked in
-                    MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: 0)
+            let dayConsumptions = day?.macroConsumptions ?? []
+            
+            // Align with trackedMacros to ensure consistency
+            let macros: [MacroConsumption] = trackedMacros.map { tracked in
+                // 1. Try matching by ID
+                if let match = dayConsumptions.first(where: { $0.trackedMacroId == tracked.id }) {
+                    return match
                 }
+                // 2. Try matching by name (case-insensitive)
+                if let match = dayConsumptions.first(where: { $0.name.localizedCaseInsensitiveCompare(tracked.name) == .orderedSame }) {
+                    return MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: match.consumed)
+                }
+                // 3. Default to 0
+                return MacroConsumption(trackedMacroId: tracked.id, name: tracked.name, unit: tracked.unit, consumed: 0)
             }
 
             return WeeklyMacroSummary(
@@ -3138,54 +3160,38 @@ private struct DynamicMacroDayColumn: View {
                 .font(.caption)
                 .fontWeight(.semibold)
 
-            if summary.isFuture {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                    Text("Upcoming")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("No data yet")
+            VStack(spacing: 10) {
+                let calorieMax = summary.calorieGoal > 0 ? Double(summary.calorieGoal) : 4000
+                MacroIndicatorRow(label: "Calories", color: .primary, value: Double(summary.calories), maxValue: calorieMax, unit: "cal")
+
+                if summary.macros.isEmpty {
+                    Text("No macros logged")
                         .font(.caption2)
-                        .foregroundStyle(.secondary.opacity(0.8))
-                }
-                Spacer()
-            } else {
-                VStack(spacing: 10) {
-                    let calorieMax = summary.calorieGoal > 0 ? Double(summary.calorieGoal) : 4000
-                    MacroIndicatorRow(label: "Calories", color: .primary, value: Double(summary.calories), maxValue: calorieMax, unit: "cal")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(summary.macros, id: \.id) { macro in
+                        let macroColor: Color = {
+                            if let tracked = trackedMacros.first(where: { $0.id == macro.trackedMacroId }) {
+                                return tracked.color
+                            }
+                            return tint
+                        }()
 
-                    if summary.macros.isEmpty {
-                        Text("No macros logged")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        ForEach(summary.macros, id: \.id) { macro in
-                            let macroColor: Color = {
-                                if let tracked = trackedMacros.first(where: { $0.id == macro.trackedMacroId }) {
-                                    return tracked.color
-                                }
-                                return tint
-                            }()
+                        let macroTarget = trackedMacros.first(where: { $0.id == macro.trackedMacroId })?.target ?? 0
+                        let maxValue = macroTarget > 0 ? macroTarget : macroMaxValue
 
-                            let macroTarget = trackedMacros.first(where: { $0.id == macro.trackedMacroId })?.target ?? 0
-                            let maxValue = macroTarget > 0 ? macroTarget : macroMaxValue
-
-                            MacroIndicatorRow(
-                                label: macro.name,
-                                color: macroColor,
-                                value: macro.consumed,
-                                maxValue: maxValue,
-                                unit: macro.unit
-                            )
-                        }
+                        MacroIndicatorRow(
+                            label: macro.name,
+                            color: macroColor,
+                            value: macro.consumed,
+                            maxValue: maxValue,
+                            unit: macro.unit
+                        )
                     }
                 }
-                Spacer(minLength: 4)
             }
+            Spacer(minLength: 4)
         }
         .padding(EdgeInsets(top: 28, leading: 12, bottom: 12, trailing: 12))
         .frame(width: 160)

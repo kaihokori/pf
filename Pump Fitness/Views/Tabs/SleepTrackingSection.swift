@@ -41,6 +41,11 @@ struct SleepTrackingSection: View {
 
     @State private var editingTimer: EditingTimer? = nil
 
+    @AppStorage("sleeptracking.nightStart") private var storedNightStart: Double = 0
+    @AppStorage("sleeptracking.napStart") private var storedNapStart: Double = 0
+    @AppStorage("sleeptracking.nightAccum") private var storedNightAccum: Double = 0
+    @AppStorage("sleeptracking.napAccum") private var storedNapAccum: Double = 0
+
     var body: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
@@ -121,6 +126,8 @@ struct SleepTrackingSection: View {
                     onDone: { newElapsed in
                         nightStart = nil
                         nightRunning = false
+                        storedNightStart = 0
+                        storedNightAccum = 0
                         nightStored = newElapsed
                         onPersist(nightStored, napStored)
                         editingTimer = nil
@@ -137,6 +144,8 @@ struct SleepTrackingSection: View {
                     onDone: { newElapsed in
                         napStart = nil
                         napRunning = false
+                        storedNapStart = 0
+                        storedNapAccum = 0
                         napStored = newElapsed
                         onPersist(nightStored, napStored)
                         editingTimer = nil
@@ -145,6 +154,18 @@ struct SleepTrackingSection: View {
                         editingTimer = nil
                     }
                 )
+            }
+        }
+        .onAppear {
+            if storedNightStart > 0 {
+                nightStart = Date(timeIntervalSince1970: storedNightStart)
+                nightAccumulatedAtStart = storedNightAccum
+                nightRunning = true
+            }
+            if storedNapStart > 0 {
+                napStart = Date(timeIntervalSince1970: storedNapStart)
+                napAccumulatedAtStart = storedNapAccum
+                napRunning = true
             }
         }
     }
@@ -171,6 +192,11 @@ struct SleepTrackingSection: View {
             }
             nightStart = nil
             nightRunning = false
+            
+            // Clear persistence
+            storedNightStart = 0
+            storedNightAccum = 0
+            
             onPersist(nightStored, napStored)
         } else {
             // if a nap is running, stop it first
@@ -180,6 +206,11 @@ struct SleepTrackingSection: View {
                 }
                 napStart = nil
                 napRunning = false
+                
+                // Clear nap persistence
+                storedNapStart = 0
+                storedNapAccum = 0
+                
                 onPersist(nightStored, napStored)
             }
 
@@ -187,6 +218,10 @@ struct SleepTrackingSection: View {
             nightAccumulatedAtStart = nightStored
             nightStart = Date()
             nightRunning = true
+            
+            // Persist start
+            storedNightAccum = nightAccumulatedAtStart
+            storedNightStart = nightStart!.timeIntervalSince1970
         }
     }
 
@@ -197,6 +232,11 @@ struct SleepTrackingSection: View {
             }
             napStart = nil
             napRunning = false
+            
+            // Clear persistence
+            storedNapStart = 0
+            storedNapAccum = 0
+            
             onPersist(nightStored, napStored)
         } else {
             // if night sleep is running, stop it first
@@ -206,6 +246,11 @@ struct SleepTrackingSection: View {
                 }
                 nightStart = nil
                 nightRunning = false
+                
+                // Clear night persistence
+                storedNightStart = 0
+                storedNightAccum = 0
+                
                 onPersist(nightStored, napStored)
             }
 
@@ -213,6 +258,10 @@ struct SleepTrackingSection: View {
             napAccumulatedAtStart = napStored
             napStart = Date()
             napRunning = true
+            
+            // Persist start
+            storedNapAccum = napAccumulatedAtStart
+            storedNapStart = napStart!.timeIntervalSince1970
         }
     }
 
@@ -316,10 +365,8 @@ private struct StopwatchCard: View {
             let totalMinutes = Int(interval) / 60
             let hours = totalMinutes / 60
             let minutes = totalMinutes % 60
-            if hours > 0 {
-                return String(format: "%d:%02d", hours, minutes)
-            }
-            return String(format: "%02d", minutes)
+            // Always show H:MM for Total Sleep
+            return String(format: "%d:%02d", hours, minutes)
         }
     }
 }

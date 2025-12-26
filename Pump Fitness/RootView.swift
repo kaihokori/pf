@@ -473,6 +473,12 @@ struct RootView: View {
                         }
                         fetched.itineraryEvents = resolvedItineraryEvents
 
+                        var resolvedCravings = fetched.cravings
+                        if resolvedCravings.isEmpty, let localAccount = fetchAccount(), !localAccount.cravings.isEmpty {
+                            resolvedCravings = localAccount.cravings
+                        }
+                        fetched.cravings = resolvedCravings
+
                         upsertLocalAccount(with: fetched)
                         autoRestDayIndices = Set(fetched.autoRestDayIndices)
                         // Use the fetched maintenance calories from the account on app load

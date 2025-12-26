@@ -265,7 +265,6 @@ struct SportsTabView: View {
                         ProgressView().progressViewStyle(.circular)
                         Spacer()
                     }
-                    .frame(height: 200)
                 case .failed(let message):
                     VStack(alignment: .center, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
@@ -278,11 +277,22 @@ struct SportsTabView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
-                    .frame(maxWidth: .infinity)
                     .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .frame(maxWidth: .infinity)
                 case .locationUnavailable:
-                    EmptyView()
+                    VStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "location.slash.fill")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Location Required")
+                            .font(.headline)
+                        Text("We need your location to show local weather conditions.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
                 case .loaded:
                     if let current = viewModel.currentSnapshot {
                         let group = WeatherGroup(symbolName: current.symbol)
@@ -709,7 +719,10 @@ struct SportsTabView: View {
         }
 
         func currentLocation() async throws -> CLLocation {
-            if let location = manager.location { return location }
+            // Only use cached location if it is recent (within 5 minutes)
+            if let location = manager.location, abs(location.timestamp.timeIntervalSinceNow) < 300 {
+                return location
+            }
 
             switch manager.authorizationStatus {
             case .authorizedAlways, .authorizedWhenInUse:
@@ -772,7 +785,7 @@ struct SportsTabView: View {
         }
 
         func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-            guard let location = locations.first else {
+            guard let location = locations.last else {
                 locationContinuation?.resume(throwing: LocationError.unavailable)
                 locationContinuation = nil
                 return
@@ -828,7 +841,7 @@ struct SportsTabView: View {
                             )
                             .environmentObject(account)
 
-                            if Calendar.current.isDateInToday(selectedDate) && weatherModel.state == .loaded {
+                            if Calendar.current.isDateInToday(selectedDate) {
                                 HStack {
                                     Text("Weather")
                                         .font(.title3)
@@ -873,18 +886,21 @@ struct SportsTabView: View {
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 18)
                                     .background {
-                                        ZStack {
-                                            Image(_imageName)
-                                                .resizable()
-                                                .scaledToFill()
-                                                .clipped()
-                                                .blur(radius: 5)
-                                            // stronger dark scrim for better contrast
-                                            LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
+                                        if weatherModel.state == .loaded {
+                                            ZStack {
+                                                Image(_imageName)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .clipped()
+                                                    .blur(radius: 5)
+                                                // stronger dark scrim for better contrast
+                                                LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
+                                            }
                                         }
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
                                     .padding(.horizontal, 18)
+                                    .frame(height: 500)
                             }
 
                             HStack {
@@ -916,7 +932,9 @@ struct SportsTabView: View {
                                 accentColorOverride: accentOverride,
                                 config: $timeTrackingConfig
                             )
-                                .padding(.horizontal, 18)
+                            .padding(.horizontal, 18)
+                            .padding(.top, -45)
+                            .padding(.bottom, -40)
                             
                             HStack {
                                 Text("Team Play Tracking")

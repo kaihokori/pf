@@ -217,8 +217,7 @@ struct AccountsView: View {
                             ExtrasSection(
                                 retakeAssessmentAction: { /* TODO: Implement assessment flow */ },
                                 alertsAction: { showAlertsSheet = true },
-                                termsAction: openTerms,
-                                privacyAction: openPrivacy,
+                                legalAction: openLegal
                             )
                         }
                         
@@ -679,14 +678,8 @@ struct AccountsView: View {
         }
     }
 
-    private func openTerms() {
-        if let url = URL(string: "https://kaihokori.github.io/trackerio-terms/") {
-            UIApplication.shared.open(url)
-        }
-    }
-
-    private func openPrivacy() {
-        if let url = URL(string: "https://kaihokori.github.io/trackerio-privacy/") {
+    private func openLegal() {
+        if let url = URL(string: "https://kaihokori.github.io/trackerio-legal/") {
             UIApplication.shared.open(url)
         }
     }
@@ -872,8 +865,7 @@ private struct PermissionsSection: View {
 private struct ExtrasSection: View {
     var retakeAssessmentAction: () -> Void
     var alertsAction: () -> Void = {}
-    var termsAction: () -> Void = {}
-    var privacyAction: () -> Void
+    var legalAction: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 12) {
@@ -892,17 +884,10 @@ private struct ExtrasSection: View {
             )
 
             accountActionRow(
-                title: "Terms",
+                title: "Terms, Conditions & Privacy",
                 icon: "doc.text",
                 role: nil,
-                action: termsAction
-            )
-
-            accountActionRow(
-                title: "Privacy",
-                icon: "hand.raised.fill",
-                role: nil,
-                action: privacyAction
+                action: legalAction
             )
         }
     }

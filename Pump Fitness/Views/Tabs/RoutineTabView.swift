@@ -371,7 +371,6 @@ struct RoutineTabView: View {
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
-    @AppStorage("alerts.dailyTasksSilenceCompleted") private var silenceCompletedTasks: Bool = true
     @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
     @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
 
@@ -697,6 +696,9 @@ struct RoutineTabView: View {
             loadDailyTasks()
             loadHabitWeek()
         }
+        .onChange(of: account.id) { _, _ in
+            rebuildDailyTaskItems(using: currentDay)
+        }
         .onChange(of: account.dailyTasks) { _, _ in
             rebuildDailyTaskItems(using: currentDay)
         }
@@ -711,12 +713,7 @@ struct RoutineTabView: View {
         .onChange(of: goals) { _, newValue in
             onUpdateGoals(newValue)
         }
-        .onChange(of: silenceCompletedTasks) { _, newValue in
-            guard dailyTasksAlertsEnabled else { return }
-            let day = ensureCurrentDay()
-            let completedIds = Set(day.dailyTaskCompletions.filter { $0.isCompleted }.map { $0.id })
-            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: newValue)
-        }
+        
     }
 }
 
@@ -1848,9 +1845,17 @@ private struct ExpenseCategoriesEditorView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
 
-                                    TextField("Name", text: $category.name)
-                                        .font(.subheadline.weight(.semibold))
-                                        .textInputAutocapitalization(.words)
+                                    HStack(spacing: 8) {
+                                        TextField("Name", text: $category.name)
+                                            .font(.subheadline.weight(.semibold))
+                                            .textInputAutocapitalization(.words)
+
+                                        Image(systemName: "pencil")
+                                            .foregroundStyle(.secondary)
+                                            .font(.subheadline)
+                                        
+                                        Spacer()
+                                    }
                                 }
 
                                 Spacer()
@@ -2111,7 +2116,7 @@ extension RoutineTabView {
         
         if dailyTasksAlertsEnabled {
             let completedIds = Set(day.dailyTaskCompletions.filter { $0.isCompleted }.map { $0.id })
-            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: silenceCompletedTasks)
+            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: true)
         }
         
         if habitsAlertsEnabled {
@@ -2143,7 +2148,7 @@ extension RoutineTabView {
         // Replace scheduled notifications for daily tasks with the updated set
         if dailyTasksAlertsEnabled {
             let completedIds = Set(completions.filter { $0.isCompleted }.map { $0.id })
-            NotificationsHelper.scheduleDailyTaskNotifications(definitions, completedTaskIds: completedIds, silenceCompleted: silenceCompletedTasks)
+            NotificationsHelper.scheduleDailyTaskNotifications(definitions, completedTaskIds: completedIds, silenceCompleted: true)
         } else {
             NotificationsHelper.removeDailyTaskNotifications()
         }
@@ -2166,7 +2171,7 @@ extension RoutineTabView {
         // Update notifications
         if dailyTasksAlertsEnabled {
             let completedIds = Set(day.dailyTaskCompletions.filter { $0.isCompleted }.map { $0.id })
-            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: silenceCompletedTasks)
+            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks, completedTaskIds: completedIds, silenceCompleted: true)
         }
     }
 
@@ -2205,11 +2210,15 @@ extension RoutineTabView {
     }
 
     private func pruneCompletions(for day: Day) {
+        // If account is temporary/loading, do not prune completions yet
+        if account.id == "temp" { return }
+        
         let allowedIds = Set(account.dailyTasks.map { $0.id })
         day.dailyTaskCompletions.removeAll { !allowedIds.contains($0.id) }
     }
 
     private func pruneHabitCompletions(for day: Day) {
+        if account.id == "temp" { return }
         let allowedHabitIds = Set(account.habits.map { $0.id })
         day.habitCompletions.removeAll { !allowedHabitIds.contains($0.habitId) }
     }

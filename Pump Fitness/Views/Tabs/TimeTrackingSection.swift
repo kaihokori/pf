@@ -305,7 +305,7 @@ private struct TimeTrackingCard: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .foregroundStyle(.white)
-                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                            .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: 16.0))
                     }
 
                     Button(action: secondaryButtonAction) {
@@ -327,12 +327,13 @@ private struct TimeTrackingCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .foregroundStyle(.white)
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: 16.0))
                 }
             }
         }
         .padding(20)
         .glassEffect(in: .rect(cornerRadius: 16.0))
+        .frame(height: 380)
     }
 }
 

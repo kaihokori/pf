@@ -47,6 +47,7 @@ struct ItineraryDetailView: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .ignoresSafeArea(edges: .top)
     }
 

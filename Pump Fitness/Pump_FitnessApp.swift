@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+import TipKit
 
 @main
 struct Pump_FitnessApp: App {
@@ -16,6 +17,19 @@ struct Pump_FitnessApp: App {
 
     init() {
         FirebaseApp.configure()
+        
+        if #available(iOS 17.0, *) {
+            // Temporary flag to reset tips for testing purposes
+            let shouldResetTips = true
+            if shouldResetTips {
+                try? Tips.resetDatastore()
+            }
+
+            try? Tips.configure([
+                .displayFrequency(.immediate),
+                .datastoreLocation(.applicationDefault)
+            ])
+        }
         
         UserDefaults.standard.register(defaults: [
             ThemeManager.defaultsKey: AppTheme.multiColour.rawValue

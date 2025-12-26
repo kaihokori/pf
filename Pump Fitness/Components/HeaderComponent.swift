@@ -59,17 +59,20 @@ struct HeaderComponent: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { showCalendar = true }
+                .nutritionTip(.dateSelector)
 
                 ThemeSwitcherButton(
                     selectedTheme: themeManager.selectedTheme,
                     colorScheme: colorScheme,
                     onSelectTheme: { themeManager.setTheme($0) }
                 )
+                .nutritionTip(.themeSelector)
             }
             .offset(y: 6)
         }
         .overlay(alignment: .center) {
             profileAvatar
+                .nutritionTip(.profile)
         }
         .padding(.horizontal)
         .padding(.top, 12)

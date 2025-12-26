@@ -159,9 +159,10 @@ struct NutritionTabView: View {
         NavigationStack {
             ZStack {
                 backgroundView
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        HeaderComponent(
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            HeaderComponent(
                             showCalendar: $showCalendar,
                             selectedDate: $selectedDate,
                             onProfileTap: { showAccountsView = true }
@@ -212,6 +213,7 @@ struct NutritionTabView: View {
                               .glassEffect(in: .rect(cornerRadius: 16.0))
                               .contentShape(Rectangle())
                         }
+                        .nutritionTip(.logIntake)
                         .padding(.horizontal, 18)
                         .padding(.top, 18)
                         .buttonStyle(.plain)
@@ -248,6 +250,13 @@ struct NutritionTabView: View {
                                 selectedMacroForLog = metric
                             }
                         )
+                        .nutritionTip(.macroTracking, onStepChange: { step in
+                            if step == 5 {
+                                withAnimation {
+                                    proxy.scrollTo("supplements", anchor: .top)
+                                }
+                            }
+                        })
                         
                         HStack {
                             Text("Meal Tracking")
@@ -316,6 +325,7 @@ struct NutritionTabView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
+                        .id("supplements")
 
                         SupplementTrackingView(
                             accentColorOverride: .orange,
@@ -356,6 +366,7 @@ struct NutritionTabView: View {
                                 }
                             }
                         )
+                        .nutritionTip(.supplementTracking)
                         .onAppear {
                             fetchDayTakenSupplements()
                         }
@@ -567,6 +578,7 @@ struct NutritionTabView: View {
                             .padding(.bottom, 24)
                     }
                 }
+                }
                 if showCalendar {
                     Color.black.opacity(0.2)
                         .ignoresSafeArea()
@@ -576,6 +588,7 @@ struct NutritionTabView: View {
             }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
+                    .toolbar(.hidden, for: .tabBar)
             }
         }
         .onAppear {

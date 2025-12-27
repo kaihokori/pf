@@ -757,11 +757,6 @@ struct RoutineTabView: View {
                                 }
                             }
                         }
-
-                        ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 24)
-                            .padding(.top, 38)
                     }
                 }
                 }

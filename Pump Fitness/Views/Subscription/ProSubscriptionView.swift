@@ -134,70 +134,21 @@ struct ProSubscriptionView: View {
                         .padding(.horizontal, 10)
 
                         ZStack(alignment: .top) {
-                            // 4. Features Summary
-                            VStack(alignment: .leading, spacing: 24) {
-                                VStack {
-                                    HStack(alignment: .center, spacing: 8) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.primary)
-                                            .font(.title2)
-                                            .fontWeight(.bold)
-                                            .padding(.horizontal, 10)
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Unlimited macro, supplement, daily task tracking + more")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
-                                                .multilineTextAlignment(.leading)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 10)
-                                    HStack(alignment: .center, spacing: 8) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.primary)
-                                            .font(.title2)
-                                            .fontWeight(.bold)
-                                            .padding(.horizontal, 10)
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Increased limits on timers, habits + more")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
-                                                .multilineTextAlignment(.leading)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 10)
-                                    // Unlock pro features
-                                    HStack(alignment: .center, spacing: 8) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.primary)
-                                            .font(.title2)
-                                            .fontWeight(.bold)
-                                            .padding(.horizontal, 10)
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Full access to expense tracking, travel planning + more")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
-                                                .multilineTextAlignment(.leading)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 10)
-                                }
-                                .padding()
-                            }
+                            // 4. Features Summary (now a reusable component)
+                            ProFeaturesListView(benefits: [
+                                ProBenefit(icon: "checkmark", title: "Unlimited macro, supplement, daily task tracking + more", description: ""),
+                                ProBenefit(icon: "checkmark", title: "Increased limits on timers, habits + more", description: ""),
+                                ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: ""),
+                                ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: ""),
+                                ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: "")
+                            ])
                             .padding(.top, 10)
-                            .glassEffect(in: .rect(cornerRadius: 16.0))
-                            .padding(.horizontal, 18)
 
                             Text("Included with Trackerio Pro")
                                 .font(.footnote)
                                 .padding(10)
                                 .glassEffect(in: .rect(cornerRadius: 12.0))
-                                .offset(y: -20)
+                                .offset(y: -10)
                         }
                         .padding(.top)
                         

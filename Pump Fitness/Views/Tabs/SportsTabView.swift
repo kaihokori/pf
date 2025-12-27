@@ -1202,10 +1202,6 @@ struct SportsTabView: View {
                             .opacity(isPro ? 1 : 0.5)
                             .blur(radius: isPro ? 0 : 4)
                             .disabled(!isPro)
-
-                        ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 24)
                     }
                     .overlay {
                         if !isPro {

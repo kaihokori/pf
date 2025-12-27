@@ -104,11 +104,82 @@ struct DailyTasksSection: View {
                     }
                 }
                 .frame(height: tileMinHeight)
+
+                // progress indicator placed below the task carousel
+                progressView
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 18)
         .padding(.top, 10)
+    }
+
+    private var progressView: some View {
+        let completedCount = tasks.filter { $0.isCompleted }.count
+        let totalCount = tasks.count
+        let percentage = totalCount > 0 ? Int((Double(completedCount) / Double(totalCount)) * 100) : 0
+        let fraction = totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0.0
+        let baseColor = accentColorOverride ?? tasks.first?.color ?? .accentColor
+        // Use the fixed two-color gradient from the header instead of task colours
+        let gradientColors = [
+            Color(red: 0.74, green: 0.43, blue: 0.97),
+            Color(red: 0.83, green: 0.99, blue: 0.94)
+        ]
+
+        return VStack(spacing: 8) {
+            HStack {
+                Text("Progress")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text("\(percentage)%")
+                    .font(.subheadline)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(height: 8)
+
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(colors: gradientColors),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: max(0, geo.size.width * CGFloat(fraction)), height: 8)
+                        .animation(.easeInOut(duration: 0.25), value: fraction)
+                        .overlay {
+                            // subtle grain/noise overlay inside the filled portion
+                            Canvas { context, size in
+                                let step: Double = 3.5
+                                for x in stride(from: 0.0, to: Double(size.width), by: step) {
+                                    for y in stride(from: 0.0, to: Double(size.height), by: step) {
+                                        let alpha = Double.random(in: 0.0...0.035)
+                                        let rect = CGRect(x: x, y: y, width: step, height: step)
+                                        context.fill(Path(rect), with: .color(Color.white.opacity(alpha)))
+                                    }
+                                }
+                            }
+                            .blendMode(.overlay)
+                            .compositingGroup()
+                            .allowsHitTesting(false)
+                        }
+                }
+                .frame(height: 8)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+            .frame(height: 12)
+        }
     }
 
     private func toggleTask(withId id: String) {

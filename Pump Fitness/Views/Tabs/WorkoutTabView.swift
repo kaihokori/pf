@@ -284,6 +284,7 @@ struct WorkoutTabView: View {
     var onClearWeekCheckIns: () -> Void
     @State private var showAccountsView = false
     @State private var showProSheet = false
+    @State private var showShareSheet = false
     @State private var workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults
     // Use Account.workoutSupplements as the canonical source of workout supplement definitions
     // no local supplement store — use `account.workoutSupplements`
@@ -761,13 +762,15 @@ struct WorkoutTabView: View {
                             }
                     }
 
+                    ShareWorkoutCTA(accentColor: accentOverride ?? .accentColor) {
+                        showShareSheet = true
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 24)
+
                     // Coaching inquiry card
                     CoachingInquiryCTA()
-                        .padding(.top, 48)
-
-                    ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 24)
+                        .padding(.top, 24)
                 }
             }
             }
@@ -871,6 +874,20 @@ struct WorkoutTabView: View {
                 bodyParts = updated
                 showWeightsEditor = false
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareWorkoutSheet(
+                weeklyCheckInStatuses: weeklyCheckInStatuses,
+                workoutSchedule: workoutSchedule,
+                dailySummary: (calories: hkCaloriesValue ?? 0, steps: hkStepsValue ?? 0, distance: hkDistanceValue ?? 0),
+                dailyGoals: (calories: caloriesBurnGoal, steps: stepsGoal, distance: distanceGoal),
+                supplements: account.workoutSupplements,
+                takenSupplements: dayTakenWorkoutSupplementIDs,
+                weightGroups: weightGroups,
+                weightEntries: weightEntries,
+                weeklyProgress: weeklyEntries,
+                accentColor: accentOverride ?? .accentColor
+            )
         }
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }

@@ -34,6 +34,8 @@ struct NutritionTabView: View {
     @State private var showSupplementEditor = false
     @State private var showCravingEditor = false
     @State private var showMealReminderSheet = false
+    @State private var showShareSheet = false
+    @State private var shareSheetID = UUID()
     // supplements are persisted on Account; per-day taken state is stored on Day
     @State private var dayTakenSupplementIDs: Set<String> = []
     @State private var nutritionSearchText: String = ""
@@ -637,9 +639,13 @@ struct NutritionTabView: View {
                             }
                         }
 
-                        ShareProgressCTA(accentColor: accentOverride ?? .accentColor)
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 24)
+                        ShareProgressCTA(accentColor: accentOverride ?? .accentColor) {
+                            // Force a new sheet instance each open to avoid empty-first-open bug
+                            shareSheetID = UUID()
+                            showShareSheet = true
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 24)
                     }
                 }
                 }
@@ -753,6 +759,22 @@ struct NutritionTabView: View {
             )
             .presentationDetents([.fraction(0.38)])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareProgressSheet(
+                caloriesConsumed: consumedCalories,
+                calorieGoal: calorieGoal,
+                maintenanceCalories: maintenanceCalories,
+                macros: macroMetrics,
+                supplements: account.nutritionSupplements,
+                takenSupplements: dayTakenSupplementIDs,
+                cravings: cravings,
+                fastingMinutes: account.intermittentFastingMinutes,
+                selectedDate: selectedDate,
+                trackedMacros: trackedMacros,
+                accentColor: accentOverride ?? .accentColor
+            )
+            .id(shareSheetID)
         }
         .sheet(item: $selectedMacroForLog) { metric in
             MacroLogEntrySheet(

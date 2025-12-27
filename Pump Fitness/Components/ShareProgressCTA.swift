@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct ShareProgressCTA: View {
     var accentColor: Color
+    var action: () -> Void
 
     private var gradientColors: [Color] {
         [
@@ -17,7 +18,7 @@ public struct ShareProgressCTA: View {
 
     public var body: some View {
         Button {
-            // TODO: Hook up to share sheet when backend is ready
+            action()
         } label: {
             HStack(spacing: 16) {
                 ZStack {

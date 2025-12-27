@@ -358,8 +358,9 @@ struct SubscriptionOptionCard: View {
                     if isSelected {
                         Image(systemName: "checkmark")
                             .font(.title3)
+                            .fontWeight(.bold)
                             .foregroundColor(.blue)
-                            .padding([.top, .trailing], 12)
+                            .padding([.top, .trailing], 24)
                     }
                 }
                 VStack(alignment: .leading) {
@@ -376,7 +377,14 @@ struct SubscriptionOptionCard: View {
                         .padding(.top, tag != nil ? 0 : 16)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
+                    // Total price for the subscription (displayed above the weekly equivalent)
                     Spacer()
+                    Text(product.displayPrice)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     HStack {
                         // Per week
                         Text(weeklyPriceString(for: product))

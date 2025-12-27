@@ -10,10 +10,18 @@ class SubscriptionManager: ObservableObject {
     @Published var purchasedProductIDs: Set<String> = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var isDebugForcingNoSubscription: Bool = UserDefaults.standard.bool(forKey: "debug.forceNoSubscription") {
+        didSet {
+            UserDefaults.standard.set(isDebugForcingNoSubscription, forKey: "debug.forceNoSubscription")
+        }
+    }
     
-    // Check if the user has pro access
+    // Check if the user has pro access (respects debug override)
     var hasProAccess: Bool {
-        !purchasedProductIDs.isEmpty
+        if isDebugForcingNoSubscription {
+            return false
+        }
+        return !purchasedProductIDs.isEmpty
     }
 
     // TODO: Replace with your actual product IDs from App Store Connect

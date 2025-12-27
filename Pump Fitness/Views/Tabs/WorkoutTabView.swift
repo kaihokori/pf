@@ -684,6 +684,7 @@ struct WorkoutTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
                         .opacity(isPro ? 1 : 0.5)
+                        .blur(radius: isPro ? 0 : 4)
                         .disabled(!isPro)
 
                         WeeklyProgressCarousel(accentColorOverride: accentOverride,
@@ -696,6 +697,7 @@ struct WorkoutTabView: View {
                             .workoutTip(.weeklyProgress, onStepChange: { _ in })
                             .id("weeklyProgress")
                             .opacity(isPro ? 1 : 0.5)
+                            .blur(radius: isPro ? 0 : 4)
                             .disabled(!isPro)
                             .overlay {
                                 if !isPro {
@@ -709,24 +711,46 @@ struct WorkoutTabView: View {
                                             showProSheet = true
                                         } label: {
                                             VStack(spacing: 8) {
-                                                Image(systemName: "lock.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(.white)
-                                                    .padding(12)
-                                                    .background(Circle().fill(Color.accentColor))
+                                                HStack {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                    
+                                                    Text("PRO")
+                                                        .font(.subheadline)
+                                                        .fontWeight(.semibold)
+                                                        .foregroundColor(.white)
+                                                        .padding(.horizontal, 8)
+                                                        .padding(.vertical, 4)
+                                                        .background(
+                                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                                .fill(LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                ))
+                                                        )
+                                                        .offset(y: 6)
+                                                }
+                                                .padding(.bottom, 5)
                                                 
-                                                Text("Pro Feature")
+                                                Text("Trackerio Pro")
                                                     .font(.headline)
                                                     .foregroundStyle(.primary)
                                                 
-                                                Text("Upgrade to unlock Weekly Progress")
+                                                Text("Upgrade to unlock Weekly Progress + More")
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
                                             }
                                             .padding()
-                                            .background(.regularMaterial)
-                                            .clipShape(RoundedRectangle(cornerRadius: 16))
-                                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                                            .glassEffect(in: .rect(cornerRadius: 16.0))
                                         }
                                         .buttonStyle(.plain)
                                         .sheet(isPresented: $showProSheet) {

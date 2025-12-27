@@ -43,6 +43,8 @@ struct AccountsView: View {
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
 
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
+
     init(account: Binding<Account>) {
         _account = account
         _viewModel = StateObject(wrappedValue: AccountsViewModel())
@@ -235,6 +237,24 @@ struct AccountsView: View {
                                 signOutAction: { showSignOutConfirmation = true },
                                 deleteAccountAction: { showDeleteConfirmation = true }
                             )
+
+                            #if DEBUG
+                            Toggle(isOn: Binding(get: {
+                                subscriptionManager.isDebugForcingNoSubscription
+                            }, set: { newVal in
+                                subscriptionManager.isDebugForcingNoSubscription = newVal
+                            })) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Force No Subscription (Debug)")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Treat this device as unsubscribed for testing")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
+                            .padding(.top, 6)
+                            #endif
                         }
                         
                     }

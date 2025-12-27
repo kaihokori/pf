@@ -68,6 +68,7 @@ struct TravelTabView: View {
                         .padding(.horizontal, 18)
                     }
                     .opacity(isPro ? 1 : 0.5)
+                    .blur(radius: isPro ? 0 : 4)
                     .disabled(!isPro)
                 }
                 .padding(.bottom, 24)

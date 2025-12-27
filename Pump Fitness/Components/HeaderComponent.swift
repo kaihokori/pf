@@ -40,7 +40,7 @@ struct HeaderComponent: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            RoundedParallelogram(cornerRadius: 4, slant: 8)
                                 .fill(proBadgeGradient)
                         )
                 }
@@ -65,7 +65,7 @@ struct HeaderComponent: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            RoundedParallelogram(cornerRadius: 4, slant: 8)
                                 .fill(proBadgeGradient)
                         )
                 }
@@ -148,6 +148,55 @@ struct HeaderComponent: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE"
         return formatter.string(from: date)
+    }
+}
+
+// A simple rounded parallelogram shape with smoothed corners.
+struct RoundedParallelogram: Shape {
+    var cornerRadius: CGFloat = 4
+    var slant: CGFloat = 8
+
+    func path(in rect: CGRect) -> Path {
+        let s = min(max(0, slant), rect.width * 0.5)
+        let r = min(max(0, cornerRadius), rect.height / 2)
+
+        let p0 = CGPoint(x: rect.minX + s, y: rect.minY) // top-left
+        let p1 = CGPoint(x: rect.maxX, y: rect.minY)     // top-right
+        let p2 = CGPoint(x: rect.maxX - s, y: rect.maxY) // bottom-right
+        let p3 = CGPoint(x: rect.minX, y: rect.maxY)     // bottom-left
+
+        let pts = [p0, p1, p2, p3]
+
+        func offset(_ from: CGPoint, _ to: CGPoint, _ distance: CGFloat) -> CGPoint {
+            let dx = to.x - from.x
+            let dy = to.y - from.y
+            let len = sqrt(dx*dx + dy*dy)
+            guard len > 0 else { return from }
+            let ux = dx / len
+            let uy = dy / len
+            return CGPoint(x: from.x + ux * distance, y: from.y + uy * distance)
+        }
+
+        var path = Path()
+        for i in 0..<4 {
+            let curr = pts[i]
+            let prev = pts[(i + 3) % 4]
+            let next = pts[(i + 1) % 4]
+
+            let start = offset(curr, prev, r)
+            let end = offset(curr, next, r)
+
+            if i == 0 {
+                path.move(to: start)
+            } else {
+                path.addLine(to: start)
+            }
+
+            path.addQuadCurve(to: end, control: curr)
+        }
+
+        path.closeSubpath()
+        return path
     }
 }
 

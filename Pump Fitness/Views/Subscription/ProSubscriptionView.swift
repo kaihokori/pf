@@ -360,7 +360,8 @@ struct SubscriptionOptionCard: View {
                             .font(.title3)
                             .fontWeight(.bold)
                             .foregroundColor(.blue)
-                            .padding([.top, .trailing], 24)
+                            .padding(.top, 24)
+                            .padding(.trailing, 30)
                     }
                 }
                 VStack(alignment: .leading) {
@@ -377,30 +378,31 @@ struct SubscriptionOptionCard: View {
                         .padding(.top, tag != nil ? 0 : 16)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    // Total price for the subscription (displayed above the weekly equivalent)
-                    Spacer()
-                    Text(product.displayPrice)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    HStack {
-                        // Per week
-                        Text(weeklyPriceString(for: product))
-                          .font(.subheadline)
-                          .fontWeight(.semibold)
-                        Spacer()
-                        if let savings {
-                            Text(savings)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                // Place in a capsule
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                    // Price block (total + weekly) kept together for consistent spacing
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(product.displayPrice)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
+                        HStack(alignment: .center) {
+                            Text(weeklyPriceString(for: product))
+                              .font(.subheadline)
+                              .fontWeight(.semibold)
+                            Spacer()
+                            if let savings {
+                                Text(savings)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .glassEffect(in: .rect(cornerRadius: 12.0))
+                            }
                         }
                     }
+                    .padding(.top, 8)
                 }
                 .padding(.vertical)
                 .padding(.horizontal, 24)

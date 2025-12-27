@@ -107,12 +107,13 @@ struct ItineraryDetailView: View {
                         onDelete?(event)
                         dismiss()
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Image(systemName: "trash")
                             .font(.callout)
                             .fontWeight(.medium)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .glassEffect(in: .rect(cornerRadius: 18.0))
+                            .accessibilityLabel("Delete")
                     }
                     .buttonStyle(.plain)
                 }
@@ -123,25 +124,6 @@ struct ItineraryDetailView: View {
                     Text(event.locationName ?? "")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    if hasValidCoordinate {
-                        Menu {
-                            Button("Apple Maps") {
-                                if let coordinate = event.coordinate {
-                                    openInAppleMaps(coordinate)
-                                }
-                            }
-                            Button("Google Maps") {
-                                if let coordinate = event.coordinate {
-                                    openInGoogleMaps(coordinate)
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 Spacer()
                 if let locality = event.locationLocality, !locality.isEmpty {
@@ -209,6 +191,40 @@ struct ItineraryDetailView: View {
                 Text(event.notes)
                     .font(.body)
                     .padding(.bottom)
+            }
+
+            if hasValidCoordinate {
+                Menu {
+                    Button("Apple Maps") {
+                        if let coordinate = event.coordinate {
+                            openInAppleMaps(coordinate)
+                        }
+                    }
+                    Button("Google Maps") {
+                        if let coordinate = event.coordinate {
+                            openInGoogleMaps(coordinate)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("Open in Maps")
+                            .font(.callout)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(.thickMaterial, in: .rect(cornerRadius: 12))
+                    .accessibilityLabel("Open in Maps")
+                }
+                .buttonStyle(.plain)
+                .padding(.top)
             }
         }
         .padding(.horizontal)

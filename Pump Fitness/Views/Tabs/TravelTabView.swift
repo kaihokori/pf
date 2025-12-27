@@ -9,6 +9,7 @@ struct TravelTabView: View {
     @Binding var selectedDate: Date
     var isPro: Bool
     @State private var showAccountsView = false
+    @State private var showProSheet = false
     @State private var isShowingEditor = false
     @State private var editorSeedDate: Date = Date()
     @State private var editingEvent: ItineraryEvent? = nil
@@ -18,7 +19,7 @@ struct TravelTabView: View {
             backgroundView
             ScrollView {
                 VStack(spacing: 12) {
-                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
                         .environmentObject(account)
 
                     VStack(spacing: 12) {
@@ -76,23 +77,32 @@ struct TravelTabView: View {
                     ZStack {
                         Color.black.opacity(0.001)
                             .onTapGesture {}
-                        VStack(spacing: 8) {
-                            Image(systemName: "lock.fill")
-                                .font(.title2)
-                                .foregroundStyle(.white)
-                                .padding(12)
-                                .background(Circle().fill(Color.accentColor))
-                            Text("Pro Feature")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                            Text("Upgrade to unlock the Travel tab")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+
+                        Button {
+                            showProSheet = true
+                        } label: {
+                            VStack(spacing: 8) {
+                                Image(systemName: "lock.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(.white)
+                                    .padding(12)
+                                    .background(Circle().fill(Color.accentColor))
+                                Text("Pro Feature")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text("Upgrade to unlock the Travel tab")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding()
+                            .background(.regularMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                         }
-                        .padding()
-                        .background(.regularMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showProSheet) {
+                            ProSubscriptionView()
+                        }
                     }
                 }
             }

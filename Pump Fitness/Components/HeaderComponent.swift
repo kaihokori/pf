@@ -7,7 +7,19 @@ struct HeaderComponent: View {
     @Binding var selectedDate: Date
     var onProfileTap: (() -> Void)? = nil
     @EnvironmentObject private var account: Account
-    @AppStorage("isPro") private var isPro: Bool = true
+    var isPro: Bool
+    @State private var showProSheet: Bool = false
+
+    private var proBadgeGradient: LinearGradient {
+        LinearGradient(
+            gradient: Gradient(colors: [
+                Color(red: 0.74, green: 0.43, blue: 0.97),
+                Color(red: 0.83, green: 0.99, blue: 0.94)
+            ]),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 
     var body: some View {
         HStack(alignment: .center) {
@@ -16,48 +28,50 @@ struct HeaderComponent: View {
                     .resizable()
                     .renderingMode(.original)
                     .aspectRatio(contentMode: .fit)
-                    .frame(height: 28)
+                    .frame(height: 40)
                     .padding(.leading, 4)
                     .offset(y: 6)
-                Button(action: { isPro.toggle() }) {
-                    Text("Pro")
-                        .font(.caption2)
+                
+                Button(action: { showProSheet = true }) {
+                    Text("PRO")
+                        .font(.subheadline)
                         .fontWeight(.semibold)
-                        .foregroundColor(isPro ? .white : .primary)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 10)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(isPro ? themeManager.selectedTheme.accent(for: colorScheme) : Color.secondary.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(proBadgeGradient)
                         )
                 }
                 .buttonStyle(.plain)
-                .padding(.leading, 8)
                 .offset(y: 6)
+                .padding(.leading, 8)
             } else {
                 Image("logo")
                     .resizable()
                     .renderingMode(.template)
                     .foregroundStyle(themeManager.selectedTheme.accent(for: colorScheme))
                     .aspectRatio(contentMode: .fit)
-                    .frame(height: 28)
+                    .frame(height: 40)
                     .padding(.leading, 4)
                     .offset(y: 6)
-                Button(action: { isPro.toggle() }) {
-                    Text("Pro")
-                        .font(.caption2)
+                
+                Button(action: { showProSheet = true }) {
+                    Text("PRO")
+                        .font(.subheadline)
                         .fontWeight(.semibold)
-                        .foregroundColor(isPro ? .white : .primary)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 10)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(isPro ? themeManager.selectedTheme.accent(for: colorScheme) : Color.secondary.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(proBadgeGradient)
                         )
                 }
                 .buttonStyle(.plain)
-                .padding(.leading, 8)
                 .offset(y: 6)
+                .padding(.leading, 8)
             }
 
             Spacer()
@@ -96,6 +110,9 @@ struct HeaderComponent: View {
         }
         .padding(.horizontal)
         .padding(.top, 12)
+        .sheet(isPresented: $showProSheet) {
+            ProSubscriptionView()
+        }
     }
 
     private var profileAvatar: some View {
@@ -231,6 +248,6 @@ struct ThemePreviewRow: View {
 }
 
 #Preview {
-    HeaderComponent(showCalendar: .constant(false), selectedDate: .constant(Date()))
+    HeaderComponent(showCalendar: .constant(false), selectedDate: .constant(Date()), isPro: true)
         .environmentObject(ThemeManager())
 }

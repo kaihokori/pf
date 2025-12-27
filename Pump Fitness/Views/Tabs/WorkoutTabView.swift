@@ -283,6 +283,7 @@ struct WorkoutTabView: View {
     var onUpdateAutoRestDays: (Set<Int>) -> Void
     var onClearWeekCheckIns: () -> Void
     @State private var showAccountsView = false
+    @State private var showProSheet = false
     @State private var workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults
     // Use Account.workoutSupplements as the canonical source of workout supplement definitions
     // no local supplement store — use `account.workoutSupplements`
@@ -399,7 +400,7 @@ struct WorkoutTabView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
                             .environmentObject(account)
 
                         Text("Schedule Tracking")
@@ -682,6 +683,8 @@ struct WorkoutTabView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 18)
                         .padding(.top, 48)
+                        .opacity(isPro ? 1 : 0.5)
+                        .disabled(!isPro)
 
                         WeeklyProgressCarousel(accentColorOverride: accentOverride,
                                                 entries: $weeklyEntries,
@@ -692,38 +695,46 @@ struct WorkoutTabView: View {
                             .padding(.top, 12)
                             .workoutTip(.weeklyProgress, onStepChange: { _ in })
                             .id("weeklyProgress")
-                    }
-                    .opacity(isPro ? 1 : 0.5)
-                    .disabled(!isPro)
-                    .overlay {
-                        if !isPro {
-                            ZStack {
-                                Color.black.opacity(0.001) // Capture taps
-                                    .onTapGesture {
-                                        // Optional: Trigger upgrade flow
+                            .opacity(isPro ? 1 : 0.5)
+                            .disabled(!isPro)
+                            .overlay {
+                                if !isPro {
+                                    ZStack {
+                                        Color.black.opacity(0.001) // Capture taps
+                                            .onTapGesture {
+                                                // Optional: Trigger upgrade flow
+                                            }
+                                        
+                                        Button {
+                                            showProSheet = true
+                                        } label: {
+                                            VStack(spacing: 8) {
+                                                Image(systemName: "lock.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(.white)
+                                                    .padding(12)
+                                                    .background(Circle().fill(Color.accentColor))
+                                                
+                                                Text("Pro Feature")
+                                                    .font(.headline)
+                                                    .foregroundStyle(.primary)
+                                                
+                                                Text("Upgrade to unlock Weekly Progress")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding()
+                                            .background(.regularMaterial)
+                                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .sheet(isPresented: $showProSheet) {
+                                            ProSubscriptionView()
+                                        }
                                     }
-                                
-                                VStack(spacing: 8) {
-                                    Image(systemName: "lock.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(.white)
-                                        .padding(12)
-                                        .background(Circle().fill(Color.accentColor))
-                                    
-                                    Text("Pro Feature")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    
-                                    Text("Upgrade to unlock Weekly Progress")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
                                 }
-                                .padding()
-                                .background(.regularMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                             }
-                        }
                     }
 
                     // Coaching inquiry card

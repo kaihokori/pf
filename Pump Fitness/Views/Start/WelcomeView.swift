@@ -29,7 +29,7 @@ struct WelcomeView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 100, height: 100)
-                    Text("Welcome to Pump Fitness")
+                    Text("Welcome to Trackerio")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .multilineTextAlignment(.center)

@@ -371,6 +371,7 @@ struct RoutineTabView: View {
     var onUpdateSleep: (TimeInterval, TimeInterval) -> Void
     var onLiveSleepUpdate: (TimeInterval, TimeInterval) -> Void
     @State private var showAccountsView = false
+    @State private var showProSheet = false
     @State private var dailyTaskItems: [DailyTaskItem] = []
     @State private var currentDay: Day?
 
@@ -397,7 +398,7 @@ struct RoutineTabView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true })
+                            HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
                                 .environmentObject(account)
 
                             HStack {
@@ -443,7 +444,7 @@ struct RoutineTabView: View {
                                 }
                             }
                         })
-                        .padding(.bottom, -30)
+                        .padding(.bottom, -10)
                         
                         HStack {
                             Text("Activity Timers")
@@ -703,26 +704,33 @@ struct RoutineTabView: View {
                                         .onTapGesture {
                                             // Optional: Trigger upgrade flow
                                         }
-                                    
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "lock.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(.white)
-                                            .padding(12)
-                                            .background(Circle().fill(Color.accentColor))
-                                        
-                                        Text("Pro Feature")
-                                            .font(.headline)
-                                            .foregroundStyle(.primary)
-                                        
-                                        Text("Upgrade to unlock Expenses")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                    Button {
+                                        showProSheet = true
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "lock.fill")
+                                                .font(.title2)
+                                                .foregroundStyle(.white)
+                                                .padding(12)
+                                                .background(Circle().fill(Color.accentColor))
+
+                                            Text("Pro Feature")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+
+                                            Text("Upgrade to unlock Expenses")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .background(.regularMaterial)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                                     }
-                                    .padding()
-                                    .background(.regularMaterial)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                                    .buttonStyle(.plain)
+                                    .sheet(isPresented: $showProSheet) {
+                                        ProSubscriptionView()
+                                    }
                                 }
                             }
                         }
@@ -1076,9 +1084,7 @@ private struct DailyTasksEditorView: View {
         if isPresetSelected(preset) {
             working.removeAll { $0.name == preset.name }
         } else if canAddMore {
-            var newTask = preset
-            newTask.colorHex = ""
-            working.append(newTask)
+            working.append(preset)
         }
     }
 
@@ -2568,10 +2574,10 @@ private struct HabitTrackingSection: View {
                         .background(Color.clear)
                     }
                 }
+                .padding(16)
+                .glassEffect(in: .rect(cornerRadius: 16.0))
             }
         }
-        .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 10)
     }

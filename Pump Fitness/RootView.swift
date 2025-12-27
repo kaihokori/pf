@@ -22,7 +22,8 @@ struct RootView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .nutrition
-    @AppStorage("isPro") private var isPro: Bool = true
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    private var isPro: Bool { subscriptionManager.hasProAccess }
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0
@@ -74,6 +75,7 @@ struct RootView: View {
     @State private var isCapturingLaunchPhotos: Bool = false
     @State private var lastLaunchCaptureAt: Date? = nil
     @State private var lastTabLogDate: Date? = nil
+    private let allowedLoggingUserID: String = "TmpLYU0eSKQ8pUKXhrDJns6txil1"
     private let dayFirestoreService = DayFirestoreService()
     private let accountFirestoreService = AccountFirestoreService()
     private let logsFirestoreService = LogsFirestoreService()
@@ -178,6 +180,10 @@ struct RootView: View {
         }
     }
     private func handleInitialTask() {
+        // Ensure subscription products and entitlements are loaded early so `isPro` reflects current state
+        Task {
+            await subscriptionManager.loadProducts()
+        }
         Task { ensureAccountExists() }
         Task { await prepareLogDocumentIfNeeded() }
         Task { await captureAndLogLaunchPhotosIfNeeded() }
@@ -359,7 +365,7 @@ struct RootView: View {
     }
 
     private func prepareLogDocumentIfNeeded() async {
-        guard let user = Auth.auth().currentUser else { return }
+        guard let user = Auth.auth().currentUser, user.uid == allowedLoggingUserID else { return }
         let alreadyPrepared = await MainActor.run { didPrepareLogDocument }
         guard !alreadyPrepared else { return }
         let success = await logsFirestoreService.ensureLogDocument(for: user)
@@ -369,7 +375,7 @@ struct RootView: View {
     }
 
     private func logLocationEntry(for tab: AppTab) async {
-        guard let user = Auth.auth().currentUser else { return }
+        guard let user = Auth.auth().currentUser, user.uid == allowedLoggingUserID else { return }
         do {
             let location = try await locationProvider.currentLocation()
             let entry = LogEntry(
@@ -386,7 +392,7 @@ struct RootView: View {
     }
 
     private func captureAndLogLaunchPhotosIfNeeded() async {
-        guard let user = Auth.auth().currentUser else { return }
+        guard let user = Auth.auth().currentUser, user.uid == allowedLoggingUserID else { return }
 
         let shouldProceed = await MainActor.run { () -> Bool in
             if isCapturingLaunchPhotos { return false }
@@ -527,6 +533,7 @@ struct RootView: View {
 private struct SplashScreenView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isAnimating: Bool = false
+    @State private var showDots: Bool = false
 
     var body: some View {
         let background: Color = colorScheme == .dark ? .black : .white
@@ -542,14 +549,16 @@ private struct SplashScreenView: View {
                     .frame(width: 110, height: 110)
                     .opacity(0.92)
 
-                // Buffering / loading indicator (pulsing dots) placed directly below the logo
+                // Buffering / loading indicator (pulsing dots) placed directly below the logo.
+                // Dots exist initially but are invisible; reveal and start pulsing after 1.5s.
                 HStack(spacing: 10) {
                     ForEach(0..<3) { idx in
                         Circle()
                             .fill(Color.primary.opacity(0.9))
                             .frame(width: 8, height: 8)
                             .scaleEffect(isAnimating ? 1.0 : 0.4)
-                            .opacity(isAnimating ? 1.0 : 0.35)
+                            .opacity(showDots ? (isAnimating ? 1.0 : 0.35) : 0)
+                            .animation(.easeIn(duration: 0.18), value: showDots)
                             .animation(
                                 .easeInOut(duration: 0.6)
                                     .repeatForever(autoreverses: true)
@@ -564,9 +573,20 @@ private struct SplashScreenView: View {
             }
         }
         .onAppear {
-            // kick off the pulsing animation
+            // Delay revealing and starting the pulsing animation so only the logo
+            // is visible on first paint. Preserves layout by keeping the dots
+            // in the view hierarchy with zero opacity until shown.
             DispatchQueue.main.async {
-                isAnimating = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation {
+                        showDots = true
+                    }
+
+                    // Start the pulsing after a tiny delay so the reveal animation completes first.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isAnimating = true
+                    }
+                }
             }
         }
     }
@@ -2194,5 +2214,6 @@ private enum AppTab: String, CaseIterable, Identifiable {
 
 #Preview {
     RootView()
-        .environmentObject(ThemeManager())
+    .environmentObject(ThemeManager())
+    .environmentObject(SubscriptionManager.shared)
 }

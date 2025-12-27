@@ -67,8 +67,7 @@ struct SupplementTrackingView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .padding(.horizontal)
             } else {
                 VStack(spacing: 16) {
                     VStack(spacing: 16) {

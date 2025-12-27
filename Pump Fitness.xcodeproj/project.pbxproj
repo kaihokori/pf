@@ -12,10 +12,14 @@
 		DCB003E72EE80CAC003D6BF9 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E62EE80CAC003D6BF9 /* FirebaseStorage */; };
 		DCB003F22EE813B0003D6BF9 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003F12EE813B0003D6BF9 /* GoogleSignIn */; };
 		DCB003F42EE813B0003D6BF9 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003F32EE813B0003D6BF9 /* GoogleSignInSwift */; };
+		DCDAD2692EFEDEEB0011838E /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DCDAD2682EFEDEEB0011838E /* StoreKit.framework */; };
+		DCDAD26B2EFF5FC10011838E /* Trackerio.storekit in Resources */ = {isa = PBXBuildFile; fileRef = DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		DC9E797A2EDB81DD00C57FEE /* Pump Fitness.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pump Fitness.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		DCDAD2682EFEDEEB0011838E /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
+		DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Trackerio.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +38,7 @@
 				DCB003F42EE813B0003D6BF9 /* GoogleSignInSwift in Frameworks */,
 				DCB003E32EE80CAC003D6BF9 /* FirebaseAuth in Frameworks */,
 				DCB003F22EE813B0003D6BF9 /* GoogleSignIn in Frameworks */,
+				DCDAD2692EFEDEEB0011838E /* StoreKit.framework in Frameworks */,
 				DCB003E52EE80CAC003D6BF9 /* FirebaseFirestore in Frameworks */,
 				DCB003E72EE80CAC003D6BF9 /* FirebaseStorage in Frameworks */,
 			);
@@ -45,7 +50,9 @@
 		DC9E79712EDB81DD00C57FEE = {
 			isa = PBXGroup;
 			children = (
+				DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */,
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
+				DCDAD2672EFEDEEB0011838E /* Frameworks */,
 				DC9E797B2EDB81DD00C57FEE /* Products */,
 			);
 			sourceTree = "<group>";
@@ -56,6 +63,14 @@
 				DC9E797A2EDB81DD00C57FEE /* Pump Fitness.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		DCDAD2672EFEDEEB0011838E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DCDAD2682EFEDEEB0011838E /* StoreKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -131,6 +146,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DCDAD26B2EFF5FC10011838E /* Trackerio.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -311,7 +327,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -358,7 +374,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};

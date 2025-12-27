@@ -53,6 +53,20 @@ struct SportsTabView: View {
     // Track expanded state for each sport
     @State private var expandedSports: [Bool] = []
 
+    private var sportsEmptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("No sports configured", systemImage: "sportscourt")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Add sports using the Edit button to track activities and submit data.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+
     // MARK: - Models
 
     struct SportActivity: Identifiable {
@@ -838,7 +852,8 @@ struct SportsTabView: View {
                             HeaderComponent(
                                 showCalendar: $showCalendar,
                                 selectedDate: $selectedDate,
-                                onProfileTap: { showAccountsView = true }
+                                onProfileTap: { showAccountsView = true },
+                                isPro: isPro
                             )
                             .environmentObject(account)
 
@@ -1034,8 +1049,12 @@ struct SportsTabView: View {
                             .padding(.top, 38)
                             .padding(.bottom, 8)
 
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
+                            if sports.isEmpty {
+                                sportsEmptyState
+                                    .padding(.horizontal, 18)
+                            } else {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
                                     VStack(alignment: .leading, spacing: 10) {
                                         HStack(spacing: 10) {
                                             Circle()
@@ -1175,8 +1194,9 @@ struct SportsTabView: View {
                                     .padding(.horizontal, 18)
                                     .padding(.top, 12)
                                 }
+                                }
+                                .padding(.top, -12)
                             }
-                            .padding(.top, -12)
                         }
                             }
                             .opacity(isPro ? 1 : 0.5)

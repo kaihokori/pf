@@ -13,17 +13,14 @@ import TipKit
 @main
 struct Pump_FitnessApp: App {
     @StateObject private var themeManager: ThemeManager
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
     private let modelContainer: ModelContainer
 
     init() {
         FirebaseApp.configure()
         
         if #available(iOS 17.0, *) {
-            // Temporary flag to reset tips for testing purposes
-            let shouldResetTips = true
-            if shouldResetTips {
-                try? Tips.resetDatastore()
-            }
+            // try? Tips.resetDatastore()
 
             try? Tips.configure([
                 .displayFrequency(.immediate),
@@ -62,6 +59,7 @@ struct Pump_FitnessApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(themeManager)
+                .environmentObject(subscriptionManager)
                 .modelContainer(modelContainer)
         }
     }

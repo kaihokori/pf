@@ -318,7 +318,7 @@ struct AccountsView: View {
                 Text(validationMessage)
             }
         }
-        .alert("Sign out of Pump Fitness?", isPresented: $showSignOutConfirmation) {
+        .alert("Sign out of Trackerio?", isPresented: $showSignOutConfirmation) {
             Button("Sign Out", role: .destructive) {
                 Task { await viewModel.signOut(in: modelContext) }
             }
@@ -326,7 +326,7 @@ struct AccountsView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
-        .alert("Delete your Pump Fitness account?", isPresented: $showDeleteConfirmation) {
+        .alert("Delete your Trackerio account?", isPresented: $showDeleteConfirmation) {
             Button("Delete Account", role: .destructive) {
                 Task {
                     await viewModel.deleteAccount(in: modelContext)

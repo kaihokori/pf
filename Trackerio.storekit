@@ -1,0 +1,135 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "009EAE98",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6756062196",
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_developerTeamID" : "3LGLXWA468",
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 788492521.10083795,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21870146",
+      "localizations" : [
+
+      ],
+      "name" : "Trackerio Pro Group",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "12.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6757080850",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Increase limits and access Pro features for 1 month",
+              "displayName" : "Pro - 1 Month",
+              "locale" : "en_AU"
+            }
+          ],
+          "productID" : "com.trackerio.pro.1month",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro - 1 Month",
+          "subscriptionGroupID" : "21870146",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "6757081769",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Increase limits and access Pro features for 12 months",
+              "displayName" : "Pro - 12 Months",
+              "locale" : "en_AU"
+            }
+          ],
+          "productID" : "com.trackerio.pro.12months",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Pro - 12 Months",
+          "subscriptionGroupID" : "21870146",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "44.99",
+          "familyShareable" : false,
+          "groupNumber" : 4,
+          "internalID" : "6757092032",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Increase limits and access Pro features for 6 months",
+              "displayName" : "Pro - 6 Months",
+              "locale" : "en_AU"
+            }
+          ],
+          "productID" : "com.trackerio.pro.6months",
+          "recurringSubscriptionPeriod" : "P6M",
+          "referenceName" : "Pro - 6 Months",
+          "subscriptionGroupID" : "21870146",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

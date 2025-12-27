@@ -30,6 +30,7 @@ struct NutritionTabView: View {
     @State private var selectedMacroForLog: MacroMetric?
     @State private var showConsumedSheet = false
     @State private var showProtocolSheet = false
+    @State private var showProSheet = false
     @State private var showSupplementEditor = false
     @State private var showCravingEditor = false
     @State private var showMealReminderSheet = false
@@ -165,7 +166,8 @@ struct NutritionTabView: View {
                             HeaderComponent(
                             showCalendar: $showCalendar,
                             selectedDate: $selectedDate,
-                            onProfileTap: { showAccountsView = true }
+                            onProfileTap: { showAccountsView = true },
+                            isPro: isPro
                         )
                         .environmentObject(account)
                         
@@ -477,28 +479,33 @@ struct NutritionTabView: View {
                                 ZStack {
                                     Color.black.opacity(0.001) // Capture taps
                                         .onTapGesture {
-                                            // Optional: Trigger upgrade flow
+                                            // no-op capture
                                         }
-                                    
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "lock.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(.white)
-                                            .padding(12)
-                                            .background(Circle().fill(Color.accentColor))
-                                        
-                                        Text("Pro Feature")
-                                            .font(.headline)
-                                            .foregroundStyle(.primary)
-                                        
-                                        Text("Upgrade to unlock Cravings")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+
+                                    Button {
+                                        showProSheet = true
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            Image(systemName: "lock.fill")
+                                                .font(.title2)
+                                                .foregroundStyle(.white)
+                                                .padding(12)
+                                                .background(Circle().fill(Color.accentColor))
+
+                                            Text("Pro Feature")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+
+                                            Text("Upgrade to unlock Cravings")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .background(.regularMaterial)
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                                     }
-                                    .padding()
-                                    .background(.regularMaterial)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
@@ -528,6 +535,8 @@ struct NutritionTabView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 18)
                             .padding(.top, 48)
+                            .opacity(isPro ? 1 : 0.5)
+                            .disabled(!isPro)
 
                             FastingTimerCard(
                                 accentColorOverride: accentOverride,
@@ -539,36 +548,44 @@ struct NutritionTabView: View {
                             )
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
-                        }
-                        .opacity(isPro ? 1 : 0.5)
-                        .disabled(!isPro)
-                        .overlay {
-                            if !isPro {
-                                ZStack {
-                                    Color.black.opacity(0.001) // Capture taps
-                                        .onTapGesture {
-                                            // Optional: Trigger upgrade flow
+                            .opacity(isPro ? 1 : 0.5)
+                            .disabled(!isPro)
+                            .overlay {
+                                if !isPro {
+                                    ZStack {
+                                        Color.black.opacity(0.001) // Capture taps
+                                            .onTapGesture {
+                                                // no-op capture
+                                            }
+
+                                        Button {
+                                            showProSheet = true
+                                        } label: {
+                                            VStack(spacing: 8) {
+                                                Image(systemName: "lock.fill")
+                                                    .font(.title2)
+                                                    .foregroundStyle(.white)
+                                                    .padding(12)
+                                                    .background(Circle().fill(Color.accentColor))
+                                                
+                                                Text("Pro Feature")
+                                                    .font(.headline)
+                                                    .foregroundStyle(.primary)
+                                                
+                                                Text("Upgrade to unlock Fasting")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding()
+                                            .background(.regularMaterial)
+                                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                                         }
-                                    
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "lock.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(.white)
-                                            .padding(12)
-                                            .background(Circle().fill(Color.accentColor))
-                                        
-                                        Text("Pro Feature")
-                                            .font(.headline)
-                                            .foregroundStyle(.primary)
-                                        
-                                        Text("Upgrade to unlock Fasting")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                        .buttonStyle(.plain)
+                                        .sheet(isPresented: $showProSheet) {
+                                            ProSubscriptionView()
+                                        }
                                     }
-                                    .padding()
-                                    .background(.regularMaterial)
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
                                 }
                             }
                         }

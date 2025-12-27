@@ -307,7 +307,7 @@ struct ProSubscriptionView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 10)
                     .background(
-                        LinearGradient(colors: [.white.opacity(0), .white], startPoint: .top, endPoint: .bottom)
+                        LinearGradient(colors: [(colorScheme == .dark ? Color.black : Color.white).opacity(0), (colorScheme == .dark ? Color.black : Color.white)], startPoint: .top, endPoint: .bottom)
                             .frame(height: 100)
                             .padding(.bottom, -20)
                     )

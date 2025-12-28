@@ -27,17 +27,18 @@ struct WorkoutShareSheet: View {
     var schedule: [WorkoutScheduleSnapshot]
     var supplements: [Supplement]
     var takenSupplements: Set<String>
-    var weights: [WeightSnapshot]
+    var weightGroups: [WeightGroupDefinition]
+    var weightEntries: [WeightExerciseValue]
     var measurements: BodyMeasurements
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showCheckIn = true
     @State private var showSchedule = true
     @State private var showSupplements = true
     @State private var showWeights = true
     @State private var showMeasurements = true
 
+    @State private var selectedWeightGroupId: UUID? = nil
     @State private var sharePayload: WorkoutSharePayload?
 
     var body: some View {
@@ -58,15 +59,13 @@ struct WorkoutShareSheet: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         VStack(spacing: 0) {
-                            ToggleRow(title: "Daily Check-In", isOn: $showCheckIn, icon: "bubble.left.and.bubble.right", color: .purple)
-                            Divider().padding(.leading, 44)
                             ToggleRow(title: "Today's Schedule", isOn: $showSchedule, icon: "calendar", color: .blue)
                             Divider().padding(.leading, 44)
                             if !supplements.isEmpty {
                                 ToggleRow(title: "Supplements", isOn: $showSupplements, icon: "pills.fill", color: .green)
                                 Divider().padding(.leading, 44)
                             }
-                            ToggleRow(title: "Weights", isOn: $showWeights, icon: "scalemass", color: .orange)
+                            ToggleRow(title: "Weight Records", isOn: $showWeights, icon: "scalemass", color: .orange)
                             Divider().padding(.leading, 44)
                             ToggleRow(title: "Body Measurements", isOn: $showMeasurements, icon: "wave.3.right", color: .pink)
                         }
@@ -74,15 +73,36 @@ struct WorkoutShareSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.horizontal, 20)
 
+                        if showWeights {
+                            HStack(spacing: 8) {
+                                Text("Select body part")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                Picker(selection: $selectedWeightGroupId) {
+                                    ForEach(weightGroups, id: \.id) { group in
+                                        Text(group.name).tag(Optional(group.id))
+                                    }
+                                } label: {
+                                    EmptyView()
+                                }
+                                .pickerStyle(.menu)
+                            }
+                            .padding(.horizontal, 20)
+                        }
+
                         WorkoutShareCard(
                             accentColor: accentColor,
                             checkInText: dailyCheckIn,
                             schedule: schedule,
                             supplements: supplements,
                             takenIDs: takenSupplements,
-                            weights: weights,
+                            weightGroups: weightGroups,
+                            weightEntries: weightEntries,
+                            selectedWeightGroupId: $selectedWeightGroupId,
                             measurements: measurements,
-                            showCheckIn: showCheckIn,
                             showSchedule: showSchedule,
                             showSupplements: showSupplements,
                             showWeights: showWeights,
@@ -127,6 +147,11 @@ struct WorkoutShareSheet: View {
         .sheet(item: $sharePayload) { payload in
             ShareSheet(activityItems: payload.items)
         }
+        .onAppear {
+            if selectedWeightGroupId == nil {
+                selectedWeightGroupId = weightGroups.first?.id
+            }
+        }
     }
 
     @MainActor
@@ -139,9 +164,10 @@ struct WorkoutShareSheet: View {
             schedule: schedule,
             supplements: supplements,
             takenIDs: takenSupplements,
-            weights: weights,
+            weightGroups: weightGroups,
+            weightEntries: weightEntries,
+            selectedWeightGroupId: .constant(selectedWeightGroupId),
             measurements: measurements,
-            showCheckIn: showCheckIn,
             showSchedule: showSchedule,
             showSupplements: showSupplements,
             showWeights: showWeights,
@@ -170,10 +196,11 @@ private struct WorkoutShareCard: View {
     var schedule: [WorkoutScheduleSnapshot]
     var supplements: [Supplement]
     var takenIDs: Set<String>
-    var weights: [WeightSnapshot]
+    var weightGroups: [WeightGroupDefinition]
+    var weightEntries: [WeightExerciseValue]
+    var selectedWeightGroupId: Binding<UUID?>
     var measurements: BodyMeasurements
 
-    var showCheckIn: Bool
     var showSchedule: Bool
     var showSupplements: Bool
     var showWeights: Bool
@@ -203,20 +230,22 @@ private struct WorkoutShareCard: View {
             .background(accentColor.opacity(0.05))
 
             VStack(spacing: 18) {
-                if showCheckIn {
-                    WorkoutCheckInSection(text: checkInText)
-                }
-
                 if showSchedule && !schedule.isEmpty {
-                    WorkoutScheduleSection(items: schedule)
+                    WorkoutScheduleSection(items: schedule, checkInText: checkInText)
                 }
 
                 if showSupplements && !supplements.isEmpty {
                     WorkoutSupplementsSection(supplements: supplements, takenIDs: takenIDs, color: .green)
                 }
 
-                if showWeights && !weights.isEmpty {
-                    WorkoutWeightsSection(weights: weights, color: .orange)
+                if showWeights {
+                    WorkoutWeightsByGroupSection(
+                        weightGroups: weightGroups,
+                        weightEntries: weightEntries,
+                        selectedGroupId: selectedWeightGroupId.wrappedValue,
+                        color: .orange,
+                        onSelectGroup: { selectedWeightGroupId.wrappedValue = $0 }
+                    )
                 }
 
                 if showMeasurements {
@@ -271,31 +300,65 @@ private struct WorkoutCheckInSection: View {
 
 private struct WorkoutScheduleSection: View {
     var items: [WorkoutScheduleSnapshot]
+    var checkInText: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "TODAY'S SCHEDULE", icon: "calendar", color: .blue)
+            HStack {
+                SectionHeader(title: "TODAY'S SCHEDULE", icon: "calendar", color: .blue)
+                Spacer()
+                // Status: Checked In / Rest Day / Not Logged
+                Text(statusText(from: checkInText))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(items.prefix(6)) { it in
-                    HStack {
-                        Text(it.timeText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 64, alignment: .leading)
-                        Text(it.title)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer()
+                let total = items.count
+                let maxShow = 3
+                ForEach(0..<min(maxShow, total), id: \.self) { idx in
+                    if idx == 2 && total > maxShow {
+                        // show + X more in place of the 3rd item
+                        let more = total - 2
+                        HStack {
+                            Text("")
+                                .frame(width: 64, alignment: .leading)
+                            Text("+ \(more) more")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        let it = items[idx]
+                        HStack {
+                            Text(it.timeText)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 64, alignment: .leading)
+                            Text(it.title)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        if idx < min(maxShow, total) - 1 {
+                            Divider()
+                        }
                     }
-                    .padding(.vertical, 4)
-                    Divider()
                 }
             }
         }
         .padding(14)
         .background(Color(UIColor.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func statusText(from checkIn: String) -> String {
+        let lower = checkIn.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lower.contains("rest") { return "Rest Day" }
+        if !lower.isEmpty { return "Checked In" }
+        return "Not Logged"
     }
 }
 
@@ -344,33 +407,83 @@ private struct WorkoutSupplementsSection: View {
     }
 }
 
-private struct WorkoutWeightsSection: View {
-    var weights: [WeightSnapshot]
+private struct WorkoutWeightsByGroupSection: View {
+    var weightGroups: [WeightGroupDefinition]
+    var weightEntries: [WeightExerciseValue]
+    var selectedGroupId: UUID?
     var color: Color
+    var onSelectGroup: (UUID?) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "WEIGHTS", icon: "scalemass", color: color)
-            VStack(spacing: 6) {
-                ForEach(weights.prefix(6)) { w in
-                    HStack {
-                        Text(w.date, format: .dateTime.month().day().hour().minute())
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 110, alignment: .leading)
-                        Text(String(format: "%.1f kg", w.weightKg))
-                            .font(.subheadline.weight(.semibold))
-                        if let note = w.note {
-                            Text(note)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+            SectionHeader(title: "Weight Records", icon: "scalemass", color: color)
+
+            // Picker moved to the sheet level (below toggles) to avoid duplication
+
+            if let group = weightGroups.first(where: { $0.id == selectedGroupId }) {
+                let exercises = group.exercises
+                let displayCount = exercises.count > 6 ? 6 : min(exercises.count, 6)
+                let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(0..<displayCount, id: \.self) { idx in
+                        if idx == 5 && exercises.count > 6 {
+                            let more = exercises.count - 5
+                            VStack {
+                                Spacer()
+                                Text("+ \(more) more")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 64)
+                            .padding(8)
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        } else {
+                            let ex = exercises[idx]
+                            let entry = weightEntries.first(where: { $0.exerciseId == ex.id })
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(ex.name)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+
+                                HStack(spacing: 6) {
+                                    Text(entry?.weight ?? "—")
+                                        .font(.subheadline)
+                                    if let unit = entry?.unit, !unit.isEmpty {
+                                        Text(unit)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                }
+
+                                HStack(spacing: 6) {
+                                    let sets = entry?.sets ?? "—"
+                                    let reps = entry?.reps ?? "—"
+                                    Text("\(sets) x \(reps)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
-                        Spacer()
                     }
+                }
+            } else {
+                Text("Select a body part")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(UIColor.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
             }
         }
         .padding(0)
@@ -397,9 +510,10 @@ private struct WorkoutMeasurementsSection: View {
                             .font(.subheadline.weight(.semibold))
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading) {
-                    Text("Water")
+                    Text("Water (%)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let water = measurements.waterPercent {
@@ -410,9 +524,10 @@ private struct WorkoutMeasurementsSection: View {
                             .font(.subheadline.weight(.semibold))
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading) {
-                    Text("Fat")
+                    Text("Fat (%)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let fat = measurements.fatPercent {
@@ -423,8 +538,7 @@ private struct WorkoutMeasurementsSection: View {
                             .font(.subheadline.weight(.semibold))
                     }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(10)
             .background(Color(UIColor.secondarySystemBackground))

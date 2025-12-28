@@ -877,6 +877,38 @@ struct WorkoutTabView: View {
                 showWeightsEditor = false
             }
         }
+        .sheet(isPresented: $showShareSheet) {
+            // Build today's schedule snapshots
+            let todaysSessions: [WorkoutScheduleSnapshot] = (workoutSchedule.indices.contains(currentDayIndex) ? workoutSchedule[currentDayIndex].sessions : [])
+                .map { s in WorkoutScheduleSnapshot(title: s.name, timeText: s.formattedTime) }
+
+            let measurements = BodyMeasurements(
+                lastWeightKg: weeklyEntries.last?.weight ?? account.weight,
+                waterPercent: weeklyEntries.last?.waterPercent,
+                fatPercent: weeklyEntries.last?.bodyFatPercent
+            )
+
+            let checkInStatusText: String = {
+                guard weeklyCheckInStatuses.indices.contains(currentDayIndex) else { return "" }
+                switch weeklyCheckInStatuses[currentDayIndex] {
+                case .checkIn: return "Checked In"
+                case .rest: return "Rest Day"
+                case .notLogged: return ""
+                }
+            }()
+
+            WorkoutShareSheet(
+                accentColor: accentOverride ?? .accentColor,
+                dailyCheckIn: checkInStatusText,
+                schedule: todaysSessions,
+                supplements: account.workoutSupplements,
+                takenSupplements: dayTakenWorkoutSupplementIDs,
+                weightGroups: weightGroups,
+                weightEntries: weightEntries,
+                measurements: measurements
+            )
+            .presentationDetents([.large])
+        }
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: lastWeightPlaceholderVersion) { _, _ in rebuildBodyPartsFromModel() }

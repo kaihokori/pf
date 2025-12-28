@@ -20,7 +20,7 @@ struct ShareProgressSheet: View {
     @Environment(\.modelContext) private var modelContext
     
     @State private var showShareSheet = false
-    @State private var sharePayload: SharePayload? = nil
+    @State private var sharePayload: ShareProgressPayload? = nil
     @State private var mealEntries: [MealIntakeEntry] = []
     
     // Toggles
@@ -175,7 +175,21 @@ struct ShareProgressSheet: View {
     
     private func shareCurrentCard() {
         guard let image = renderCurrentCard() else { return }
-        sharePayload = SharePayload(items: [image])
+        guard let url = saveImageToTempPNG(image, prefix: "progress") else { return }
+        sharePayload = ShareProgressPayload(items: [url])
+    }
+
+    private func saveImageToTempPNG(_ image: UIImage, prefix: String = "share") -> URL? {
+        guard let data = image.pngData() else { return nil }
+        let tmp = FileManager.default.temporaryDirectory
+        let filename = "\(prefix)-\(UUID().uuidString).png"
+        let url = tmp.appendingPathComponent(filename)
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
     }
 }
 
@@ -578,7 +592,7 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-fileprivate struct SharePayload: Identifiable {
+fileprivate struct ShareProgressPayload: Identifiable {
     let id = UUID()
     let items: [Any]
 }

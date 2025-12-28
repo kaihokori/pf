@@ -764,15 +764,15 @@ struct WorkoutTabView: View {
                             }
                     }
 
+                    // Coaching inquiry card
+                    CoachingInquiryCTA()
+                        .padding(.top, 24)
+                    
                     ShareWorkoutCTA(accentColor: accentOverride ?? .accentColor) {
                         showShareSheet = true
                     }
                     .padding(.horizontal, 18)
-                    .padding(.top, 24)
-
-                    // Coaching inquiry card
-                    CoachingInquiryCTA()
-                        .padding(.top, 24)
+                    .padding(.bottom, 24)
                 }
             }
             }

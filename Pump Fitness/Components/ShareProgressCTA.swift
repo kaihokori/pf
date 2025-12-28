@@ -31,11 +31,11 @@ public struct ShareProgressCTA: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Share Your Progress")
+                    Text("Share Nutrition Stats")
                         .font(.headline)
                         .fontWeight(.semibold)
                         .foregroundStyle(.white)
-                    Text("Show friends what you've achieved!")
+                    Text("Show off your healthy habits!")
                         .font(.subheadline)
                         .foregroundStyle(Color.white.opacity(0.85))
                 }

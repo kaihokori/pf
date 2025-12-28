@@ -142,7 +142,21 @@ struct RoutineShareSheet: View {
 
     private func shareCurrentCard() {
         guard let image = renderCurrentCard() else { return }
-        sharePayload = RoutineSharePayload(items: [image])
+        guard let url = saveImageToTempPNG(image, prefix: "routine") else { return }
+        sharePayload = RoutineSharePayload(items: [url])
+    }
+
+    private func saveImageToTempPNG(_ image: UIImage, prefix: String = "share") -> URL? {
+        guard let data = image.pngData() else { return nil }
+        let tmp = FileManager.default.temporaryDirectory
+        let filename = "\(prefix)-\(UUID().uuidString).png"
+        let url = tmp.appendingPathComponent(filename)
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
     }
 }
 

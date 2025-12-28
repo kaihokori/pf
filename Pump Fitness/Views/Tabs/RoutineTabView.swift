@@ -457,46 +457,15 @@ struct RoutineTabView: View {
 
                             Button {
                                 showActivityTimersEditor = true
-                                // Share CTA for Routine Snapshot
-                                Button {
-                                    showRoutineShareSheet = true
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.title2)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Share Routine")
-                                                .font(.headline)
-                                                .fontWeight(.semibold)
-                                            Text("Daily tasks, goals, habits, expenses")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                    }
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 14)
-                                    .padding(.horizontal, 16)
-                                    .background(
-                                        LinearGradient(colors: [accentOverride ?? .accentColor, (accentOverride ?? .accentColor).opacity(0.8)], startPoint: .leading, endPoint: .trailing)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
-                                    .padding(.horizontal, 18)
-                                    .padding(.top, 28)
-                                    .padding(.bottom, 36)
-                                }
-                                .buttonStyle(.plain)
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                            .font(.callout)
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    }
-                                    .buttonStyle(.plain)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
@@ -790,37 +759,60 @@ struct RoutineTabView: View {
                             }
                         }
 
-                        // Share Routine CTA
+                        // Share Routine CTA (styled like ShareProgressCTA)
                         Button {
                             showRoutineShareSheet = true
                         } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.title2)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Share Routine")
+                            let accent = accentOverride ?? .accentColor
+                            let gradientColors = [accent, accent.opacity(0.75), accent.opacity(0.35)]
+                            let glowColor = accent.opacity(0.45)
+
+                            HStack(spacing: 16) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.18))
+                                        .frame(width: 48, height: 48)
+                                    Image(systemName: "leaf.fill")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                }
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Share Routine Stats")
                                         .font(.headline)
                                         .fontWeight(.semibold)
-                                    Text("Tasks, goals, habits, expenses")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.white)
+                                    Text("Highlight your achievements!")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Color.white.opacity(0.85))
                                 }
-                                Spacer()
+
+                                Spacer(minLength: 8)
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(12)
+                                    .background(accent.opacity(0.25))
+                                    .clipShape(Circle())
                             }
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 16)
+                            .padding(20)
                             .background(
-                                LinearGradient(colors: [accentOverride ?? .accentColor, (accentOverride ?? .accentColor).opacity(0.85)], startPoint: .leading, endPoint: .trailing)
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .fill(
+                                        LinearGradient(colors: gradientColors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    )
+                                    .shadow(color: glowColor, radius: 18, x: 0, y: 18)
                             )
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 28)
-                            .padding(.bottom, 36)
                         }
                         .buttonStyle(.plain)
+                        .padding(.top, 24)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 24)
                     }
                 }
                 }

@@ -119,7 +119,6 @@ struct DailyTasksSection: View {
         let totalCount = tasks.count
         let percentage = totalCount > 0 ? Int((Double(completedCount) / Double(totalCount)) * 100) : 0
         let fraction = totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0.0
-        let baseColor = accentColorOverride ?? tasks.first?.color ?? .accentColor
         // Use the fixed two-color gradient from the header instead of task colours
         let gradientColors = [
             Color(red: 0.74, green: 0.43, blue: 0.97),

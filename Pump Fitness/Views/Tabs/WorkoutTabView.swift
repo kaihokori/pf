@@ -475,7 +475,7 @@ struct WorkoutTabView: View {
                         .frame(maxWidth: .infinity)
                         .onTapGesture {
                             adjustTarget = "calories"
-                            refreshHealthKitValues()
+                            refreshHealthKitValues(applyToState: false, persist: false)
                             showingAdjustSheet = true
                         }
 
@@ -492,7 +492,7 @@ struct WorkoutTabView: View {
                             .frame(maxWidth: .infinity)
                             .onTapGesture {
                                 adjustTarget = "steps"
-                                refreshHealthKitValues()
+                                refreshHealthKitValues(applyToState: false, persist: false)
                                 showingAdjustSheet = true
                             }
 
@@ -507,7 +507,7 @@ struct WorkoutTabView: View {
                             .frame(maxWidth: .infinity)
                             .onTapGesture {
                                 adjustTarget = "walking"
-                                refreshHealthKitValues()
+                                refreshHealthKitValues(applyToState: false, persist: false)
                                 showingAdjustSheet = true
                             }
                         }
@@ -680,6 +680,8 @@ struct WorkoutTabView: View {
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            .padding(4)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 18)
@@ -874,20 +876,6 @@ struct WorkoutTabView: View {
                 bodyParts = updated
                 showWeightsEditor = false
             }
-        }
-        .sheet(isPresented: $showShareSheet) {
-            ShareWorkoutSheet(
-                weeklyCheckInStatuses: weeklyCheckInStatuses,
-                workoutSchedule: workoutSchedule,
-                dailySummary: (calories: hkCaloriesValue ?? 0, steps: hkStepsValue ?? 0, distance: hkDistanceValue ?? 0),
-                dailyGoals: (calories: caloriesBurnGoal, steps: stepsGoal, distance: distanceGoal),
-                supplements: account.workoutSupplements,
-                takenSupplements: dayTakenWorkoutSupplementIDs,
-                weightGroups: weightGroups,
-                weightEntries: weightEntries,
-                weeklyProgress: weeklyEntries,
-                accentColor: accentOverride ?? .accentColor
-            )
         }
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
@@ -1294,7 +1282,6 @@ struct ActivityAdjustSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
-            .keyboardDismissToolbar()
         }
     }
 }
@@ -1465,34 +1452,39 @@ private extension WorkoutTabView {
         }
     }
 
-    func refreshHealthKitValues() {
+    func refreshHealthKitValues(applyToState: Bool = true, persist: Bool = true) {
         healthKitService.fetchTodaySteps { v in
             DispatchQueue.main.async {
-                if let v = v {
-                    hkStepsValue = v
+                hkStepsValue = v
+                if applyToState, let v {
                     stepsTakenToday = v
-                } else {
-                    hkStepsValue = nil
                 }
             }
         }
         healthKitService.fetchTodayDistance { v in
             DispatchQueue.main.async {
-                if let v = v {
-                    hkDistanceValue = v
+                hkDistanceValue = v
+                if applyToState, let v {
                     // treat fetched distance as walking distance for display simplicity
                     distanceTravelledToday = v
-                } else {
-                    hkDistanceValue = nil
                 }
             }
         }
         healthKitService.fetchTodayActiveEnergy { v in
             DispatchQueue.main.async {
-                if let v = v { caloriesBurnedToday = v }
-                else { caloriesBurnedToday = estimateCaloriesFromAccount() }
+                hkCaloriesValue = v
+                if applyToState {
+                    if let v {
+                        caloriesBurnedToday = v
+                    } else if caloriesBurnedToday == 0 {
+                        // Preserve existing manual overrides; only estimate if we have no value yet.
+                        caloriesBurnedToday = estimateCaloriesFromAccount()
+                    }
+                }
 
-                onUpdateDailyActivity(caloriesBurnedToday, stepsTakenToday, distanceTravelledToday)
+                if applyToState && persist {
+                    onUpdateDailyActivity(caloriesBurnedToday, stepsTakenToday, distanceTravelledToday)
+                }
             }
         }
     }
@@ -2402,7 +2394,6 @@ private struct DailySummaryGoalSheet: View {
             }
         }
         .tint(tint)
-        .keyboardDismissToolbar()
         .onAppear(perform: loadInitial)
     }
 
@@ -2582,7 +2573,6 @@ private struct WeightsGroupEditorSheet: View {
                 }
             }
         }
-        .keyboardDismissToolbar()
         .onAppear(perform: loadInitial)
     }
 
@@ -2668,7 +2658,7 @@ private struct WeightsTrackingSection: View {
                                 .frame(height: 40)
                                 .focused(focusBinding, equals: part.id)
                                 .onSubmit {
-                                    part.isEditing = false
+                                    $part.isEditing.wrappedValue = false
                                 }
                         } else {
                             Text(part.name)
@@ -2682,24 +2672,24 @@ private struct WeightsTrackingSection: View {
 
                         HStack(spacing: 8) {
                             Button {
-                                // Toggle editing state for this body part
-                                part.isEditing.toggle()
+                                // Toggle editing state for this body part (mutate the binding)
+                                $part.isEditing.wrappedValue.toggle()
                             } label: {
-                                if part.isEditing {
-                                    Image(systemName: "checkmark")
-                                        .font(.callout)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                        .accessibilityLabel("Done")
-                                } else {
-                                    Image(systemName: "pencil")
-                                        .font(.callout)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                        .accessibilityLabel("Edit")
+                                Group {
+                                    if part.isEditing {
+                                        Image(systemName: "checkmark")
+                                            .font(.callout)
+                                            .accessibilityLabel("Done")
+                                    } else {
+                                        Image(systemName: "pencil")
+                                            .font(.callout)
+                                            .accessibilityLabel("Edit")
+                                    }
                                 }
+                                .padding(10)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
+                                .contentShape(Rectangle())
+                                .frame(minWidth: 44, minHeight: 44)
                             }
                             .buttonStyle(.plain)
                         }

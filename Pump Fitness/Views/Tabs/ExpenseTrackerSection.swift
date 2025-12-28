@@ -419,7 +419,6 @@ private struct ExpenseEntryEditorView: View {
                 }
             }
         }
-        .keyboardDismissToolbar()
     }
 
     private func savePressed() {

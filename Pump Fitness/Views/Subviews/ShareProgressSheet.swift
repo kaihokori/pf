@@ -20,7 +20,7 @@ struct ShareProgressSheet: View {
     @Environment(\.modelContext) private var modelContext
     
     @State private var showShareSheet = false
-    @State private var shareItems: [Any] = []
+    @State private var sharePayload: SharePayload? = nil
     @State private var mealEntries: [MealIntakeEntry] = []
     
     // Toggles
@@ -29,105 +29,105 @@ struct ShareProgressSheet: View {
     @State private var showSupplements = true
     @State private var showMeals = true
     @State private var showCravings = true
-    @State private var showFasting = true
+    
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 12) {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 40, height: 5)
-                    .padding(.top, 12)
+        ZStack {
+            VStack(spacing: 0) {
+                // Header
+                VStack(spacing: 12) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 40, height: 5)
+                        .padding(.top, 12)
+                    
+                    Text("Share Your Achievements")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                }
+                .padding(.bottom, 16)
                 
-                Text("Share Your Achievements")
-                    .font(.title2)
-                    .fontWeight(.bold)
-            }
-            .padding(.bottom, 16)
-            
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Controls
-                    VStack(spacing: 0) {
-                        ToggleRow(title: "Calories", isOn: $showCalories, icon: "flame.fill", color: .orange)
-                        Divider().padding(.leading, 44)
-                        ToggleRow(title: "Macros", isOn: $showMacros, icon: "chart.pie.fill", color: .blue)
-                        Divider().padding(.leading, 44)
-                        if !supplements.isEmpty {
-                            ToggleRow(title: "Supplements", isOn: $showSupplements, icon: "pills.fill", color: .green)
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Controls
+                        VStack(spacing: 0) {
+                            ToggleRow(title: "Calories", isOn: $showCalories, icon: "flame.fill", color: .orange)
                             Divider().padding(.leading, 44)
-                        }
-                        if !mealEntries.isEmpty {
-                            ToggleRow(title: "Meals", isOn: $showMeals, icon: "fork.knife", color: .yellow)
+                            ToggleRow(title: "Macros", isOn: $showMacros, icon: "chart.pie.fill", color: .blue)
                             Divider().padding(.leading, 44)
+                            if !supplements.isEmpty {
+                                ToggleRow(title: "Supplements", isOn: $showSupplements, icon: "pills.fill", color: .green)
+                                Divider().padding(.leading, 44)
+                            }
+                            if !mealEntries.isEmpty {
+                                ToggleRow(title: "Meals", isOn: $showMeals, icon: "fork.knife", color: .yellow)
+                                Divider().padding(.leading, 44)
+                            }
+                            if !cravings.isEmpty {
+                                ToggleRow(title: "Cravings", isOn: $showCravings, icon: "shield.fill", color: .pink)
+                                Divider().padding(.leading, 44)
+                            }
+                            
                         }
-                        if !cravings.isEmpty {
-                            ToggleRow(title: "Cravings", isOn: $showCravings, icon: "shield.fill", color: .pink)
-                            Divider().padding(.leading, 44)
-                        }
-                        if fastingMinutes > 0 {
-                            ToggleRow(title: "Fasting", isOn: $showFasting, icon: "clock.fill", color: .purple)
-                        }
-                    }
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .padding(.horizontal, 20)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .padding(.horizontal, 20)
 
-                    // Card Preview
-                    CustomizableShareCard(
-                        caloriesConsumed: caloriesConsumed,
-                        calorieGoal: calorieGoal,
-                        maintenanceCalories: maintenanceCalories,
-                        macros: macros,
-                        supplements: supplements,
-                        takenSupplements: takenSupplements,
-                        mealEntries: mealEntries,
-                        cravings: cravings,
-                        fastingMinutes: fastingMinutes,
-                        showCalories: showCalories,
-                        showMacros: showMacros,
-                        showSupplements: showSupplements,
-                        showMeals: showMeals,
-                        showCravings: showCravings,
-                        showFasting: showFasting,
-                        accentColor: accentColor
-                    )
-                    .padding(.horizontal, 20)
-                    .shadow(color: Color.black.opacity(0.1), radius: 15, x: 0, y: 8)
-                }
-                .padding(.bottom, 100) // Space for button
-            }
-            
-            // Share Button
-            VStack {
-                Button {
-                    shareCurrentCard()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.title2)
-                        Text("Share")
-                            .font(.headline)
-                            .fontWeight(.semibold)
+                        // Card Preview
+                        CustomizableShareCard(
+                            caloriesConsumed: caloriesConsumed,
+                            calorieGoal: calorieGoal,
+                            maintenanceCalories: maintenanceCalories,
+                            macros: macros,
+                            supplements: supplements,
+                            takenSupplements: takenSupplements,
+                            mealEntries: mealEntries,
+                            cravings: cravings,
+                            showCalories: showCalories,
+                            showMacros: showMacros,
+                            showSupplements: showSupplements,
+                            showMeals: showMeals,
+                            showCravings: showCravings,
+                            accentColor: accentColor
+                        )
+                        .dynamicTypeSize(.medium)
+                        .environment(\.sizeCategory, .medium)
+                        .padding(.horizontal, 20)
+                        .shadow(color: Color.black.opacity(0.1), radius: 15, x: 0, y: 8)
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .background(
-                        LinearGradient(colors: [accentColor, accentColor.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40) // Space for button
                 }
-                .buttonStyle(.plain)
+                
+                // Share Button
+                VStack {
+                    Button {
+                        shareCurrentCard()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.title2)
+                            Text("Share")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(
+                            LinearGradient(colors: [accentColor, accentColor.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 20)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 20)
+                .background(Color(UIColor.systemBackground).ignoresSafeArea())
             }
-            .padding(.vertical, 20)
-            .background(Color(UIColor.systemBackground).ignoresSafeArea())
         }
         .background(Color(UIColor.systemBackground))
         .presentationDetents([.large])
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(activityItems: shareItems)
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(activityItems: payload.items)
         }
         .onAppear {
             fetchMeals()
@@ -141,12 +141,10 @@ struct ShareProgressSheet: View {
     
     @MainActor
     private func renderCurrentCard() -> UIImage? {
-        let width: CGFloat = 375
-        let height: CGFloat = 667 // 9:16 aspect ratio
-        
+        let width: CGFloat = 540
+
+        // Render without an explicit background so exported image is transparent.
         let renderView = ZStack {
-            Color(UIColor.systemBackground)
-            
             CustomizableShareCard(
                 caloriesConsumed: caloriesConsumed,
                 calorieGoal: calorieGoal,
@@ -156,19 +154,20 @@ struct ShareProgressSheet: View {
                 takenSupplements: takenSupplements,
                 mealEntries: mealEntries,
                 cravings: cravings,
-                fastingMinutes: fastingMinutes,
                 showCalories: showCalories,
                 showMacros: showMacros,
                 showSupplements: showSupplements,
                 showMeals: showMeals,
                 showCravings: showCravings,
-                showFasting: showFasting,
-                accentColor: accentColor
+                accentColor: accentColor,
+                isExporting: true
             )
-            .padding()
         }
-        .frame(width: width, height: height)
-        
+        .frame(width: width)
+        .frame(maxHeight: 960)
+        .dynamicTypeSize(.medium)
+        .environment(\.sizeCategory, .medium)
+
         let renderer = ImageRenderer(content: renderView)
         renderer.scale = 3.0
         return renderer.uiImage
@@ -176,8 +175,7 @@ struct ShareProgressSheet: View {
     
     private func shareCurrentCard() {
         guard let image = renderCurrentCard() else { return }
-        shareItems = [image]
-        showShareSheet = true
+        sharePayload = SharePayload(items: [image])
     }
 }
 
@@ -213,37 +211,37 @@ struct CustomizableShareCard: View {
     var takenSupplements: Set<String>
     var mealEntries: [MealIntakeEntry]
     var cravings: [CravingItem]
-    var fastingMinutes: Int
-    
     var showCalories: Bool
     var showMacros: Bool
     var showSupplements: Bool
     var showMeals: Bool
     var showCravings: Bool
-    var showFasting: Bool
     
     var accentColor: Color
+    var isExporting: Bool = false
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("DAILY SUMMARY")
-                        .font(.caption)
+                        .font(.caption2)
                         .fontWeight(.black)
                         .foregroundStyle(accentColor)
-                        .tracking(1)
-                    
+                        .tracking(0.5)
+
                     Text(Date().formatted(date: .abbreviated, time: .omitted))
-                        .font(.title3)
-                        .fontWeight(.bold)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
                         .foregroundStyle(.primary)
                 }
                 Spacer()
                 PumpBranding()
+                    .scaleEffect(0.85)
             }
-            .padding(24)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 16)
             .background(accentColor.opacity(0.05))
             
             VStack(spacing: 24) {
@@ -276,13 +274,32 @@ struct CustomizableShareCard: View {
                     CravingsSection(cravings: cravings, color: .pink)
                 }
                 
-                if showFasting && fastingMinutes > 0 {
-                    FastingSection(minutes: fastingMinutes, color: .purple)
-                }
+                
             }
             .padding(24)
         }
-        .background(Color(UIColor.systemBackground))
+        .dynamicTypeSize(.medium)
+        .environment(\.sizeCategory, .medium)
+        .background {
+            if isExporting {
+                Color.clear
+            } else {
+                GeometryReader { geo in
+                        // Gradient originates from the bottom and fades to transparent at the top
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
+                                Color(red: 0.83, green: 0.99, blue: 0.94).opacity(0.3),
+                                Color.clear
+                            ]),
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                        .frame(height: max(0, geo.size.height * 0.7))
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                }
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
             RoundedRectangle(cornerRadius: 24)
@@ -369,9 +386,13 @@ struct MacrosSection: View {
                             Text(macro.title)
                                 .font(.caption)
                                 .fontWeight(.bold)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                             Text(macro.currentLabel)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                         Spacer()
                     }
@@ -419,18 +440,41 @@ struct SupplementsSection: View {
     var body: some View {
         VStack(spacing: 16) {
             SectionHeader(title: "SUPPLEMENTS", icon: "pills.fill", color: color)
-            
-            VStack(spacing: 8) {
-                ForEach(supplements.prefix(4)) { supplement in
-                    HStack {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                // Show up to 4 items. If there are more than 4, display the first 3
+                // and show a "+ X more" cell in place of the fourth.
+                let displayLimit = supplements.count > 4 ? 3 : min(supplements.count, 4)
+
+                ForEach(supplements.prefix(displayLimit)) { supplement in
+                    HStack(spacing: 8) {
                         Image(systemName: takenIDs.contains(supplement.id) ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(takenIDs.contains(supplement.id) ? color : .secondary)
                         Text(supplement.name)
                             .font(.subheadline)
                             .strikethrough(takenIDs.contains(supplement.id))
                             .foregroundStyle(takenIDs.contains(supplement.id) ? .secondary : .primary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         Spacer()
                     }
+                    .padding(8)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                if supplements.count > 4 {
+                    let moreCount = supplements.count - 3
+                    HStack(spacing: 8) {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(color)
+                        Text("+ \(moreCount) more")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
@@ -444,9 +488,12 @@ struct CravingsSection: View {
     var body: some View {
         VStack(spacing: 16) {
             SectionHeader(title: "CRAVINGS", icon: "shield.fill", color: color)
-            
-            VStack(spacing: 8) {
-                ForEach(cravings.prefix(3)) { craving in
+            // Display cravings in two columns like supplements. Show up to 4 items.
+            // If there are more than 4, show the first 3 and a "+ X more" cell.
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                let displayLimit = cravings.count > 4 ? 3 : min(cravings.count, 4)
+
+                ForEach(cravings.prefix(displayLimit)) { craving in
                     HStack {
                         Image(systemName: craving.isChecked ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(craving.isChecked ? color : .secondary)
@@ -454,45 +501,35 @@ struct CravingsSection: View {
                             .font(.subheadline)
                             .strikethrough(craving.isChecked)
                             .foregroundStyle(craving.isChecked ? .secondary : .primary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         Spacer()
                     }
+                    .padding(8)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                if cravings.count > 4 {
+                    let moreCount = cravings.count - 3
+                    HStack(spacing: 8) {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(color)
+                        Text("+ \(moreCount) more")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
     }
 }
 
-struct FastingSection: View {
-    var minutes: Int
-    var color: Color
-    
-    var hours: Int { minutes / 60 }
-    var mins: Int { minutes % 60 }
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            SectionHeader(title: "FASTING", icon: "clock.fill", color: color)
-            
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Protocol")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(hours):\(String(format: "%02d", mins))")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                }
-                Spacer()
-                Image(systemName: "timer")
-                    .font(.largeTitle)
-                    .foregroundStyle(color.opacity(0.5))
-            }
-            .padding(16)
-            .background(color.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-}
+
 
 struct SectionHeader: View {
     var title: String
@@ -519,14 +556,13 @@ struct PumpBranding: View {
                 .resizable()
                 .renderingMode(.original)
                 .aspectRatio(contentMode: .fit)
-                .frame(height: 18)
+                .frame(height: 28)
             Text("Trackerio")
-                .font(.caption)
-                .fontWeight(.bold)
-                .textCase(.uppercase)
+                .font(.subheadline)
+                .fontWeight(.semibold)
         }
         .foregroundStyle(.secondary.opacity(0.7))
-        .padding(.top, 8)
+        .padding(.top, 2)
     }
 }
 
@@ -540,4 +576,9 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+fileprivate struct SharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
 }

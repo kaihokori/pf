@@ -135,12 +135,28 @@ struct ProSubscriptionView: View {
 
                         ZStack(alignment: .top) {
                             // 4. Features Summary (now a reusable component)
-                            ProFeaturesListView(benefits: [
-                                ProBenefit(icon: "checkmark", title: "Unlimited macro, supplement, daily task tracking + more", description: ""),
-                                ProBenefit(icon: "checkmark", title: "Increased limits on timers, habits + more", description: ""),
-                                ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: ""),
-                                ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: ""),
-                                ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: "")
+                            ProFeaturesListView(categories: [
+                                ProBenefitCategory(name: "Nutrition Tracking", image: "leaf.fill", color: .green, benefits: [
+                                    ProBenefit(icon: "chart.pie.fill", title: "Macros", description: "Track unlimited macronutrients and calories."),
+                                    ProBenefit(icon: "pills.fill", title: "Supplements", description: "Log unlimited supplements and vitamins."),
+                                    ProBenefit(icon: "heart.fill", title: "Cravings", description: "Monitor your cravings with full access."),
+                                    ProBenefit(icon: "clock.fill", title: "Intermittent Fasting", description: "Access full intermittent fasting features.")
+                                ]),
+                                ProBenefitCategory(name: "Routine Management", image: "checklist.checked", color: .blue, benefits: [
+                                    ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organized."),
+                                    ProBenefit(icon: "timer", title: "Activity Timers", description: "Use up to 6 activity timers for your routines."),
+                                    ProBenefit(icon: "target", title: "Goals", description: "Set and track unlimited goals."),
+                                    ProBenefit(icon: "repeat", title: "Habits", description: "Build up to 8 habits to improve your lifestyle."),
+                                    ProBenefit(icon: "dollarsign.circle.fill", title: "Expense Tracker", description: "Manage your expenses with unlimited entries.")
+                                ]),
+                                ProBenefitCategory(name: "Workout Features", image: "figure.strengthtraining.traditional", color: .orange, benefits: [
+                                    ProBenefit(icon: "chart.bar.fill", title: "Weekly Progress", description: "Access unlimited weekly workout progress tracking."),
+                                    ProBenefit(icon: "capsule.fill", title: "Workout Supplements", description: "Log unlimited workout supplements.")
+                                ]),
+                                ProBenefitCategory(name: "Sports & Travel", image: "airplane", color: .pink, benefits: [
+                                    ProBenefit(icon: "sportscourt.fill", title: "Sports Features", description: "Unlock all sports tracking features."),
+                                    ProBenefit(icon: "airplane", title: "Travel Features", description: "Enjoy full access to travel-related functionalities.")
+                                ])
                             ])
                             .padding(.top, 10)
 
@@ -190,6 +206,8 @@ struct ProSubscriptionView: View {
                         }
                     }
                 }
+                .padding(.top, -20)
+                .padding(.bottom, 100) // Extra bottom padding to avoid overlap with CTA
                 
                 // Sticky CTA Button
                 VStack {

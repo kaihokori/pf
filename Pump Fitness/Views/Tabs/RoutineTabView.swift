@@ -385,6 +385,7 @@ struct RoutineTabView: View {
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
+    @State private var showRoutineShareSheet: Bool = false
     @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
     @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
 
@@ -456,15 +457,46 @@ struct RoutineTabView: View {
 
                             Button {
                                 showActivityTimersEditor = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                            }
-                            .buttonStyle(.plain)
+                                // Share CTA for Routine Snapshot
+                                Button {
+                                    showRoutineShareSheet = true
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.title2)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Share Routine")
+                                                .font(.headline)
+                                                .fontWeight(.semibold)
+                                            Text("Daily tasks, goals, habits, expenses")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 16)
+                                    .background(
+                                        LinearGradient(colors: [accentOverride ?? .accentColor, (accentOverride ?? .accentColor).opacity(0.8)], startPoint: .leading, endPoint: .trailing)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+                                    .padding(.horizontal, 18)
+                                    .padding(.top, 28)
+                                    .padding(.bottom, 36)
+                                }
+                                .buttonStyle(.plain)
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    }
+                                    .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
@@ -757,6 +789,38 @@ struct RoutineTabView: View {
                                 }
                             }
                         }
+
+                        // Share Routine CTA
+                        Button {
+                            showRoutineShareSheet = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.title2)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Share Routine")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                    Text("Tasks, goals, habits, expenses")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 16)
+                            .background(
+                                LinearGradient(colors: [accentOverride ?? .accentColor, (accentOverride ?? .accentColor).opacity(0.85)], startPoint: .leading, endPoint: .trailing)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 28)
+                            .padding(.bottom, 36)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 }
@@ -789,11 +853,20 @@ struct RoutineTabView: View {
             .sheet(isPresented: $showExpenseCategoriesEditor) {
                 ExpenseCategoriesEditorView(categories: $expenseCategories, currencySymbol: $expenseCurrencySymbol, onSave: applyExpenseCategoryChanges)
             }
+            .sheet(isPresented: $showRoutineShareSheet) {
+                RoutineShareSheet(
+                    accentColor: accentOverride ?? .accentColor,
+                    taskCompletionPercent: routineTaskCompletionPercent(),
+                    completedGoals: routineCompletedGoalsSnapshot(),
+                    habitStatuses: routineHabitSnapshots(),
+                    expenseBars: routineExpenseBars(),
+                    expenseCategories: expenseCategories
+                )
+            }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
             }
         }
-        .keyboardDismissToolbar()
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
         .onAppear {
@@ -2388,6 +2461,46 @@ extension RoutineTabView {
         }
 
         habitItems = resolved
+    }
+
+    private func routineTaskCompletionPercent() -> Int {
+        guard !dailyTaskItems.isEmpty else { return 0 }
+        let completed = dailyTaskItems.filter { $0.isCompleted }.count
+        return Int((Double(completed) / Double(dailyTaskItems.count)) * 100)
+    }
+
+    private func routineCompletedGoalsSnapshot() -> [GoalItem] {
+        let completed = goals.filter { $0.isCompleted }
+        let sorted = completed.sorted { $0.dueDate > $1.dueDate }
+        return Array(sorted.prefix(5))
+    }
+
+    private func routineHabitSnapshots() -> [RoutineHabitSnapshot] {
+        let dayIndex = weekdayIndex(for: selectedDate)
+        let fallbackColor = accentOverride ?? .accentColor
+        return habitItems.prefix(4).map { item in
+            let isCompleted: Bool
+            if item.weeklyProgress.indices.contains(dayIndex) {
+                isCompleted = item.weeklyProgress[dayIndex] == .tracked
+            } else {
+                isCompleted = false
+            }
+            let resolvedColor = Color(hex: item.colorHex) ?? fallbackColor
+            return RoutineHabitSnapshot(id: item.id, name: item.name, isCompleted: isCompleted, color: resolvedColor)
+        }
+    }
+
+    private func routineExpenseBars() -> [RoutineExpenseBar] {
+        let week = weekDates(for: selectedDate)
+        let cal = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateFormat = weekStartsOnMonday ? "EEE" : "E"
+
+        return week.map { date in
+            let total = expenseEntries.filter { cal.isDate($0.date, inSameDayAs: date) }.reduce(0) { $0 + $1.amount }
+            let label = formatter.string(from: date).uppercased()
+            return RoutineExpenseBar(id: date, label: label, total: total)
+        }
     }
 
     private func weekDates(for anchor: Date) -> [Date] {

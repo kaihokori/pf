@@ -1,44 +1,99 @@
 import SwiftUI
 
 struct ProFeaturesListView: View {
-    let benefits: [ProBenefit]
+    let categories: [ProBenefitCategory]
     @State private var isExpanded = false
-    
-    private let collapsedHeight: CGFloat = 220
+    @Environment(\.colorScheme) private var colorScheme
+
+    private let collapsedHeight: CGFloat = 260
+
+    private var totalBenefitCount: Int {
+        categories.reduce(into: 0) { partialResult, category in
+            partialResult += category.benefits.count
+        }
+    }
+
+    private func summaryLine(for category: ProBenefitCategory) -> String {
+        let titles = category.benefits.map { $0.title }
+        let prefix = titles.prefix(3).joined(separator: ", ")
+        let suffix = titles.count > 3 ? " + more" : ""
+        return prefix + suffix
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack {
-                ForEach(benefits) { benefit in
-                    HStack(alignment: .center, spacing: 8) {
-                        Image(systemName: benefit.icon)
-                            .foregroundStyle(.primary)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 10)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(benefit.title)
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(categories) { category in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                Image(systemName: category.image)
+                                    .foregroundStyle(category.color)
+                                    .font(.headline)
+                                    .frame(width: 24, height: 24)
+                                Text(category.name)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(category.benefits) { benefit in
+                                    HStack(alignment: .center, spacing: 8) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.primary)
+                                            .font(.title3)
+                                            .frame(width: 28)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(benefit.title)
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundStyle(.primary)
+                                                .multilineTextAlignment(.leading)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            if !benefit.description.isEmpty {
+                                                Text(benefit.description)
+                                                    .font(.footnote)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.leading)
+                                            }
+                                        }
+                                        Spacer()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(18)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(categories) { category in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: category.image)
+                                .foregroundStyle(category.color)
                                 .font(.headline)
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if !benefit.description.isEmpty {
-                                Text(benefit.description)
+                                .frame(width: 22, height: 22)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(category.name)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text(summaryLine(for: category))
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.leading)
                             }
+                            Spacer()
                         }
-                        Spacer()
                     }
-                    .padding(.vertical, 10)
                 }
+                .padding(.top, 24)
+                .padding(.horizontal, 18)
+                .padding(.bottom, -12)
+                .frame(height: collapsedHeight, alignment: .top)
+                .clipped()
             }
-            .padding()
-            .frame(height: (isExpanded || benefits.count <= 3) ? nil : collapsedHeight, alignment: .top)
-            .clipped()
-            
-            if benefits.count > 3 {
+
+            if totalBenefitCount > 3 {
                 Button(action: {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                         isExpanded.toggle()
@@ -50,17 +105,17 @@ struct ProFeaturesListView: View {
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                         } else {
-                            Text("See all \(benefits.count) features")
+                            Text("See all \(totalBenefitCount) features")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                         }
                         Image(systemName: "chevron.down")
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(colorScheme == .dark ? Color.white : Color.primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.06))
+                    .background(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
                 }
             }
         }
@@ -71,10 +126,15 @@ struct ProFeaturesListView: View {
 
 struct ProFeaturesListView_Previews: PreviewProvider {
     static var previews: some View {
-        ProFeaturesListView(benefits: [
-            ProBenefit(icon: "checkmark", title: "Unlimited macro, supplement, daily task tracking + more", description: ""),
-            ProBenefit(icon: "checkmark", title: "Increased limits on timers, habits + more", description: ""),
-            ProBenefit(icon: "checkmark", title: "Full access to expense tracking, travel planning + more", description: "")
+        ProFeaturesListView(categories: [
+            ProBenefitCategory(name: "Nutrition", image: "leaf.fill", color: .green, benefits: [
+                ProBenefit(icon: "chart.pie.fill", title: "Macros", description: "Track unlimited macronutrients and calories."),
+                ProBenefit(icon: "pills.fill", title: "Supplements", description: "Log unlimited supplements and vitamins.")
+            ]),
+            ProBenefitCategory(name: "Routine", image: "checklist.checked", color: .blue, benefits: [
+                ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organized."),
+                ProBenefit(icon: "timer", title: "Activity Timers", description: "Use up to 6 activity timers for your routines.")
+            ])
         ])
             .previewLayout(.sizeThatFits)
     }

@@ -925,6 +925,7 @@ class Account: ObservableObject {
     var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     var trialPeriodEnd: Date? = nil
+    var didCompleteOnboarding: Bool = false
 
     init(
         id: String? = UUID().uuidString,
@@ -966,7 +967,8 @@ class Account: ObservableObject {
         distanceGoal: Double = 3_000,
         weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults,
         activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers,
-        trialPeriodEnd: Date? = nil
+        trialPeriodEnd: Date? = nil,
+        didCompleteOnboarding: Bool = false
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -1007,7 +1009,8 @@ class Account: ObservableObject {
         self.teamMetrics = teamMetrics
         self.weightGroups = weightGroups
         self.activityTimers = activityTimers
-        
+        self.trialPeriodEnd = trialPeriodEnd
+        self.didCompleteOnboarding = didCompleteOnboarding
     }
 
     /// Safely sync cravings from Firestore on first appear. This will only

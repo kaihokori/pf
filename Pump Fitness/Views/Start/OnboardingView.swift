@@ -2,7 +2,6 @@ import SwiftUI
 import Combine
 import FirebaseAuth
 import SwiftData
-import Foundation
 
 struct OnboardingView: View {
     var initialName: String? = nil
@@ -430,7 +429,6 @@ struct OnboardingView: View {
                             }
                             _ = subscriptionManager.activateOnboardingTrialIfEligible()
                             hasCompletedOnboarding = true
-                            NotificationCenter.default.post(name: .appSoftReload, object: nil)
                             onComplete?()
                             dismiss()
                         }
@@ -772,43 +770,113 @@ private struct NutritionTrackingStepView: View {
                     .buttonStyle(.plain)
                 }
                 
-                LabeledNumericField(
-                    label: "Protein",
-                    value: Binding(
-                        get: { viewModel.proteinValue },
-                        set: { viewModel.updateMacroField(.protein, newValue: $0) }
-                    ),
-                    unitLabel: "g"
-                )
-
-                LabeledNumericField(
-                    label: "Fats",
-                    value: Binding(
-                        get: { viewModel.fatValue },
-                        set: { viewModel.updateMacroField(.fats, newValue: $0) }
-                    ),
-                    unitLabel: "g"
-                )
-
-                LabeledNumericField(
-                    label: "Carbohydrates",
-                    value: Binding(
-                        get: { viewModel.carbohydrateValue },
-                        set: { viewModel.updateMacroField(.carbohydrates, newValue: $0) }
-                    ),
-                    unitLabel: "g"
-                )
 
                 // Fibre field removed per request
 
-                LabeledNumericField(
-                    label: "Water Intake",
-                    value: Binding(
-                        get: { viewModel.waterIntakeValue },
-                        set: { viewModel.updateMacroField(.water, newValue: $0) }
-                    ),
-                    unitLabel: "ml"
-                )
+                // Protein
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Protein")
+                            .fontWeight(.medium)
+                        HStack(spacing: 4) {
+                            TextField("Amount", text: Binding(
+                                get: { viewModel.proteinValue },
+                                set: { viewModel.updateMacroField(.protein, newValue: $0) }
+                            ))
+                            .keyboardType(.decimalPad)
+                            .frame(width: 30)
+                            Text("g")
+                                .fixedSize()
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    // No remove for default macros - keep layout consistent
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.clear)
+                }
+                .padding()
+                .surfaceCard(12)
+
+                // Fats
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Fats")
+                            .fontWeight(.medium)
+                        HStack(spacing: 4) {
+                            TextField("Amount", text: Binding(
+                                get: { viewModel.fatValue },
+                                set: { viewModel.updateMacroField(.fats, newValue: $0) }
+                            ))
+                            .keyboardType(.decimalPad)
+                            .frame(width: 30)
+                            Text("g")
+                                .fixedSize()
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.clear)
+                }
+                .padding()
+                .surfaceCard(12)
+
+                // Carbohydrates
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Carbohydrates")
+                            .fontWeight(.medium)
+                        HStack(spacing: 4) {
+                            TextField("Amount", text: Binding(
+                                get: { viewModel.carbohydrateValue },
+                                set: { viewModel.updateMacroField(.carbohydrates, newValue: $0) }
+                            ))
+                            .keyboardType(.decimalPad)
+                            .frame(width: 30)
+                            Text("g")
+                                .fixedSize()
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.clear)
+                }
+                .padding()
+                .surfaceCard(12)
+
+                // Water Intake
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Water Intake")
+                            .fontWeight(.medium)
+                        HStack(spacing: 4) {
+                            TextField("Amount", text: Binding(
+                                get: { viewModel.waterIntakeValue },
+                                set: { viewModel.updateMacroField(.water, newValue: $0) }
+                            ))
+                            .keyboardType(.decimalPad)
+                            .frame(width: 30)
+                            Text("ml")
+                                .fixedSize()
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.clear)
+                }
+                .padding()
+                .surfaceCard(12)
 
                 // Single consolidated Auto button for macros
                 HStack {
@@ -828,10 +896,42 @@ private struct NutritionTrackingStepView: View {
                     .buttonStyle(.plain)
                 }
             }
+
+            if !viewModel.customMacros.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach($viewModel.customMacros) { $macro in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(macro.name)
+                                    .fontWeight(.medium)
+                                HStack(spacing: 4) {
+                                    TextField("Amount", value: $macro.target, format: .number)
+                                        .keyboardType(.decimalPad)
+                                        .frame(width: 30, alignment: .leading)
+                                        .multilineTextAlignment(.leading)
+                                    Text(macro.unit)
+                                        .fixedSize()
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button(action: { viewModel.removeCustomMacro(macro) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
             
-            // Quick Add
+            // Quick Add - hide presets that are already tracked (defaults + custom)
+            let trackedNames = Set(viewModel.customMacros.map { $0.name.lowercased() } + ["Protein", "Carbs", "Fats", "Sodium", "Water"].map { $0.lowercased() })
             let availableMacroPresets = MacroPreset.allCases.filter { preset in
-                !viewModel.customMacros.contains(where: { $0.name.lowercased() == preset.displayName.lowercased() })
+                !trackedNames.contains(preset.displayName.lowercased())
             }
 
             if !availableMacroPresets.isEmpty {
@@ -853,53 +953,29 @@ private struct NutritionTrackingStepView: View {
                 }
             }
 
-            SectionTitle("Custom Macros")
-            VStack(spacing: 8) {
-                ForEach($viewModel.customMacros) { $macro in
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(macro.name)
-                                .fontWeight(.medium)
-                            HStack(spacing: 8) {
-                                TextField("Amount", value: $macro.target, format: .number)
-                                    .keyboardType(.decimalPad)
-                                    .frame(width: 80)
-                                Text(macro.unit)
-                                    .frame(width: 50)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button(action: { viewModel.removeCustomMacro(macro) }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding()
-                    .surfaceCard(12)
-                }
+            // Custom macros are shown inline with tracked macros so they match styling
+            
 
-                HStack(spacing: 8) {
-                    TextField("Name", text: $viewModel.newMacroName)
-                        .frame(maxWidth: .infinity)
-                    TextField("Amount", text: $viewModel.newMacroAmount)
-                        .keyboardType(.decimalPad)
-                        .frame(width: 80)
-                    TextField("Unit", text: $viewModel.newMacroUnit)
-                        .frame(width: 50)
+            // Input row for adding a new custom macro (keeps same style)
+            HStack(spacing: 8) {
+                TextField("Name", text: $viewModel.newMacroName)
+                    .frame(maxWidth: .infinity)
+                TextField("Amount", text: $viewModel.newMacroAmount)
+                    .keyboardType(.decimalPad)
+                    .frame(width: 80)
+                TextField("Unit", text: $viewModel.newMacroUnit)
+                    .fixedSize()
 
-                    Button(action: { viewModel.addCustomMacro() }) {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(.accentColor)
-                            .font(.title2)
-                    }
-                    .disabled(!viewModel.canAddCustomMacros)
+                Button(action: { viewModel.addCustomMacro() }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.title2)
                 }
-                .padding()
-                .surfaceCard(12)
+                .disabled(!viewModel.canAddCustomMacros)
             }
+            .padding()
+            .surfaceCard(12)
+
             VStack(alignment: .center) {
                 Text("You can add up to \(viewModel.maxCustomMacros) Macros")
                 .font(.footnote)
@@ -1014,7 +1090,10 @@ private struct DailySupplementsStepView: View {
             // Quick Add
             SectionTitle("Quick Add")
             VStack(spacing: 8) {
-                ForEach(dailyPresets) { option in
+                let trackedNames = Set(viewModel.dailySupplements.map { $0.name.lowercased() })
+                let availablePresets = dailyPresets.filter { !trackedNames.contains($0.name.lowercased()) }
+
+                ForEach(availablePresets) { option in
                     HStack {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(option.name)
@@ -1189,6 +1268,7 @@ private struct WorkoutSupplementsStepView: View {
 
 private struct DailyTasksStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @FocusState private var isFocused: Bool
     
     private let taskPresets = ["Wake Up", "Coffee", "Stretch", "Lunch", "Workout"]
 
@@ -1266,9 +1346,10 @@ private struct DailyTasksStepView: View {
             }
 
             // Custom Task
-            SectionTitle("Custom Task")
+            SectionTitle("Custom Task", onIconTap: { isFocused = true })
             HStack(spacing: 12) {
                 TextField("Name", text: $viewModel.newTaskName)
+                    .focused($isFocused)
                 DatePicker("", selection: $viewModel.newTaskTime, displayedComponents: .hourAndMinute)
                     .labelsHidden()
                     .frame(maxWidth: 90)
@@ -1293,6 +1374,7 @@ private struct DailyTasksStepView: View {
 
 private struct GoalsStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @FocusState private var isFocused: Bool
     
     private let goalPresets = ["10 min Walk", "Read 10 pages", "Prep healthy lunch"]
 
@@ -1362,10 +1444,11 @@ private struct GoalsStepView: View {
             }
 
             // Custom Goal
-            SectionTitle("Custom Goal")
+            SectionTitle("Custom Goal", onIconTap: { isFocused = true })
             VStack(spacing: 8) {
                 HStack(spacing: 12) {
                     TextField("Title", text: $viewModel.newGoalTitle)
+                        .focused($isFocused)
                     DatePicker("", selection: $viewModel.newGoalDueDate, displayedComponents: .date)
                         .labelsHidden()
                     Spacer(minLength: 0)
@@ -1397,6 +1480,7 @@ private struct GoalsStepView: View {
 
 private struct HabitsStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @FocusState private var isFocused: Bool
     
     private let habitPresets = ["Morning Stretch", "Meditation", "Read"]
 
@@ -1450,9 +1534,10 @@ private struct HabitsStepView: View {
             }
 
             // Custom Habit
-            SectionTitle("Custom Habit")
+            SectionTitle("Custom Habit", onIconTap: { isFocused = true })
             HStack(spacing: 12) {
                 TextField("Name", text: $viewModel.newHabitName)
+                    .focused($isFocused)
                 Spacer(minLength: 0)
                 Button(action: { viewModel.addHabit() }) {
                     Image(systemName: "plus.circle.fill")
@@ -1662,39 +1747,32 @@ private struct SportsStepView: View {
 
 private struct TravelStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.accentColor.opacity(0.2), Color.blue.opacity(0.25)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(height: 220)
+        VStack(alignment: .center, spacing: 16) {
+            let imageName = colorScheme == .dark ? "travel_dark" : "travel_light"
+            Image(imageName)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .frame(height: 460)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 6)
+                .padding(.horizontal, 8)
 
-                Image("travel")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 140)
-                    .opacity(0.9)
-                    .padding(.leading, 16)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Travel light; we'll remember the plans.")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.primary)
-                    Text("You can add itineraries later from the Travel tab.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(16)
+            VStack(alignment: .center, spacing: 8) {
+                Text("Travel light; we'll remember the plans.")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
+                Text("You can add itineraries later from the Travel tab.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -1881,9 +1959,11 @@ public struct TextFieldWithLabel: View {
 
 public struct SectionTitle: View {
     var text: String
+    var onIconTap: (() -> Void)?
 
-    public init(_ text: String) {
+    public init(_ text: String, onIconTap: (() -> Void)? = nil) {
         self.text = text
+        self.onIconTap = onIconTap
     }
 
     public var body: some View {
@@ -1891,6 +1971,9 @@ public struct SectionTitle: View {
             Image(systemName: symbolFor(text))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .onTapGesture {
+                    onIconTap?()
+                }
             Text(text.uppercased())
                 .font(.caption)
                 .fontWeight(.semibold)
@@ -2082,10 +2165,6 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-
-extension Notification.Name {
-    static let appSoftReload = Notification.Name("app.softReload")
-}
     var currentStepIndex: Int {
         steps.firstIndex(of: currentStep) ?? 0
     }

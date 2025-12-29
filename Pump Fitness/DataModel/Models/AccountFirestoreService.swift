@@ -97,7 +97,8 @@ class AccountFirestoreService {
                 weightGroups: remoteWeightGroups,
                 // Preserve empty remote activity timers arrays rather than substituting defaults.
                 activityTimers: remoteActivityTimers,
-                trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue()
+                trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue(),
+                didCompleteOnboarding: data["didCompleteOnboarding"] as? Bool ?? false
             )
 
             completion(account)
@@ -192,6 +193,10 @@ class AccountFirestoreService {
         data["distanceGoal"] = account.distanceGoal
         let resolvedCurrency = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         data["expenseCurrencySymbol"] = resolvedCurrency.isEmpty ? Account.deviceCurrencySymbol : resolvedCurrency
+
+        if forceOverwrite || account.didCompleteOnboarding {
+            data["didCompleteOnboarding"] = account.didCompleteOnboarding
+        }
         
         if forceOverwrite || (account.startWeekOn?.isEmpty == false) {
             data["startWeekOn"] = account.startWeekOn ?? ""

@@ -11,6 +11,9 @@ class SubscriptionManager: ObservableObject {
     @Published var latestSubscriptionExpiration: Date? = nil
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var storefrontCurrencyCode: String? = nil
+    @Published var storefrontCountryCode: String? = nil
+    @Published var storefrontLocale: Locale = .autoupdatingCurrent
     @Published var isDebugForcingNoSubscription: Bool = UserDefaults.standard.bool(forKey: "debug.forceNoSubscription") {
         didSet {
             UserDefaults.standard.set(isDebugForcingNoSubscription, forKey: "debug.forceNoSubscription")
@@ -62,6 +65,7 @@ class SubscriptionManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
+            await updateStorefront()
             let products = try await Product.products(for: productIDs)
             // Sort by price to keep order consistent (or use another logic)
             self.products = products.sorted(by: { $0.price < $1.price })
@@ -192,6 +196,29 @@ class SubscriptionManager: ObservableObject {
 }
 
 private extension SubscriptionManager {
+    func updateStorefront() async {
+        guard let storefront = await Storefront.current else { return }
+        storefrontCurrencyCode = SubscriptionManager.currencyCode(for: storefront)
+        storefrontCountryCode = storefront.countryCode
+        storefrontLocale = SubscriptionManager.locale(for: storefront)
+    }
+
+    static func locale(for storefront: Storefront) -> Locale {
+        if #available(iOS 16, *) {
+            let region = Locale.Region(storefront.countryCode)
+            var components = Locale.Components()
+            components.region = region
+            return Locale(components: components)
+        }
+        let identifier = Locale.identifier(fromComponents: [NSLocale.Key.countryCode.rawValue: storefront.countryCode])
+        return Locale(identifier: identifier)
+    }
+
+    static func currencyCode(for storefront: Storefront) -> String? {
+        let locale = locale(for: storefront)
+        return locale.currency?.identifier
+    }
+
     static func loadTrialStartDate() -> Date? {
         let timestamp = UserDefaults.standard.double(forKey: trialStartDateKey)
         guard timestamp > 0 else { return nil }

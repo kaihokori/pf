@@ -1718,6 +1718,7 @@ struct MacroSummary: View {
                                                 .padding(.top, 0)
                                         }
                                         .frame(maxWidth: .infinity, minHeight: NutritionLayout.macroTileMinHeight, alignment: .top)
+                                        .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
                                 }

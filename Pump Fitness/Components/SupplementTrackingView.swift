@@ -173,8 +173,9 @@ private struct SupplementRing: View {
                 }
                 .frame(minHeight: 60, alignment: .top)
             }
+            .frame(maxWidth: .infinity, minHeight: minHeightForRing, alignment: .top)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, minHeight: minHeightForRing, alignment: .top)
         .buttonStyle(.plain)
         .contextMenu {
             Button(role: .destructive, action: onRemove) {

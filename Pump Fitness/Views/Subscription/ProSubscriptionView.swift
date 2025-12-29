@@ -222,6 +222,11 @@ struct ProSubscriptionView: View {
                                 }
                             }
                         }
+                        
+                        Text("Debug Region: \(subscriptionManager.storefrontLocale.identifier) (Raw: \(subscriptionManager.storefrontCountryCode ?? "nil"))")
+                            .font(.caption)
+                            .foregroundStyle(.gray)
+                            .padding(.top, 8)
                     }
                 }
                 .padding(.bottom, 100) // Extra bottom padding to avoid overlap with CTA
@@ -333,6 +338,7 @@ struct ProSubscriptionView: View {
 }
 
 struct SubscriptionOptionCard: View {
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     let product: Product
     let tag: String?
     let savings: String?
@@ -368,7 +374,7 @@ struct SubscriptionOptionCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     // Price block (total + weekly) kept together for consistent spacing
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(weeklyPriceString(for: product))
                             .font(.title2)
                             .fontWeight(.semibold)
@@ -377,9 +383,9 @@ struct SubscriptionOptionCard: View {
                             .minimumScaleFactor(0.8)
 
                         HStack(alignment: .center) {
-                            Text(product.price, format: product.priceFormatStyle)
-                              .font(.callout)
-                              .foregroundStyle(.secondary)
+                                                        Text(formattedPrice(for: product))
+                              .font(.footnote)
+                              .foregroundStyle(.secondary.opacity(0.8))
                             Spacer()
                             if let savings {
                                 Text(savings)
@@ -396,18 +402,18 @@ struct SubscriptionOptionCard: View {
                 .padding(.vertical)
                 .padding(.horizontal, 24)
             }
+            .frame(width: 260)
+            .frame(minHeight: 160)
+            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16.0)
+                    .stroke(isSelected ? Color.blue.opacity(0.85) : Color.clear, lineWidth: isSelected ? 2 : 0)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16.0))
         }
         .buttonStyle(PlainButtonStyle())
-        .frame(width: 260)
-        .frame(minHeight: 160)
         .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16.0)
-                .stroke(isSelected ? Color.blue.opacity(0.85) : Color.clear, lineWidth: isSelected ? 2 : 0)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 16.0))
         .padding(.vertical, 6)
     }
     
@@ -432,7 +438,7 @@ struct SubscriptionOptionCard: View {
     }
 
     func weeklyPriceString(for product: Product) -> String {
-        guard let subscription = product.subscription else { return product.displayPrice }
+        guard let subscription = product.subscription else { return formattedPrice(for: product) }
 
         let unit = subscription.subscriptionPeriod.unit
         let value = subscription.subscriptionPeriod.value
@@ -447,10 +453,10 @@ struct SubscriptionOptionCard: View {
             weeks = Decimal(value)
         }
 
-        guard weeks > 0 else { return product.displayPrice }
+        guard weeks > 0 else { return formattedPrice(for: product) }
         let perWeek = product.price / weeks
 
-        return perWeek.formatted(product.priceFormatStyle) + "/wk"
+        return perWeek.formatted(currencyFormatter(for: product)).replacingOccurrences(of: " ", with: "") + "/wk"
     }
 
     private func strippedProductName(_ name: String) -> String {
@@ -460,6 +466,18 @@ struct SubscriptionOptionCard: View {
             return String(name.dropFirst(prefix.count))
         }
         return name
+    }
+
+    private func currencyFormatter(for product: Product) -> Decimal.FormatStyle.Currency {
+        let currencyCode = subscriptionManager.storefrontCurrencyCode ?? product.priceFormatStyle.currencyCode
+        let locale = subscriptionManager.storefrontLocale
+        return .currency(code: currencyCode)
+            .presentation(.narrow)
+            .locale(locale)
+    }
+
+    private func formattedPrice(for product: Product) -> String {
+        product.price.formatted(currencyFormatter(for: product)).replacingOccurrences(of: " ", with: "")
     }
 }
 

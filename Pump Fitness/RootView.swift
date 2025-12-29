@@ -23,7 +23,6 @@ struct RootView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .nutrition
-    @State private var appReloadToken: UUID = UUID()
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     private var isPro: Bool {
         // Debug override to force free experience regardless of trial or purchases.
@@ -103,7 +102,6 @@ struct RootView: View {
     var body: some View {
         ZStack {
             rootContent
-                .id(appReloadToken)
                 .environmentObject(authViewModel)
                 .onAppear(perform: handleOnAppear)
                 .task { handleInitialTask() }
@@ -130,9 +128,6 @@ struct RootView: View {
                 }
                 .onChange(of: napSleepSecondsToday) { _, _ in
                     updateWeeklySleepEntry(for: selectedDate)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .appSoftReload)) { _ in
-                    performSoftReload()
                 }
 
             if isShowingSplash {
@@ -169,31 +164,32 @@ struct RootView: View {
     private func handleWelcomeCompletion() {
         hasCompletedOnboarding = true
         selectedTab = .nutrition
+        persistOnboardingCompletion()
         DispatchQueue.main.async {
             if isSignedIn {
                 hasCompletedOnboarding = true
                 selectedTab = .nutrition
+                persistOnboardingCompletion()
             }
         }
     }
 
-    private func performSoftReload() {
-        // Rehydrate local state from persisted Account/Day after onboarding or reassessment without killing the app.
-        initializeRestDaysFromLocal()
-        initializeDailyGoalsFromLocal()
-        initializeWeightTrackingFromLocal()
-        initializeActivityTimersFromLocal()
-        initializeGoalsFromLocal()
-        initializeGroceryListFromLocal()
-        initializeExpenseCategoriesFromLocal()
-        initializeHabitsFromLocal()
-        initializeTrackedMacrosFromLocal()
-        initializeItineraryEventsFromLocal()
-        initializeMealRemindersFromLocal()
-        loadCravingsFromLocal()
-        loadDay(for: selectedDate)
-        appReloadToken = UUID()
-        selectedTab = .nutrition
+    private func persistOnboardingCompletion() {
+        guard let account = fetchAccount() else { return }
+
+        account.didCompleteOnboarding = true
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to persist onboarding completion locally: \(error)")
+        }
+
+        accountFirestoreService.saveAccount(account, forceOverwrite: true) { success in
+            if !success {
+                print("RootView: failed to persist onboarding completion to Firestore")
+            }
+        }
     }
 
     private func handleOnAppear() {
@@ -526,8 +522,11 @@ struct RootView: View {
         accountFirestoreService.fetchAccount(withId: uid) { account in
             DispatchQueue.main.async {
                 if let fetched = account, let name = fetched.name, !name.isEmpty {
-                    hasCompletedOnboarding = true
-                    selectedTab = .nutrition
+                    let onboardingComplete = fetched.didCompleteOnboarding || hasCompletedOnboarding
+                    hasCompletedOnboarding = onboardingComplete
+                    if onboardingComplete {
+                        selectedTab = .nutrition
+                    }
 
                     var resolvedTrackedMacros = fetched.trackedMacros
 
@@ -706,18 +705,23 @@ private struct WelcomeVideoSplashView: View {
     @Environment(\.colorScheme) private var colorScheme
     var onFinished: () -> Void
 
-    @State private var player: AVPlayer? = nil
+    @State private var player: AVQueuePlayer? = nil
 
     var body: some View {
         ZStack {
-            // Background layer respects appearance so letterboxing shows correct color
             let background: Color = colorScheme == .dark ? .black : .white
             background.ignoresSafeArea()
 
-            if let player {
-                VideoPlayer(player: player)
-                    .ignoresSafeArea()
-                    .onAppear { player.play() }
+            GeometryReader { proxy in
+                if let player {
+                    // Constrain the player relative to the available view size
+                    PlayerLayerView(player: player)
+                        .frame(width: proxy.size.width * 0.7, height: proxy.size.height * 0.5)
+                        .cornerRadius(12)
+                        .shadow(radius: 8)
+                        .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                        .onAppear { player.play() }
+                }
             }
         }
         .onAppear(perform: setupPlayer)
@@ -735,11 +739,45 @@ private struct WelcomeVideoSplashView: View {
         }
 
         let item = AVPlayerItem(url: url)
-        let newPlayer = AVPlayer(playerItem: item)
-        player = newPlayer
+        let queue = AVQueuePlayer(items: [item])
+        player = queue
 
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
-            onFinished()
+        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: nil) { _ in
+            Task { @MainActor in
+                onFinished()
+            }
+        }
+    }
+}
+
+private struct PlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer?
+
+    func makeUIView(context: Context) -> UIView {
+        let view = PlayerContainer(frame: .zero)
+        view.player = player
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        (uiView as? PlayerContainer)?.player = player
+    }
+
+    private final class PlayerContainer: UIView {
+        var player: AVPlayer? {
+            didSet { (layer as? AVPlayerLayer)?.player = player }
+        }
+
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            (layer as? AVPlayerLayer)?.videoGravity = .resizeAspect
+            clipsToBounds = true
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
         }
     }
 }
@@ -2006,6 +2044,8 @@ private extension RootView {
                     local.stepsGoal = fetched.stepsGoal
                     local.distanceGoal = fetched.distanceGoal
                 local.activityTimers = fetched.activityTimers
+                local.trialPeriodEnd = fetched.trialPeriodEnd
+                local.didCompleteOnboarding = fetched.didCompleteOnboarding
                 local.weightGroups = fetched.weightGroups
                 try modelContext.save()
                 weightGroups = local.weightGroups

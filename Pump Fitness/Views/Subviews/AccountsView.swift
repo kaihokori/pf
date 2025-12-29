@@ -13,6 +13,7 @@ import PhotosUI
 import UIKit
 import FirebaseAuth
 import HealthKit
+import TipKit
 
 struct AccountsView: View {
     @Binding var account: Account
@@ -283,6 +284,26 @@ struct AccountsView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
+
+                            Button {
+                                if #available(iOS 17.0, *) {
+                                    try? Tips.resetDatastore()
+                                    NutritionTips.currentStep = 0
+                                    WorkoutTips.currentStep = 0
+                                    RoutineTips.currentStep = 0
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Reset TipKit Memory (Debug)")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Reset all tips to appear again.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
                             #endif
                         }
                         
@@ -382,13 +403,13 @@ struct AccountsView: View {
                     if success {
                         dismiss()
                         // Wait for view to disappear to avoid accessing deleted objects
-                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        try? await Task.sleep(nanoseconds: 300_000_000)
                         await viewModel.deleteLocalData(in: modelContext)
                     } else if viewModel.requiresRecentLoginEncountered {
                         // If deletion failed due to requiring recent auth, sign the user out automatically
                         await viewModel.signOut(in: modelContext)
                         dismiss()
-                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        try? await Task.sleep(nanoseconds: 300_000_000)
                         await viewModel.deleteLocalData(in: modelContext)
                     } else {
                         // Other failures are already logged by the view model

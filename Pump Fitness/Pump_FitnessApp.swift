@@ -8,7 +8,9 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+#if canImport(TipKit)
 import TipKit
+#endif
 
 @main
 struct Pump_FitnessApp: App {
@@ -19,14 +21,20 @@ struct Pump_FitnessApp: App {
     init() {
         FirebaseApp.configure()
         
-        if #available(iOS 17.0, *) {
+        #if canImport(TipKit)
+        if #available(iOS 17.4, *) {
             // try? Tips.resetDatastore()
-
-            try? Tips.configure([
-                .displayFrequency(.immediate),
-                .datastoreLocation(.applicationDefault)
-            ])
+            do {
+                try Tips.configure([
+                    .displayFrequency(.immediate),
+                    .datastoreLocation(.applicationDefault)
+                ])
+            } catch {
+                // Avoid crashing on unexpected TipKit failures
+                print("TipKit configure failed: \(error)")
+            }
         }
+        #endif
         
         UserDefaults.standard.register(defaults: [
             ThemeManager.defaultsKey: AppTheme.multiColour.rawValue

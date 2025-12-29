@@ -84,30 +84,51 @@ struct TravelTabView: View {
                         } label: {
                             VStack(spacing: 8) {
                                 HStack {
-                                    Image("logo")
-                                        .resizable()
-                                        .renderingMode(.original)
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(height: 40)
-                                        .padding(.leading, 4)
-                                        .offset(y: 6)
+                                    let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                    if let accent {
+                                        Image("logo")
+                                            .resizable()
+                                            .renderingMode(.template)
+                                            .foregroundStyle(accent)
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(height: 40)
+                                            .padding(.leading, 4)
+                                            .offset(y: 6)
+                                    } else {
+                                        Image("logo")
+                                            .resizable()
+                                            .renderingMode(.original)
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(height: 40)
+                                            .padding(.leading, 4)
+                                            .offset(y: 6)
+                                    }
                                     
                                     Text("PRO")
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
-                                        .foregroundColor(.white)
+                                        .foregroundStyle(accent ?? Color.white)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(
                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .fill(LinearGradient(
-                                                    gradient: Gradient(colors: [
-                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                    ]),
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ))
+                                                .fill(
+                                                    accent.map {
+                                                        LinearGradient(
+                                                            gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    } ?? LinearGradient(
+                                                        gradient: Gradient(colors: [
+                                                            Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                            Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                        ]),
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    )
+                                                )
                                         )
                                         .offset(y: 6)
                                 }

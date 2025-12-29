@@ -57,7 +57,7 @@ struct DailyTasksSection: View {
                                         let scale = isCentered ? maxScale : minScale
 
                                         VStack(spacing: 4) {
-                                            DailyTaskCircle(item: task, isCentered: isCentered) {
+                                            DailyTaskCircle(item: task, isCentered: isCentered, accentColorOverride: accentColorOverride) {
                                                 toggleTask(withId: task.id)
                                             } onCenter: {
                                                 withAnimation(.spring()) {
@@ -196,11 +196,23 @@ struct DailyTasksSection: View {
 }
 
 private struct DailyTaskCircle: View {
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     var item: DailyTaskItem
     var isCentered: Bool
+    var accentColorOverride: Color?
     var onToggle: () -> Void
     var onCenter: () -> Void
     var onRemove: () -> Void
+
+    private var effectiveColor: Color {
+        if themeManager.selectedTheme == .multiColour {
+            return accentColorOverride ?? item.color
+        } else {
+            return themeManager.selectedTheme.accent(for: colorScheme)
+        }
+    }
 
     var body: some View {
         Button(action: {
@@ -214,13 +226,13 @@ private struct DailyTaskCircle: View {
                 ZStack {
                     // base ring
                     Circle()
-                        .stroke(item.color.opacity(0.18), lineWidth: 6)
+                        .stroke(effectiveColor.opacity(0.18), lineWidth: 6)
                         .frame(width: 54, height: 54)
 
                     // progress ring (trim) — matches SupplementRing style
                     Circle()
                         .trim(from: 0, to: item.isCompleted ? 1 : 0)
-                        .stroke(item.color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .stroke(effectiveColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: 54, height: 54)
 
@@ -228,11 +240,11 @@ private struct DailyTaskCircle: View {
                     if item.isCompleted {
                         Image(systemName: "checkmark")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(item.color)
+                            .foregroundStyle(effectiveColor)
                     } else {
                         Text(item.time)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(item.color)
+                            .foregroundStyle(effectiveColor)
                     }
                 }
                 .padding(.bottom, 2)
@@ -285,6 +297,7 @@ struct DailyTasksSection_Previews: PreviewProvider {
         StatefulPreviewWrapper(DailyTaskItem.defaultTasks) { binding in
             DailyTasksSection(accentColorOverride: nil, tasks: binding, onToggle: { _, _ in }, onRemove: { _ in })
                 .previewLayout(.sizeThatFits)
+                .environmentObject(ThemeManager())
         }
     }
 }

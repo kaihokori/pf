@@ -12,14 +12,24 @@ struct HeaderComponent: View {
 
     private var proBadgeGradient: LinearGradient {
         if isPro {
-            return LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.74, green: 0.43, blue: 0.97),
-                    Color(red: 0.83, green: 0.99, blue: 0.94)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if themeManager.selectedTheme == .multiColour {
+                return LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            } else {
+                // Use the selected theme's accent color for a cohesive badge in external themes
+                let accent = themeManager.selectedTheme.accent(for: colorScheme)
+                return LinearGradient(
+                    gradient: Gradient(colors: [accent, accent.opacity(0.85)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         } else {
             // Non-pro users see a muted grey badge instead of the colorful gradient
             return LinearGradient(
@@ -45,7 +55,7 @@ struct HeaderComponent: View {
                     .offset(y: 6)
                 
                 Button(action: { showProSheet = true }) {
-                    Text("PRO")
+                    Text("Pro")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
@@ -70,7 +80,7 @@ struct HeaderComponent: View {
                     .offset(y: 6)
                 
                 Button(action: { showProSheet = true }) {
-                    Text("PRO")
+                    Text("Pro")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)

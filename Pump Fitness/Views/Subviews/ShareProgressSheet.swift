@@ -455,8 +455,6 @@ struct SupplementsSection: View {
         VStack(spacing: 16) {
             SectionHeader(title: "SUPPLEMENTS", icon: "pills.fill", color: color)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                // Show up to 4 items. If there are more than 4, display the first 3
-                // and show a "+ X more" cell in place of the fourth.
                 let displayLimit = supplements.count > 4 ? 3 : min(supplements.count, 4)
 
                 ForEach(supplements.prefix(displayLimit)) { supplement in
@@ -502,8 +500,6 @@ struct CravingsSection: View {
     var body: some View {
         VStack(spacing: 16) {
             SectionHeader(title: "CRAVINGS", icon: "shield.fill", color: color)
-            // Display cravings in two columns like supplements. Show up to 4 items.
-            // If there are more than 4, show the first 3 and a "+ X more" cell.
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 let displayLimit = cravings.count > 4 ? 3 : min(cravings.count, 4)
 

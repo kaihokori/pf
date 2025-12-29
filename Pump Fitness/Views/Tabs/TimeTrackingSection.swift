@@ -26,7 +26,7 @@ struct TimeTrackingSection: View {
     @AppStorage("timetracking.stopwatchStart") private var storedStopwatchStart: Double = 0
     @AppStorage("timetracking.stopwatchAccum") private var storedStopwatchAccum: Double = 0
     @AppStorage("timetracking.timerEnd") private var storedTimerEnd: Double = 0
-    @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = false
+    @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = true
 
     @State private var stopwatchStart: Date?
     @State private var stopwatchAccumulated: TimeInterval = 0
@@ -39,6 +39,29 @@ struct TimeTrackingSection: View {
     private var tint: Color { accentColorOverride ?? .accentColor }
     private var stopwatchTint: Color { Color(hex: config.stopwatchColorHex) ?? tint }
     private var timerTint: Color { Color(hex: config.timerColorHex) ?? tint }
+
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var baseTint: Color { accentColorOverride ?? .accentColor }
+    private var effectiveTint: Color {
+        if themeManager.selectedTheme == .multiColour { return baseTint }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    private var effectiveStopwatchTint: Color {
+        if themeManager.selectedTheme == .multiColour {
+            return Color(hex: config.stopwatchColorHex) ?? baseTint
+        }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    private var effectiveTimerTint: Color {
+        if themeManager.selectedTheme == .multiColour {
+            return Color(hex: config.timerColorHex) ?? baseTint
+        }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
 
     private var stopwatchTargetSeconds: Double {
         max(1, Double(config.stopwatchTargetMinutes * 60))
@@ -79,7 +102,7 @@ struct TimeTrackingSection: View {
                     timeLabel: formatHMS(stopwatchElapsed),
                     nextLabel: stopwatchStart.map { "Started \(timeString(from: $0))" } ?? "",
                     progress: stopwatchProgress,
-                    tint: stopwatchTint,
+                    tint: effectiveStopwatchTint,
                     primaryButtonTitle: stopwatchStart == nil ? "Start" : "Pause",
                     primaryButtonAction: toggleStopwatch,
                     secondaryButtonTitle: "Reset",
@@ -94,7 +117,7 @@ struct TimeTrackingSection: View {
                     timeLabel: formatMMSS(timerRemaining),
                     nextLabel: timerIsRunning ? "Ends \(timeString(from: timerEndDate ?? now))" : "",
                     progress: timerProgress,
-                    tint: timerTint,
+                    tint: effectiveTimerTint,
                     primaryButtonTitle: timerIsRunning ? "Stop" : "Start",
                     primaryButtonAction: toggleTimer,
                     secondaryButtonTitle: "Reset",
@@ -342,6 +365,9 @@ struct TimeTrackingEditorSheet: View {
     @Binding var config: TimeTrackingConfig
     var onSave: (TimeTrackingConfig) -> Void = { _ in }
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     @State private var working = TimeTrackingConfig.defaultConfig
     @State private var hasLoaded = false
     @State private var showColorPickerSheet = false
@@ -368,6 +394,7 @@ struct TimeTrackingEditorSheet: View {
                                 minutesBinding: minuteBinding(for: .stopwatch),
                                 colorHex: working.stopwatchColorHex,
                                 onColorTap: {
+                                    guard themeManager.selectedTheme == .multiColour else { return }
                                     colorPickerTarget = .stopwatch
                                     showColorPickerSheet = true
                                 },
@@ -382,6 +409,7 @@ struct TimeTrackingEditorSheet: View {
                                 minutesBinding: minuteBinding(for: .timer),
                                 colorHex: working.timerColorHex,
                                 onColorTap: {
+                                    guard themeManager.selectedTheme == .multiColour else { return }
                                     colorPickerTarget = .timer
                                     showColorPickerSheet = true
                                 },
@@ -428,6 +456,7 @@ struct TimeTrackingEditorSheet: View {
             .presentationDragIndicator(.visible)
         }
     }
+
 
     private func loadInitial() {
         guard !hasLoaded else { return }
@@ -507,15 +536,24 @@ private struct TrackedTimerRow: View {
     let minMinutes: Int
     let maxMinutes: Int
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(spacing: 12) {
+            let displayColor: Color = {
+                if themeManager.selectedTheme == .multiColour { return (Color(hex: colorHex) ?? Color.accentColor) }
+                return themeManager.selectedTheme.accent(for: colorScheme)
+            }()
+
             Button(action: onColorTap) {
                 Circle()
-                    .fill((Color(hex: colorHex) ?? Color.accentColor).opacity(0.15))
+                    .fill(displayColor.opacity(0.15))
                     .frame(width: 44, height: 44)
-                    .overlay(Image(systemName: "clock").foregroundStyle((Color(hex: colorHex) ?? Color.accentColor)))
+                    .overlay(Image(systemName: "clock").foregroundStyle(displayColor))
             }
             .buttonStyle(.plain)
+            .disabled(themeManager.selectedTheme != .multiColour)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(title)
@@ -565,6 +603,7 @@ struct TimeTrackingSection_Previews: PreviewProvider {
     @State static var config = TimeTrackingConfig.defaultConfig
     static var previews: some View {
         TimeTrackingSection(accentColorOverride: .orange, config: $config)
+            .environmentObject(ThemeManager())
             .previewLayout(.sizeThatFits)
             .padding()
     }

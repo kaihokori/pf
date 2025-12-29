@@ -1055,10 +1055,11 @@ struct SportsTabView: View {
                             } else {
                                 VStack(alignment: .leading, spacing: 0) {
                                     ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
-                                    VStack(alignment: .leading, spacing: 10) {
+                                        let displayColor: Color = themeManager.selectedTheme == .multiColour ? sport.color : themeManager.selectedTheme.accent(for: colorScheme)
+                                        VStack(alignment: .leading, spacing: 10) {
                                         HStack(spacing: 10) {
                                             Circle()
-                                                .fill(sport.color)
+                                                .fill(displayColor)
                                                 .frame(width: 16, height: 16)
 
                                             Text(sport.name)
@@ -1098,7 +1099,8 @@ struct SportsTabView: View {
                                                     metric: metric,
                                                     activities: sport.activities,
                                                     historyDays: historyDays,
-                                                    anchorDate: selectedDate
+                                                    anchorDate: selectedDate,
+                                                    accentOverride: themeManager.selectedTheme == .multiColour ? nil : displayColor
                                                 )
                                                 .frame(height: 140)
                                                 .padding(.bottom, 8)
@@ -1213,30 +1215,51 @@ struct SportsTabView: View {
                                 
                                 VStack(spacing: 8) {
                                     HStack {
-                                        Image("logo")
-                                            .resizable()
-                                            .renderingMode(.original)
-                                            .aspectRatio(contentMode: .fit)
-                                            .frame(height: 40)
-                                            .padding(.leading, 4)
-                                            .offset(y: 6)
+                                        let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                        if let accent {
+                                            Image("logo")
+                                                .resizable()
+                                                .renderingMode(.template)
+                                                .foregroundStyle(accent)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(height: 40)
+                                                .padding(.leading, 4)
+                                                .offset(y: 6)
+                                        } else {
+                                            Image("logo")
+                                                .resizable()
+                                                .renderingMode(.original)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(height: 40)
+                                                .padding(.leading, 4)
+                                                .offset(y: 6)
+                                        }
                                         
                                         Text("PRO")
                                             .font(.subheadline)
                                             .fontWeight(.semibold)
-                                            .foregroundColor(.white)
+                                            .foregroundStyle(accent ?? Color.white)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 4)
                                             .background(
                                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                    .fill(LinearGradient(
-                                                        gradient: Gradient(colors: [
-                                                            Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                            Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                        ]),
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    ))
+                                                    .fill(
+                                                        accent.map {
+                                                            LinearGradient(
+                                                                gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                startPoint: .topLeading,
+                                                                endPoint: .bottomTrailing
+                                                            )
+                                                        } ?? LinearGradient(
+                                                            gradient: Gradient(colors: [
+                                                                Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                            ]),
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    )
                                             )
                                             .offset(y: 6)
                                     }
@@ -1303,7 +1326,7 @@ struct SportsTabView: View {
                     sportName: sports[idx].name,
                     metrics: $sports[idx].metrics,
                     presets: Self.metricPresets,
-                    accent: sports[idx].color
+                    accent: themeManager.selectedTheme == .multiColour ? sports[idx].color : themeManager.selectedTheme.accent(for: colorScheme)
                 ) { updated in
                     sports[idx].metrics = updated
                     sportConfigs = configs(from: sports)
@@ -1331,7 +1354,7 @@ struct SportsTabView: View {
                     sportName: sports[idx].name,
                     metrics: sports[idx].metrics,
                     defaultDate: baseDate,
-                    accent: sports[idx].color,
+                    accent: themeManager.selectedTheme == .multiColour ? sports[idx].color : themeManager.selectedTheme.accent(for: colorScheme),
                     existingActivity: existingActivity
                 ) { activity in
                     let record = record(from: activity, metrics: sports[idx].metrics, sportName: sports[idx].name, color: sports[idx].color, existingId: activity.recordId)
@@ -1831,10 +1854,12 @@ private struct SoloPlayMetricsEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var metrics: [SoloMetric]
     var onSave: ([SoloMetric]) -> Void
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
     @State private var working: [SoloMetric] = []
     @State private var newName: String = ""
     @State private var hasLoaded = false
+    @State private var showProSubscription = false
 
     private let presets: [String] = ["Distance", "Laps", "Speed", "Rounds"]
     private let maxTracked = 6
@@ -1935,34 +1960,6 @@ private struct SoloPlayMetricsEditorSheet: View {
                         }
                     }
 
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-
-                                Text("Unlock more grocery slots + other benefits")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .surfaceCard(16)
-                    }
-                    .buttonStyle(.plain)
-
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Add Custom Metric")
                             .font(.subheadline.weight(.semibold))
@@ -1999,6 +1996,10 @@ private struct SoloPlayMetricsEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitial() {
@@ -2224,10 +2225,12 @@ private struct TeamPlayMetricsEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var metrics: [TeamMetric]
     var onSave: ([TeamMetric]) -> Void
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
     @State private var working: [TeamMetric] = []
     @State private var newName: String = ""
     @State private var hasLoaded = false
+    @State private var showProSubscription = false
 
     private let presets: [String] = ["Attempts Made", "Attempts Missed", "Assists"]
     private let maxTracked = 6
@@ -2335,34 +2338,6 @@ private struct TeamPlayMetricsEditorSheet: View {
                         }
                     }
 
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-
-                                Text("Unlock more grocery slots + other benefits")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .surfaceCard(16)
-                    }
-                    .buttonStyle(.plain)
-
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Custom Metric")
                             .font(.subheadline.weight(.semibold))
@@ -2406,6 +2381,10 @@ private struct TeamPlayMetricsEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitial() {
@@ -2493,6 +2472,8 @@ private struct SportsEditorSheet: View {
     @State private var hasLoaded = false
     @State private var showColorPickerSheet = false
     @State private var colorPickerSportID: UUID? = nil
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     private var availablePresets: [SportsTabView.SportPreset] {
         presets.filter { preset in
@@ -2513,18 +2494,22 @@ private struct SportsEditorSheet: View {
                                     let binding = $working[idx]
                                     HStack(spacing: 12) {
                                         Button(action: {
+                                            guard themeManager.selectedTheme == .multiColour else { return }
                                             colorPickerSportID = sport.id
                                             showColorPickerSheet = true
                                         }) {
+                                            let displayColor: Color = themeManager.selectedTheme == .multiColour ? binding.color.wrappedValue : themeManager.selectedTheme.accent(for: colorScheme)
+
                                             Circle()
-                                                .fill(binding.color.wrappedValue.opacity(0.15))
+                                                .fill(displayColor.opacity(0.15))
                                                 .frame(width: 44, height: 44)
                                                 .overlay(
                                                     Image(systemName: "sportscourt")
-                                                        .foregroundStyle(binding.color.wrappedValue)
+                                                        .foregroundStyle(displayColor)
                                                 )
                                         }
                                         .buttonStyle(.plain)
+                                        .disabled(themeManager.selectedTheme != .multiColour)
 
                                         VStack(alignment: .leading, spacing: 6) {
                                             TextField("Name", text: binding.name)
@@ -2556,12 +2541,14 @@ private struct SportsEditorSheet: View {
                             VStack(spacing: 12) {
                                 ForEach(availablePresets) { preset in
                                     HStack(spacing: 14) {
+                                        let presetColor: Color = themeManager.selectedTheme == .multiColour ? preset.color : themeManager.selectedTheme.accent(for: colorScheme)
+
                                         Circle()
-                                            .fill(preset.color.opacity(0.15))
+                                            .fill(presetColor.opacity(0.15))
                                             .frame(width: 44, height: 44)
                                             .overlay(
                                                 Image(systemName: "sportscourt")
-                                                    .foregroundStyle(preset.color)
+                                                    .foregroundStyle(presetColor)
                                             )
 
                                         VStack(alignment: .leading) {
@@ -2579,7 +2566,7 @@ private struct SportsEditorSheet: View {
                                         } label: {
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 24, weight: .semibold))
-                                                .foregroundStyle(preset.color)
+                                                .foregroundStyle(themeManager.selectedTheme == .multiColour ? preset.color : themeManager.selectedTheme.accent(for: colorScheme))
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -2603,7 +2590,7 @@ private struct SportsEditorSheet: View {
                             Button(action: addCustomSport) {
                                 Image(systemName: "plus.circle.fill")
                                     .font(.system(size: 28, weight: .semibold))
-                                    .foregroundStyle(newColor)
+                                    .foregroundStyle(themeManager.selectedTheme == .multiColour ? newColor : themeManager.selectedTheme.accent(for: colorScheme))
                             }
                             .buttonStyle(.plain)
                             .disabled(!canAddCustomSport)
@@ -2638,6 +2625,7 @@ private struct SportsEditorSheet: View {
             .presentationDragIndicator(.visible)
         }
     }
+
 
     private var canAddCustomSport: Bool {
         !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -2708,6 +2696,8 @@ private struct SportMetricsEditorSheet: View {
     @State private var hasLoaded = false
     @State private var showColorPickerSheet = false
     @State private var colorPickerMetricID: UUID? = nil
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     private var availablePresets: [SportsTabView.SportMetricPreset] {
         let existingKeys = Set(working.map { $0.key })
@@ -2730,18 +2720,22 @@ private struct SportMetricsEditorSheet: View {
                                     let binding = $working[idx]
                                     HStack(spacing: 12) {
                                         Button(action: {
+                                            guard themeManager.selectedTheme == .multiColour else { return }
                                             colorPickerMetricID = metric.id
                                             showColorPickerSheet = true
                                         }) {
+                                            let displayColor: Color = themeManager.selectedTheme == .multiColour ? binding.color.wrappedValue : themeManager.selectedTheme.accent(for: colorScheme)
+
                                             Circle()
-                                                .fill(binding.color.wrappedValue.opacity(0.15))
+                                                .fill(displayColor.opacity(0.15))
                                                 .frame(width: 44, height: 44)
                                                 .overlay(
                                                     Image(systemName: "chart.bar.fill")
-                                                        .foregroundStyle(binding.color.wrappedValue)
+                                                        .foregroundStyle(displayColor)
                                                 )
                                         }
                                         .buttonStyle(.plain)
+                                        .disabled(themeManager.selectedTheme != .multiColour)
 
                                         VStack(alignment: .leading, spacing: 6) {
                                             TextField("Name", text: binding.label)
@@ -2774,13 +2768,14 @@ private struct SportMetricsEditorSheet: View {
                             MacroEditorSectionHeader(title: "Quick Add")
                             VStack(spacing: 12) {
                                 ForEach(availablePresets) { preset in
+                                    let presetColor: Color = themeManager.selectedTheme == .multiColour ? preset.color : themeManager.selectedTheme.accent(for: colorScheme)
                                     HStack(spacing: 14) {
                                         Circle()
-                                            .fill(preset.color.opacity(0.15))
+                                            .fill(presetColor.opacity(0.15))
                                             .frame(width: 44, height: 44)
                                             .overlay(
                                                 Image(systemName: "chart.bar.fill")
-                                                    .foregroundStyle(preset.color)
+                                                    .foregroundStyle(presetColor)
                                             )
 
                                         VStack(alignment: .leading, spacing: 4) {
@@ -2798,7 +2793,7 @@ private struct SportMetricsEditorSheet: View {
                                         } label: {
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 24, weight: .semibold))
-                                                .foregroundStyle(preset.color)
+                                                .foregroundStyle(presetColor)
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -2825,7 +2820,7 @@ private struct SportMetricsEditorSheet: View {
                                 Button(action: addCustomMetric) {
                                     Image(systemName: "plus.circle.fill")
                                         .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(newColor)
+                                        .foregroundStyle(themeManager.selectedTheme == .multiColour ? newColor : themeManager.selectedTheme.accent(for: colorScheme))
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(!canAddCustomMetric)
@@ -3299,6 +3294,7 @@ struct SportMetricGraph: View {
     let activities: [SportsTabView.SportActivity]
     let historyDays: Int
     let anchorDate: Date
+    var accentOverride: Color? = nil
 
     private var cal: Calendar { Calendar.current }
     private var today: Date { cal.startOfDay(for: anchorDate) }
@@ -3350,11 +3346,12 @@ struct SportMetricGraph: View {
     }
 
     var body: some View {
+        let displayColor = accentOverride ?? metric.color
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("\(metric.label) (\(metric.unit))")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(metric.color)
+                    .foregroundStyle(displayColor)
                 
                 Spacer()
             }
@@ -3366,7 +3363,7 @@ struct SportMetricGraph: View {
                         x: .value("Day", DateFormatter.shortDate.string(from: item.date)),
                         y: .value(metric.label, item.total)
                     )
-                    .foregroundStyle(metric.color)
+                    .foregroundStyle(displayColor)
                     .cornerRadius(4)
                 }
             }

@@ -490,30 +490,51 @@ struct NutritionTabView: View {
                                     } label: {
                                         VStack(spacing: 8) {
                                             HStack {
-                                                Image("logo")
-                                                    .resizable()
-                                                    .renderingMode(.original)
-                                                    .aspectRatio(contentMode: .fit)
-                                                    .frame(height: 40)
-                                                    .padding(.leading, 4)
-                                                    .offset(y: 6)
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
                                                 
                                                 Text("PRO")
                                                     .font(.subheadline)
                                                     .fontWeight(.semibold)
-                                                    .foregroundColor(.white)
+                                                    .foregroundStyle(accent ?? Color.white)
                                                     .padding(.horizontal, 8)
                                                     .padding(.vertical, 4)
                                                     .background(
                                                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(LinearGradient(
-                                                                gradient: Gradient(colors: [
-                                                                    Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                    Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                ]),
-                                                                startPoint: .topLeading,
-                                                                endPoint: .bottomTrailing
-                                                            ))
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
                                                     )
                                                     .offset(y: 6)
                                             }
@@ -590,30 +611,51 @@ struct NutritionTabView: View {
                                         } label: {
                                             VStack(spacing: 8) {
                                                 HStack {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.original)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
+                                                    let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                    if let accent {
+                                                        Image("logo")
+                                                            .resizable()
+                                                            .renderingMode(.template)
+                                                            .foregroundStyle(accent)
+                                                            .aspectRatio(contentMode: .fit)
+                                                            .frame(height: 40)
+                                                            .padding(.leading, 4)
+                                                            .offset(y: 6)
+                                                    } else {
+                                                        Image("logo")
+                                                            .resizable()
+                                                            .renderingMode(.original)
+                                                            .aspectRatio(contentMode: .fit)
+                                                            .frame(height: 40)
+                                                            .padding(.leading, 4)
+                                                            .offset(y: 6)
+                                                    }
                                                     
                                                     Text("PRO")
                                                         .font(.subheadline)
                                                         .fontWeight(.semibold)
-                                                        .foregroundColor(.white)
+                                                        .foregroundStyle(accent ?? Color.white)
                                                         .padding(.horizontal, 8)
                                                         .padding(.vertical, 4)
                                                         .background(
                                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                                .fill(LinearGradient(
-                                                                    gradient: Gradient(colors: [
-                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                    ]),
-                                                                    startPoint: .topLeading,
-                                                                    endPoint: .bottomTrailing
-                                                                ))
+                                                                .fill(
+                                                                    accent.map {
+                                                                        LinearGradient(
+                                                                            gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                            startPoint: .topLeading,
+                                                                            endPoint: .bottomTrailing
+                                                                        )
+                                                                    } ?? LinearGradient(
+                                                                        gradient: Gradient(colors: [
+                                                                            Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                            Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                        ]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                )
                                                         )
                                                         .offset(y: 6)
                                                 }
@@ -1248,10 +1290,6 @@ struct CravingEditorSheet: View {
                                 .disabled(!canAddCustom)
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
-
-                            Text("Track up to \(maxTrackedCravings) cravings. Tap plus to add it to your dashboard.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -1321,12 +1359,14 @@ struct SupplementEditorSheet: View {
     var onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
     // local working state
     @State private var working: [Supplement] = []
     @State private var newName: String = ""
     @State private var newTarget: String = ""
     @State private var hasLoaded = false
+    @State private var showProSubscription = false
 
     // presets available in Quick Add (some may not be selected initially)
     private var presets: [Supplement] {
@@ -1445,6 +1485,36 @@ struct SupplementEditorSheet: View {
                                 }
                             }
                         }
+                    
+                    if !isPro {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(tint)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more supplement slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     // Custom composer
                     VStack(alignment: .leading, spacing: 12) {
@@ -1497,6 +1567,10 @@ struct SupplementEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitialState)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitialState() {
@@ -2051,10 +2125,12 @@ struct MacroEditorSheet: View {
     var isPro: Bool
     var onDone: () -> Void
 
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @State private var workingMacros: [MacroMetric] = []
     @State private var newCustomName: String = ""
     @State private var newCustomTarget: String = ""
     @State private var hasLoadedState = false
+    @State private var showProSubscription = false
 
     private var canAddMoreMacros: Bool {
         if isPro { return true }
@@ -2154,6 +2230,36 @@ struct MacroEditorSheet: View {
                         }
                     }
 
+                    if !isPro {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(tint)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more macro slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     // Custom composer
                     VStack(alignment: .leading, spacing: 12) {
                         MacroEditorSectionHeader(title: "Custom Macros")
@@ -2207,6 +2313,10 @@ struct MacroEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitialState)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitialState() {
@@ -3551,7 +3661,7 @@ struct FastingTimerCard: View {
 
     @AppStorage("fasting.startTimestamp") private var storedFastingStartTimestamp: Double = 0
     @AppStorage("fasting.durationMinutes") private var storedFastingDurationMinutes: Int = 0
-    @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = false
+    @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = true
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedProtocol: FastingProtocolOption
     @State private var customHours: String

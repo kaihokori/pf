@@ -35,11 +35,14 @@ struct ExerciseSupplementEditorSheet: View {
     var isPro: Bool
     var onDone: () -> Void
 
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
+
     // local working state
     @State private var working: [Supplement] = []
     @State private var newName: String = ""
     @State private var newTarget: String = ""
     @State private var hasLoaded = false
+    @State private var showProSubscription = false
 
     // presets available in Quick Add (some may not be selected initially)
     private var presets: [Supplement] {
@@ -76,11 +79,11 @@ struct ExerciseSupplementEditorSheet: View {
                                         VStack(spacing: 8) {
                                             HStack(spacing: 12) {
                                                 Circle()
-                                                    .fill(tint.opacity(0.15))
+                                                    .fill(effectiveTint.opacity(0.15))
                                                     .frame(width: 44, height: 44)
                                                     .overlay(
                                                         Image(systemName: "pills.fill")
-                                                            .foregroundStyle(tint)
+                                                            .foregroundStyle(effectiveTint)
                                                     )
 
                                                 VStack(alignment: .leading, spacing: 6) {
@@ -120,11 +123,11 @@ struct ExerciseSupplementEditorSheet: View {
                                         ForEach(presets.filter { !isPresetSelected($0) }, id: \.name) { preset in
                                             HStack(spacing: 14) {
                                                 Circle()
-                                                    .fill(tint.opacity(0.15))
+                                                    .fill(effectiveTint.opacity(0.15))
                                                     .frame(width: 44, height: 44)
                                                     .overlay(
                                                         Image(systemName: "pills.fill")
-                                                            .foregroundStyle(tint)
+                                                            .foregroundStyle(effectiveTint)
                                                     )
 
                                                 VStack(alignment: .leading) {
@@ -140,7 +143,7 @@ struct ExerciseSupplementEditorSheet: View {
                                                 Button(action: { togglePreset(preset) }) {
                                                     Image(systemName: "plus.circle.fill")
                                                         .font(.system(size: 24, weight: .semibold))
-                                                        .foregroundStyle(tint)
+                                                        .foregroundStyle(effectiveTint)
                                                 }
                                                 .buttonStyle(.plain)
                                                 .disabled(!canAddMore)
@@ -153,6 +156,36 @@ struct ExerciseSupplementEditorSheet: View {
                                     }
                                 }
                             }
+
+                        if !isPro {
+                            Button(action: { showProSubscription = true }) {
+                                HStack(alignment: .center) {
+                                    Image(systemName: "sparkles")
+                                        .font(.title3)
+                                        .foregroundStyle(effectiveTint)
+                                        .padding(.trailing, 8)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Upgrade to Pro")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+
+                                        Text("Unlock more supplement slots + benefits")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(12)
+                                .surfaceCard(16)
+                            }
+                            .buttonStyle(.plain)
+                        }
 
                         // Custom composer
                         VStack(alignment: .leading, spacing: 12) {
@@ -171,7 +204,7 @@ struct ExerciseSupplementEditorSheet: View {
                                     Button(action: addCustomSupplement) {
                                         Image(systemName: "plus.circle.fill")
                                             .font(.system(size: 28, weight: .semibold))
-                                            .foregroundStyle(tint)
+                                            .foregroundStyle(effectiveTint)
                                     }
                                     .buttonStyle(.plain)
                                     .disabled(!canAddCustom)
@@ -207,6 +240,18 @@ struct ExerciseSupplementEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitialState)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
+    }
+
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var effectiveTint: Color {
+        if themeManager.selectedTheme == .multiColour { return tint }
+        return themeManager.selectedTheme.accent(for: colorScheme)
     }
 
     private func loadInitialState() {
@@ -295,7 +340,7 @@ struct WorkoutTabView: View {
     private let healthKitService = HealthKitService()
     @State private var healthKitAuthorized: Bool = false
     @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
-    @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = false
+    @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = true
     @State private var showingAdjustSheet: Bool = false
     @State private var adjustTarget: String? = nil
     // raw HealthKit readings (kept separate from any manual adjustments)
@@ -715,30 +760,51 @@ struct WorkoutTabView: View {
                                         } label: {
                                             VStack(spacing: 8) {
                                                 HStack {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.original)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
+                                                    let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                    if let accent {
+                                                        Image("logo")
+                                                            .resizable()
+                                                            .renderingMode(.template)
+                                                            .foregroundStyle(accent)
+                                                            .aspectRatio(contentMode: .fit)
+                                                            .frame(height: 40)
+                                                            .padding(.leading, 4)
+                                                            .offset(y: 6)
+                                                    } else {
+                                                        Image("logo")
+                                                            .resizable()
+                                                            .renderingMode(.original)
+                                                            .aspectRatio(contentMode: .fit)
+                                                            .frame(height: 40)
+                                                            .padding(.leading, 4)
+                                                            .offset(y: 6)
+                                                    }
                                                     
                                                     Text("PRO")
                                                         .font(.subheadline)
                                                         .fontWeight(.semibold)
-                                                        .foregroundColor(.white)
+                                                        .foregroundStyle(accent ?? Color.white)
                                                         .padding(.horizontal, 8)
                                                         .padding(.vertical, 4)
                                                         .background(
                                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                                .fill(LinearGradient(
-                                                                    gradient: Gradient(colors: [
-                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                    ]),
-                                                                    startPoint: .topLeading,
-                                                                    endPoint: .bottomTrailing
-                                                                ))
+                                                                .fill(
+                                                                    accent.map {
+                                                                        LinearGradient(
+                                                                            gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                            startPoint: .topLeading,
+                                                                            endPoint: .bottomTrailing
+                                                                        )
+                                                                    } ?? LinearGradient(
+                                                                        gradient: Gradient(colors: [
+                                                                            Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                            Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                        ]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                )
                                                         )
                                                         .offset(y: 6)
                                                 }
@@ -948,17 +1014,17 @@ struct WorkoutTabView: View {
         }
         .onAppear {
             reloadWeeklyProgressFromAccount()
-            ensurePlaceholderIfNeeded(persist: true)
+            ensurePlaceholderIfNeeded(persist: false)
             refreshProgressFromRemote()
+            refreshCheckInNotifications()
+        }
+        .onChange(of: weeklyCheckInStatuses) { _, _ in
             refreshCheckInNotifications()
         }
         .onChange(of: account.weeklyProgress) { _, _ in
             reloadWeeklyProgressFromAccount()
             ensurePlaceholderIfNeeded(persist: false)
             scheduleProgressReminder()
-        }
-        .onChange(of: weeklyCheckInStatuses) { _, _ in
-            refreshCheckInNotifications()
         }
         .onChange(of: autoRestDayIndices) { _, _ in
             refreshCheckInNotifications()
@@ -1093,7 +1159,6 @@ struct WorkoutTabView: View {
     func ensurePlaceholderIfNeeded(persist: Bool) {
         weeklyEntries.sort { $0.date < $1.date }
 
-        // Do not create placeholder entries; only persist real data.
         if persist {
             persistWeeklyProgressEntries()
         }
@@ -1165,7 +1230,7 @@ struct WorkoutTabView: View {
         let mergedEntries = mergedById.values.sorted { $0.date < $1.date }
         weeklyEntries = mergedEntries
 
-        account.weeklyProgress = mergedEntries.map {
+        let compressedRecords: [WeeklyProgressRecord] = mergedEntries.map {
             WeeklyProgressRecord(
                 id: $0.id.uuidString,
                 date: $0.date,
@@ -1176,20 +1241,51 @@ struct WorkoutTabView: View {
             )
         }
 
+        account.weeklyProgress = compressedRecords
+
         do {
             try modelContext.save()
         } catch {
-            print("NutritionTabView: failed to save weekly progress locally: \(error)")
+            print("WorkoutTabView: failed to save weekly progress locally: \(error)")
         }
 
-        guard !mergedEntries.isEmpty else { return }
+        guard !compressedRecords.isEmpty else { return }
 
-        accountFirestoreService.saveAccount(account) { success in
-            if success {
-            } else {
-                print("NutritionTabView: failed to sync weekly progress to Firestore")
+        // Phase 1: save metadata immediately to avoid blocking on image upload.
+        let metadataOnly = compressedRecords.map { record in
+            WeeklyProgressRecord(
+                id: record.id,
+                date: record.date,
+                weight: record.weight,
+                waterPercent: record.waterPercent,
+                bodyFatPercent: record.bodyFatPercent,
+                photoData: nil
+            )
+        }
+
+        accountFirestoreService.saveAccount(accountForUpload(from: metadataOnly)) { success in
+            if !success {
+                print("WorkoutTabView: failed to sync weekly progress metadata to Firestore")
             }
         }
+
+        // Phase 2: upload photos after a short delay; if it fails, local photoData remains for future retries.
+        let hasPhotos = compressedRecords.contains { $0.photoData != nil }
+        if hasPhotos {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                accountFirestoreService.saveAccount(accountForUpload(from: compressedRecords)) { success in
+                    if !success {
+                        print("WorkoutTabView: failed to sync weekly progress photos to Firestore; will retry on next save")
+                    }
+                }
+            }
+        }
+    }
+
+    private func accountForUpload(from progress: [WeeklyProgressRecord]) -> Account {
+        let clone = account
+        clone.weeklyProgress = progress
+        return clone
     }
 
     func refreshProgressFromRemote() {
@@ -1206,8 +1302,24 @@ struct WorkoutTabView: View {
                 let localProgress = account.weeklyProgress
 
                 if !remoteProgress.isEmpty {
-                    // Prefer remote when it actually has data.
-                    account.weeklyProgress = remoteProgress
+                    // Merge remote with any richer local entries (e.g., local photo present when remote upload failed).
+                    let localById = Dictionary(uniqueKeysWithValues: localProgress.map { ($0.id, $0) })
+                    let merged: [WeeklyProgressRecord] = remoteProgress.map { remote in
+                        if let local = localById[remote.id] {
+                            let photoData = local.photoData ?? remote.photoData
+                            return WeeklyProgressRecord(
+                                id: remote.id,
+                                date: remote.date,
+                                weight: remote.weight,
+                                waterPercent: remote.waterPercent,
+                                bodyFatPercent: remote.bodyFatPercent,
+                                photoData: photoData
+                            )
+                        }
+                        return remote
+                    }
+
+                    account.weeklyProgress = merged
                     reloadWeeklyProgressFromAccount()
                     ensurePlaceholderIfNeeded(persist: false)
                 } else if !localProgress.isEmpty {
@@ -1220,11 +1332,12 @@ struct WorkoutTabView: View {
                 do {
                     try modelContext.save()
                 } catch {
-                    print("NutritionTabView: failed to cache remote weekly progress: \(error)")
+                    print("WorkoutTabView: failed to cache remote weekly progress: \(error)")
                 }
             }
         }
     }
+
 }
 
 // MARK: - Manual adjust sheet
@@ -1587,6 +1700,8 @@ private struct WeeklyWorkoutScheduleCard: View {
     var onSave: ([WorkoutScheduleItem]) -> Void
 
     @State private var showEditSheet = false
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1619,7 +1734,7 @@ private struct WeeklyWorkoutScheduleCard: View {
                                 ForEach(day.sessions) { session in
                                     WeeklySessionCard(
                                         session: session,
-                                        accentColor: accentColor
+                                        accentColor: effectiveAccent
                                     )
                                 }
                             }
@@ -1646,13 +1761,18 @@ private struct WeeklyWorkoutScheduleCard: View {
         .sheet(isPresented: $showEditSheet) {
             WorkoutScheduleEditorSheet(
                 schedule: $schedule,
-                accentColor: accentColor
+                accentColor: effectiveAccent
             ) { updated in
                 schedule = updated
                 onSave(updated)
                 showEditSheet = false
             }
         }
+    }
+
+    private var effectiveAccent: Color {
+        if themeManager.selectedTheme == .multiColour { return accentColor }
+        return themeManager.selectedTheme.accent(for: colorScheme)
     }
 }
 
@@ -1672,6 +1792,8 @@ private struct WorkoutScheduleEditorSheet: View {
 
     @State private var showColorPickerSheet = false
     @State private var colorPickerTarget: (dayIndex: Int, sessionId: UUID)? = nil
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -1727,19 +1849,23 @@ private struct WorkoutScheduleEditorSheet: View {
                                                 let sessionId = working[dayIndex].sessions[sessionIndex].id
                                                 HStack(spacing: 12) {
                                                     Button {
+                                                        guard themeManager.selectedTheme == .multiColour else { return }
                                                         colorPickerTarget = (dayIndex, sessionId)
                                                         showColorPickerSheet = true
                                                     } label: {
+                                                        let sessionColor: Color = themeManager.selectedTheme == .multiColour ? (Color(hex: binding.colorHex.wrappedValue) ?? accentColor) : themeManager.selectedTheme.accent(for: colorScheme)
+
                                                         Circle()
-                                                            .fill((Color(hex: binding.colorHex.wrappedValue) ?? accentColor).opacity(0.18))
+                                                            .fill(sessionColor.opacity(0.18))
                                                             .frame(width: 40, height: 40)
                                                             .overlay(
                                                                 Image(systemName: "figure.run")
                                                                     .font(.system(size: 16, weight: .semibold))
-                                                                    .foregroundStyle(Color(hex: binding.colorHex.wrappedValue) ?? accentColor)
+                                                                    .foregroundStyle(sessionColor)
                                                             )
                                                     }
                                                     .buttonStyle(.plain)
+                                                    .disabled(themeManager.selectedTheme != .multiColour)
 
                                                     VStack(alignment: .leading, spacing: 6) {
                                                         TextField("Activity", text: binding.name)
@@ -1759,7 +1885,7 @@ private struct WorkoutScheduleEditorSheet: View {
                                                                 displayedComponents: .hourAndMinute
                                                             )
                                                             .labelsHidden()
-                                                            .tint(accentColor)
+                                                            .tint(effectiveAccent)
                                                             
                                                             Menu {
                                                                 ForEach(Array(daySymbols.enumerated()), id: \.0) { moveIndex, label in
@@ -1811,12 +1937,14 @@ private struct WorkoutScheduleEditorSheet: View {
                             VStack(spacing: 12) {
                                 ForEach(presets, id: \.id) { preset in
                                     HStack(spacing: 12) {
+                                        let presetColor: Color = themeManager.selectedTheme == .multiColour ? (Color(hex: preset.colorHex) ?? accentColor) : themeManager.selectedTheme.accent(for: colorScheme)
+
                                         Circle()
-                                            .fill((Color(hex: preset.colorHex) ?? accentColor).opacity(0.18))
+                                            .fill(presetColor.opacity(0.18))
                                             .frame(width: 42, height: 42)
                                             .overlay(
                                                 Image(systemName: "figure.run")
-                                                    .foregroundStyle(Color(hex: preset.colorHex) ?? accentColor)
+                                                    .foregroundStyle(presetColor)
                                                     .font(.system(size: 18, weight: .semibold))
                                             )
 
@@ -1834,7 +1962,7 @@ private struct WorkoutScheduleEditorSheet: View {
                                         } label: {
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 28, weight: .semibold))
-                                                .foregroundStyle(Color.accentColor)
+                                                .foregroundStyle(effectiveAccent)
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -1924,6 +2052,11 @@ private struct WorkoutScheduleEditorSheet: View {
         }
     }
 
+    private var effectiveAccent: Color {
+        if themeManager.selectedTheme == .multiColour { return accentColor }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
     private var canAddCustom: Bool {
         !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedDayIndex < working.count
     }
@@ -1995,8 +2128,14 @@ private struct WeeklySessionCard: View {
     let session: WorkoutSession
     let accentColor: Color
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     private var resolvedColor: Color {
-        Color(hex: session.colorHex) ?? accentColor
+        if themeManager.selectedTheme == .multiColour {
+            return Color(hex: session.colorHex) ?? accentColor
+        }
+        return themeManager.selectedTheme.accent(for: colorScheme)
     }
 
     var body: some View {
@@ -2097,10 +2236,19 @@ private struct DailyCheckInTimelineView: View {
         let isHidden = status.shouldHideTimelineNode
         VStack(spacing: 6) {
             if let symbol = status.timelineSymbol {
+                let nodeColor: Color = {
+                    switch status {
+                    case .checkIn:
+                        return accentColor
+                    case .rest, .notLogged:
+                        return Color(.systemGray3)
+                    }
+                }()
+
                 Image(systemName: symbol)
                     .font(.system(size: symbolSize, weight: .semibold))
                     .frame(height: symbolSize)
-                    .foregroundStyle(status.accentColor)
+                    .foregroundStyle(nodeColor)
                     .fixedSize()
             } else {
                 Color.clear.frame(height: symbolSize)
@@ -2240,7 +2388,7 @@ private struct RestDayPickerSheet: View {
                                 SelectablePillComponent(
                                     label: label,
                                     isSelected: workingIndices.contains(index),
-                                    selectedTint: tint
+                                    selectedTint: effectiveTint
                                 ) {
                                     toggleDay(at: index)
                                 }
@@ -2277,6 +2425,16 @@ private struct RestDayPickerSheet: View {
             }
         }
         .onAppear { workingIndices = initialAutoRestDayIndices }
+    }
+
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var effectiveTint: Color {
+        if themeManager.selectedTheme == .multiColour {
+            return tint
+        }
+        return themeManager.selectedTheme.accent(for: colorScheme)
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -2452,12 +2610,14 @@ private struct DailySummaryGoalSheet: View {
 
 private struct WeightsGroupEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Binding var bodyParts: [BodyPartWeights]
     var onSave: ([BodyPartWeights]) -> Void
 
     @State private var working: [BodyPartWeights] = []
     @State private var newName: String = ""
     @State private var hasLoaded = false
+    @State private var showProSubscription = false
 
     private let presets: [String] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"]
     private let maxTracked = 12
@@ -2563,6 +2723,36 @@ private struct WeightsGroupEditorSheet: View {
                         }
                     }
 
+                    if !subscriptionManager.hasProAccess {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more group slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Custom Group")
                             .font(.subheadline.weight(.semibold))
@@ -2606,6 +2796,10 @@ private struct WeightsGroupEditorSheet: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitial() {

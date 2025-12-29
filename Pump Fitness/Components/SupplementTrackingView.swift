@@ -34,8 +34,17 @@ struct SupplementTrackingView: View {
         self.onRemove = onRemove
     }
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        let supplementTint = accentColorOverride ?? .orange
+        let supplementTint: Color = {
+            if themeManager.selectedTheme == .multiColour {
+                return accentColorOverride ?? .orange
+            } else {
+                return themeManager.selectedTheme.accent(for: colorScheme)
+            }
+        }()
         let displayItems: [SupplementSummaryItem] =
             Array(supplements.enumerated()).map { .supplement(index: $0.offset, item: $0.element) }
 

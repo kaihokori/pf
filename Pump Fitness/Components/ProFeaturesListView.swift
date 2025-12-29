@@ -123,19 +123,3 @@ struct ProFeaturesListView: View {
         .padding(.horizontal, 18)
     }
 }
-
-struct ProFeaturesListView_Previews: PreviewProvider {
-    static var previews: some View {
-        ProFeaturesListView(categories: [
-            ProBenefitCategory(name: "Nutrition", image: "leaf.fill", color: .green, benefits: [
-                ProBenefit(icon: "chart.pie.fill", title: "Macros", description: "Track unlimited macronutrients and calories."),
-                ProBenefit(icon: "pills.fill", title: "Supplements", description: "Log unlimited supplements and vitamins.")
-            ]),
-            ProBenefitCategory(name: "Routine", image: "checklist.checked", color: .blue, benefits: [
-                ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organized."),
-                ProBenefit(icon: "timer", title: "Activity Timers", description: "Use up to 6 activity timers for your routines.")
-            ])
-        ])
-            .previewLayout(.sizeThatFits)
-    }
-}

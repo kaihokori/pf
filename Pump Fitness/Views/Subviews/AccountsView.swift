@@ -35,13 +35,14 @@ struct AccountsView: View {
     @State private var showHealthKitStatusAlert = false
     @State private var healthKitStatusMessage = ""
     @State private var showAlertsSheet = false
-    @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
-    @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
-    @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = false
-    @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = false
-    @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = false
+    @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
+    @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = true
+    @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = true
+    @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = true
+    @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = true
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
+    @State private var showOnboarding = false
 
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
 
@@ -136,7 +137,7 @@ struct AccountsView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        
+
                         SectionCard(title: "Measurements") {
                             HeightFields(unitSystem: viewModel.draft.unitSystem,
                                          heightValue: Binding(
@@ -217,7 +218,7 @@ struct AccountsView: View {
                         
                         SectionCard(title: "Extras") {
                             ExtrasSection(
-                                retakeAssessmentAction: { /* TODO: Implement assessment flow */ },
+                                retakeAssessmentAction: { showOnboarding = true },
                                 alertsAction: { showAlertsSheet = true },
                                 legalAction: openLegal
                             )
@@ -254,6 +255,34 @@ struct AccountsView: View {
                             }
                             .toggleStyle(.switch)
                             .padding(.top, 6)
+
+                            Button {
+                                subscriptionManager.resetTrialState()
+                                account.trialPeriodEnd = nil
+                                do {
+                                    try modelContext.save()
+                                } catch {
+                                    print("AccountsView: failed to clear trial locally: \(error)")
+                                }
+
+                                Task {
+                                    let success = await viewModel.saveAccountToFirestore(account)
+                                    if !success {
+                                        print("AccountsView: failed to clear trial in Firestore")
+                                    }
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Clear Trial Timer (Debug)")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Remove trial flags so StoreKit behaves like a fresh install.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
                             #endif
                         }
                         
@@ -346,12 +375,24 @@ struct AccountsView: View {
         } message: {
             Text("Are you sure you want to sign out?")
         }
-        .alert("Delete your Trackerio account?", isPresented: $showDeleteConfirmation) {
+            .alert("Delete your Trackerio account?", isPresented: $showDeleteConfirmation) {
             Button("Delete Account", role: .destructive) {
                 Task {
-                    await viewModel.deleteAccount(in: modelContext)
-                    await viewModel.signOut(in: modelContext)
-                    dismiss()
+                    let success = await viewModel.deleteFirebaseAccount()
+                    if success {
+                        dismiss()
+                        // Wait for view to disappear to avoid accessing deleted objects
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        await viewModel.deleteLocalData(in: modelContext)
+                    } else if viewModel.requiresRecentLoginEncountered {
+                        // If deletion failed due to requiring recent auth, sign the user out automatically
+                        await viewModel.signOut(in: modelContext)
+                        dismiss()
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        await viewModel.deleteLocalData(in: modelContext)
+                    } else {
+                        // Other failures are already logged by the view model
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -489,19 +530,26 @@ struct AccountsView: View {
         .sheet(isPresented: $showAlertsSheet) {
             AlertSheetView()
         }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            // When reassessment completes, pop back to the main tab instead of returning here.
+            OnboardingView(initialName: account.name, existingAccount: account, isRetake: true) {
+                showOnboarding = false
+                dismiss()
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
     }
     
     struct AlertSheetView: View {
         let pillColumns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
         @Environment(\.dismiss) private var dismiss
-        @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
+        @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
         @AppStorage("alerts.dailyTasksSilenceCompleted") private var silenceCompletedTasks: Bool = true
-        @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
-        @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = false
-        @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = false
-        @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = false
-        @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = false
+        @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = true
+        @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = true
+        @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = true
+        @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = true
+        @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = true
         @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
         @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
         var body: some View {
@@ -522,19 +570,6 @@ struct AccountsView: View {
                             }
                         }
                         .toggleStyle(.switch)
-
-                        Toggle(isOn: $silenceCompletedTasks) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Silence Completed Tasks")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Don't send reminders for tasks you've already completed today.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                        .opacity(dailyTasksAlertsEnabled ? 1.0 : 0.5)
-                        .disabled(!dailyTasksAlertsEnabled)
 
                         Toggle(isOn: $activityTimersAlertsEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -773,13 +808,6 @@ private struct AccountSection: View {
     var body: some View {
         VStack(spacing: 12) {
             accountActionRow(
-                title: "Manage Subscription",
-                icon: "creditcard",
-                role: nil,
-                action: manageSubscriptionAction
-            )
-
-            accountActionRow(
                 title: "Sign Out",
                 icon: "arrow.right.square",
                 role: nil,
@@ -796,7 +824,6 @@ private struct AccountSection: View {
         }
     }
 
-    // Shared action row for account actions (copied from ExtrasSection for consistency)
     @ViewBuilder
     private func accountActionRow(
         title: String,
@@ -935,6 +962,68 @@ private struct ExtrasSection: View {
             .surfaceCard(16)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct ProStatusView: View {
+    @ObservedObject var subscriptionManager: SubscriptionManager
+    var trialEndDate: Date?
+    var now: Date
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if subscriptionManager.isDebugForcingNoSubscription {
+                statusRow(title: "Debug Override", detail: "Force free mode enabled")
+            }
+
+            if subscriptionManager.isTrialActive, let end = trialEndDate ?? subscriptionManager.trialEndDate {
+                statusRow(title: "Trial Active", detail: countdownString(until: end))
+                statusRow(title: "Ends", detail: formatted(date: end))
+            } else if let end = trialEndDate, end > now {
+                statusRow(title: "Trial Restored", detail: countdownString(until: end))
+                statusRow(title: "Ends", detail: formatted(date: end))
+            }
+
+            if !subscriptionManager.purchasedProductIDs.isEmpty {
+                if let expiry = subscriptionManager.latestSubscriptionExpiration {
+                    statusRow(title: "Subscription", detail: "Active • renews " + formatted(date: expiry))
+                } else {
+                    statusRow(title: "Subscription", detail: "Active")
+                }
+            } else if !(subscriptionManager.isTrialActive || (trialEndDate ?? Date.distantPast) > now) {
+                statusRow(title: "Free Tier", detail: "No active trial or subscription")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func statusRow(title: String, detail: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Text(detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func countdownString(until end: Date) -> String {
+        let remaining = max(0, Int(end.timeIntervalSince(now)))
+        let days = remaining / 86_400
+        let hours = (remaining % 86_400) / 3_600
+        let minutes = (remaining % 3_600) / 60
+        let seconds = remaining % 60
+        return String(format: "%dd %02dh %02dm %02ds", days, hours, minutes, seconds)
+    }
+
+    private func formatted(date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }
 
@@ -1320,6 +1409,7 @@ final class AccountsViewModel: ObservableObject {
     private static let defaultWeekStart: WeekStartOption = .monday
 
     @Published private(set) var profile: AccountProfile
+    @Published var requiresRecentLoginEncountered = false
     @Published var draft: AccountProfile {
         didSet {
             // Detect manual edits to maintenance field
@@ -1707,18 +1797,22 @@ final class AccountsViewModel: ObservableObject {
                 for key in keysToRemove { self.defaults.removeObject(forKey: key) }
             }
 
-            // Clear SwiftData local store for Account and Day models
+            // Clear SwiftData local store for Account and Day models using a fresh context
             if let ctx = context {
                 do {
+                    let deleteContext = ModelContext(ctx.container)
+                    deleteContext.autosaveEnabled = false
+
                     let dayReq = FetchDescriptor<Day>()
-                    let days = try ctx.fetch(dayReq)
-                    for d in days { ctx.delete(d) }
+                    let days = try deleteContext.fetch(dayReq)
+                    for d in days { deleteContext.delete(d) }
 
                     let acctReq = FetchDescriptor<Account>()
-                    let accts = try ctx.fetch(acctReq)
-                    for a in accts { ctx.delete(a) }
+                    let accts = try deleteContext.fetch(acctReq)
+                    for a in accts { deleteContext.delete(a) }
 
-                    try ctx.save()
+                    try deleteContext.save()
+
                 } catch {
                     print("Failed to clear local SwiftData models: \(error)")
                 }
@@ -1729,74 +1823,86 @@ final class AccountsViewModel: ObservableObject {
     }
 
     @MainActor
-    func deleteAccount(in context: ModelContext?) async {
-        await performDestructiveAction {
-            guard let user = Auth.auth().currentUser else {
-                print("No authenticated user; cannot delete account from Firestore.")
-                return
-            }
-            let uid = user.uid
-            let db = Firestore.firestore()
+    func deleteFirebaseAccount() async -> Bool {
+        guard !isPerformingDestructiveAction else { return false }
+        isPerformingDestructiveAction = true
+        defer { isPerformingDestructiveAction = false }
 
-            // Delete known subcollections (days) under the user's account doc
-            do {
-                let daysColl = db.collection("accounts").document(uid).collection("days")
-                let daysSnapshot = try await daysColl.getDocuments()
-                for doc in daysSnapshot.documents {
-                    do {
-                        try await doc.reference.delete()
-                    } catch {
-                        print("Failed to delete day doc \(doc.documentID): \(error)")
-                    }
-                }
-            } catch {
-                print("Failed to list/delete days subcollection: \(error)")
-            }
+        guard let user = Auth.auth().currentUser else {
+            print("No authenticated user; cannot delete account from Firestore.")
+            return false
+        }
+        let uid = user.uid
+        let db = Firestore.firestore()
 
-            // Delete the main account document
-            do {
-                try await db.collection("accounts").document(uid).delete()
-            } catch {
-                print("Failed to delete account doc: \(error)")
-            }
-
-            // Attempt to delete Firebase Auth account (may require recent reauth)
-            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                user.delete { error in
-                    if let error {
-                        print("Failed to delete Firebase Auth user: \(error)")
-                    }
-                    cont.resume()
-                }
-            }
-
-            // Clear all UserDefaults for this app (remove all persisted settings)
-            if let bundle = Bundle.main.bundleIdentifier {
-                self.defaults.removePersistentDomain(forName: bundle)
-                self.defaults.synchronize()
-            } else {
-                let keysToRemove = [ThemeManager.defaultsKey, Self.weekStartDefaultsKey, "currentUserName", "fasting.durationMinutes", "fasting.startTimestamp"]
-                for key in keysToRemove { self.defaults.removeObject(forKey: key) }
-            }
-
-            // Clear SwiftData local store for Account and Day models
-            if let ctx = context {
+        // Delete known subcollections (days) under the user's account doc
+        do {
+            let daysColl = db.collection("accounts").document(uid).collection("days")
+            let daysSnapshot = try await daysColl.getDocuments()
+            for doc in daysSnapshot.documents {
                 do {
-                    let dayReq = FetchDescriptor<Day>()
-                    let days = try ctx.fetch(dayReq)
-                    for d in days { ctx.delete(d) }
-
-                    let acctReq = FetchDescriptor<Account>()
-                    let accts = try ctx.fetch(acctReq)
-                    for a in accts { ctx.delete(a) }
-
-                    try ctx.save()
+                    try await doc.reference.delete()
                 } catch {
-                    print("Failed to clear local SwiftData models: \(error)")
+                    print("Failed to delete day doc \(doc.documentID): \(error)")
                 }
-            } else {
-                print("No ModelContext provided; skipping local SwiftData cleanup.")
             }
+        } catch {
+            print("Failed to list/delete days subcollection: \(error)")
+        }
+
+        // Delete the main account document
+        do {
+            try await db.collection("accounts").document(uid).delete()
+        } catch {
+            print("Failed to delete account doc: \(error)")
+        }
+
+        // Attempt to delete Firebase Auth account (may require recent reauth)
+        do {
+            try await user.delete()
+            return true
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == AuthErrorDomain && nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                // Indicate to the UI that recent-login was required so it can sign the user out automatically
+                self.requiresRecentLoginEncountered = true
+            }
+            print("Failed to delete Firebase Auth user: \(error)")
+            return false
+        }
+    }
+
+    @MainActor
+    func deleteLocalData(in context: ModelContext?) async {
+        // Clear all UserDefaults for this app (remove all persisted settings)
+        if let bundle = Bundle.main.bundleIdentifier {
+            self.defaults.removePersistentDomain(forName: bundle)
+            self.defaults.synchronize()
+        } else {
+            let keysToRemove = [ThemeManager.defaultsKey, Self.weekStartDefaultsKey, "currentUserName", "fasting.durationMinutes", "fasting.startTimestamp"]
+            for key in keysToRemove { self.defaults.removeObject(forKey: key) }
+        }
+
+        // Clear SwiftData local store for Account and Day models using a fresh context
+        if let ctx = context {
+            do {
+                let deleteContext = ModelContext(ctx.container)
+                deleteContext.autosaveEnabled = false
+
+                let dayReq = FetchDescriptor<Day>()
+                let days = try deleteContext.fetch(dayReq)
+                for d in days { deleteContext.delete(d) }
+
+                let acctReq = FetchDescriptor<Account>()
+                let accts = try deleteContext.fetch(acctReq)
+                for a in accts { deleteContext.delete(a) }
+
+                try deleteContext.save()
+            } catch {
+                print("Failed to clear local SwiftData models: \(error)")
+            }
+        } else {
+            print("No ModelContext provided; skipping local SwiftData cleanup.")
         }
     }
 

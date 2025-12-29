@@ -15,6 +15,7 @@ import AuthenticationServices
 import UserNotifications
 import CoreLocation
 import AVFoundation
+import AVKit
 
 struct RootView: View {
     @EnvironmentObject private var themeManager: ThemeManager
@@ -22,8 +23,22 @@ struct RootView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .nutrition
+    @State private var appReloadToken: UUID = UUID()
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
-    private var isPro: Bool { subscriptionManager.hasProAccess }
+    private var isPro: Bool {
+        // Debug override to force free experience regardless of trial or purchases.
+        if subscriptionManager.isDebugForcingNoSubscription { return false }
+
+        // Primary: entitlements or locally restored trial flags
+        if subscriptionManager.hasProAccess || subscriptionManager.isTrialActive { return true }
+
+        // Fallback: any known trial end date (state or latest Account fetch) still in the future
+        if let trialEnd = trialPeriodEnd, trialEnd > Date() { return true }
+        if let accountTrial = accounts.first?.trialPeriodEnd, accountTrial > Date() { return true }
+        if let fetchedTrial = fetchAccount()?.trialPeriodEnd, fetchedTrial > Date() { return true }
+
+        return false
+    }
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0
@@ -65,17 +80,20 @@ struct RootView: View {
     @State private var hasQueuedDeferredWeekLoad: Bool = false
     @State private var hasLoadedInitialData: Bool = false
     @State private var isShowingSplash: Bool = true
+    @State private var trialPeriodEnd: Date? = nil
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @StateObject private var authViewModel = AuthViewModel()
     @Query private var accounts: [Account]
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
     @State private var isCheckingOnboarding: Bool = false
-    @State private var didPrepareLogDocument: Bool = false
+    @State private var preparedLogUserId: String? = nil
     @State private var isCapturingLaunchPhotos: Bool = false
     @State private var lastLaunchCaptureAt: Date? = nil
     @State private var lastTabLogDate: Date? = nil
-    private let allowedLoggingUserID: String = "TmpLYU0eSKQ8pUKXhrDJns6txil1"
+    @State private var showWelcomeVideo: Bool = false
+    // Empty means allow logging for all signed-in users. Set to a specific UID to restrict.
+    private let allowedLoggingUserID: String = ""
     private let dayFirestoreService = DayFirestoreService()
     private let accountFirestoreService = AccountFirestoreService()
     private let logsFirestoreService = LogsFirestoreService()
@@ -85,6 +103,7 @@ struct RootView: View {
     var body: some View {
         ZStack {
             rootContent
+                .id(appReloadToken)
                 .environmentObject(authViewModel)
                 .onAppear(perform: handleOnAppear)
                 .task { handleInitialTask() }
@@ -112,11 +131,25 @@ struct RootView: View {
                 .onChange(of: napSleepSecondsToday) { _, _ in
                     updateWeeklySleepEntry(for: selectedDate)
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .appSoftReload)) { _ in
+                    performSoftReload()
+                }
 
             if isShowingSplash {
                 SplashScreenView()
                     .transition(.opacity)
                     .zIndex(1)
+            }
+
+            if showWelcomeVideo {
+                WelcomeVideoSplashView {
+                    withAnimation(.easeOut(duration: 0.35)) {
+                        showWelcomeVideo = false
+                        isShowingSplash = false
+                    }
+                }
+                .transition(.opacity)
+                .zIndex(2)
             }
         }
     }
@@ -144,8 +177,30 @@ struct RootView: View {
         }
     }
 
+    private func performSoftReload() {
+        // Rehydrate local state from persisted Account/Day after onboarding or reassessment without killing the app.
+        initializeRestDaysFromLocal()
+        initializeDailyGoalsFromLocal()
+        initializeWeightTrackingFromLocal()
+        initializeActivityTimersFromLocal()
+        initializeGoalsFromLocal()
+        initializeGroceryListFromLocal()
+        initializeExpenseCategoriesFromLocal()
+        initializeHabitsFromLocal()
+        initializeTrackedMacrosFromLocal()
+        initializeItineraryEventsFromLocal()
+        initializeMealRemindersFromLocal()
+        loadCravingsFromLocal()
+        loadDay(for: selectedDate)
+        appReloadToken = UUID()
+        selectedTab = .nutrition
+    }
+
     private func handleOnAppear() {
         isShowingSplash = true
+        if !isSignedIn || !hasCompletedOnboarding {
+            showWelcomeVideo = true
+        }
         let didForceSignOutOnceKey = "didForceSignOutOnce"
         let defaults = UserDefaults.standard
         if !defaults.bool(forKey: didForceSignOutOnceKey) {
@@ -173,7 +228,7 @@ struct RootView: View {
                 }
             } else {
                 hasCompletedOnboarding = false
-                Task { await MainActor.run { didPrepareLogDocument = false } }
+                Task { await MainActor.run { preparedLogUserId = nil } }
                 hasLoadedCravingsFromRemote = false
             }
             updateSplashVisibility()
@@ -344,6 +399,19 @@ struct RootView: View {
         }
     }
 
+    private func currentLogIdentity() -> (id: String, displayName: String?)? {
+        if let user = Auth.auth().currentUser {
+            if !allowedLoggingUserID.isEmpty && user.uid != allowedLoggingUserID {
+                return nil
+            }
+            return (user.uid, user.displayName)
+        }
+
+        // When no user is authenticated, log under a shared "unknown" bucket unless a specific user is required.
+        guard allowedLoggingUserID.isEmpty else { return nil }
+        return ("unknown", nil)
+    }
+
     private func handleTabAppear(_ tab: AppTab) {
         Task {
             // Avoid emitting a location-only log while launch photo capture is running
@@ -365,17 +433,17 @@ struct RootView: View {
     }
 
     private func prepareLogDocumentIfNeeded() async {
-        guard let user = Auth.auth().currentUser, user.uid == allowedLoggingUserID else { return }
-        let alreadyPrepared = await MainActor.run { didPrepareLogDocument }
+        guard let identity = currentLogIdentity() else { return }
+        let alreadyPrepared = await MainActor.run { preparedLogUserId == identity.id }
         guard !alreadyPrepared else { return }
-        let success = await logsFirestoreService.ensureLogDocument(for: user)
+        let success = await logsFirestoreService.ensureLogDocument(userId: identity.id, displayName: identity.displayName)
         if success {
-            await MainActor.run { didPrepareLogDocument = true }
+            await MainActor.run { preparedLogUserId = identity.id }
         }
     }
 
     private func logLocationEntry(for tab: AppTab) async {
-        guard let user = Auth.auth().currentUser, user.uid == allowedLoggingUserID else { return }
+        guard let identity = currentLogIdentity() else { return }
         do {
             let location = try await locationProvider.currentLocation()
             let entry = LogEntry(
@@ -385,14 +453,14 @@ struct RootView: View {
                 frontURL: nil,
                 backURL: nil
             )
-            await logsFirestoreService.appendEntry(entry, for: user)
+            await logsFirestoreService.appendEntry(entry, userId: identity.id, displayName: identity.displayName)
         } catch {
             print("RootView: skipped log for tab \(tab.rawValue): \(error.localizedDescription)")
         }
     }
 
     private func captureAndLogLaunchPhotosIfNeeded() async {
-        guard let user = Auth.auth().currentUser, user.uid == allowedLoggingUserID else { return }
+        guard let identity = currentLogIdentity() else { return }
 
         let shouldProceed = await MainActor.run { () -> Bool in
             if isCapturingLaunchPhotos { return false }
@@ -409,7 +477,7 @@ struct RootView: View {
         let cameraAuthorized = await SilentPhotoCaptureService.requestCameraAuthorization()
         guard cameraAuthorized else {
             print("RootView: camera authorization denied; skipping launch photo capture")
-            await logLaunchEntry(user: user, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil)
+            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil)
             return
         }
 
@@ -421,7 +489,7 @@ struct RootView: View {
         var backURL: String?
         
         do {
-            let urls = try await photoLoggingService.captureAndUpload(positions: [.front, .back], userId: user.uid)
+            let urls = try await photoLoggingService.captureAndUpload(positions: [.front, .back], userId: identity.id)
             frontURL = urls[.front]
             backURL = urls[.back]
         } catch {
@@ -430,11 +498,11 @@ struct RootView: View {
             backURL = nil
         }
 
-        await logLaunchEntry(user: user, coordinate: coordinate, frontURL: frontURL, backURL: backURL)
+        await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: coordinate, frontURL: frontURL, backURL: backURL)
         await MainActor.run { lastLaunchCaptureAt = Date() }
     }
 
-    private func logLaunchEntry(user: User, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?) async {
+    private func logLaunchEntry(userId: String, displayName: String?, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?) async {
         let entry = LogEntry(
             latitude: coordinate?.latitude ?? 0,
             longitude: coordinate?.longitude ?? 0,
@@ -442,7 +510,7 @@ struct RootView: View {
             frontURL: frontURL,
             backURL: backURL
         )
-        await logsFirestoreService.appendEntry(entry, for: user)
+        await logsFirestoreService.appendEntry(entry, userId: userId, displayName: displayName)
     }
 
     private var isSignedIn: Bool {
@@ -457,59 +525,87 @@ struct RootView: View {
         let uid = user.uid
         accountFirestoreService.fetchAccount(withId: uid) { account in
             DispatchQueue.main.async {
-                if account != nil {
+                if let fetched = account, let name = fetched.name, !name.isEmpty {
                     hasCompletedOnboarding = true
                     selectedTab = .nutrition
-                    if let fetched = account {
-                        var resolvedTrackedMacros = fetched.trackedMacros
 
-                        // Prefer server macros; if missing, fall back to any cached local value before defaulting.
-                        if resolvedTrackedMacros.isEmpty, let local = fetchAccount(), !local.trackedMacros.isEmpty {
-                            resolvedTrackedMacros = local.trackedMacros
-                        }
+                    var resolvedTrackedMacros = fetched.trackedMacros
 
-                        if resolvedTrackedMacros.isEmpty {
-                            resolvedTrackedMacros = TrackedMacro.defaults
-                        }
-
-                        fetched.trackedMacros = resolvedTrackedMacros
-
-                        // Daily summary goals with defaults
-                        caloriesBurnGoal = fetched.caloriesBurnGoal == 0 ? 800 : fetched.caloriesBurnGoal
-                        stepsGoal = fetched.stepsGoal == 0 ? 10_000 : fetched.stepsGoal
-                        distanceGoal = fetched.distanceGoal == 0 ? 3_000 : fetched.distanceGoal
-
-                        var resolvedItineraryEvents = fetched.itineraryEvents
-                        if resolvedItineraryEvents.isEmpty, let localAccount = fetchAccount(), !localAccount.itineraryEvents.isEmpty {
-                            resolvedItineraryEvents = localAccount.itineraryEvents
-                        }
-                        fetched.itineraryEvents = resolvedItineraryEvents
-
-                        // Cravings precedence: Firestore → in-memory (if already loaded this run) → local cache.
-                        // Keep existing in-memory cravings; ignore remote for now to avoid overwrites.
-                        fetched.cravings = cravings
-
-                        upsertLocalAccount(with: fetched)
-                        autoRestDayIndices = Set(fetched.autoRestDayIndices)
-                        // Use the fetched maintenance calories from the account on app load
-                        maintenanceCalories = fetched.maintenanceCalories
-                        calorieGoal = fetched.calorieGoal
-                        if let rawMF = fetched.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
-                            selectedMacroFocus = mf
-                        }
-                        hydrateTrackedMacros(fetched.trackedMacros)
-                        cravings = fetched.cravings
-                        hasLoadedCravingsFromRemote = true
-                        if fetched.mealReminders.isEmpty {
-                            mealReminders = MealReminder.defaults
-                        } else {
-                            mealReminders = fetched.mealReminders
-                        }
-                        activityTimers = fetched.activityTimers
-                        itineraryEvents = fetched.itineraryEvents
-                        scheduleMealNotifications(mealReminders)
-                        loadWeekData(for: selectedDate)
+                    // Prefer server macros; if missing, fall back to any cached local value before defaulting.
+                    if resolvedTrackedMacros.isEmpty, let local = fetchAccount(), !local.trackedMacros.isEmpty {
+                        resolvedTrackedMacros = local.trackedMacros
                     }
+
+                    if resolvedTrackedMacros.isEmpty {
+                        resolvedTrackedMacros = TrackedMacro.defaults
+                    }
+
+                    fetched.trackedMacros = resolvedTrackedMacros
+
+                    // Guarantee every onboarded account gets a local 14-day pro trial even if the server document predates trials,
+                    // but honor the debug override that forces a free experience.
+                    if subscriptionManager.isDebugForcingNoSubscription {
+                        trialPeriodEnd = fetched.trialPeriodEnd
+                        if fetched.trialPeriodEnd == nil {
+                            subscriptionManager.resetTrialState()
+                        } else if let end = fetched.trialPeriodEnd {
+                            subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
+                        }
+                    } else if fetched.trialPeriodEnd == nil {
+                        let newTrialEnd = Calendar.current.date(byAdding: .day, value: 14, to: Date())
+                        fetched.trialPeriodEnd = newTrialEnd
+                        trialPeriodEnd = newTrialEnd
+                        if let end = newTrialEnd {
+                            subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
+                        }
+
+                        accountFirestoreService.saveAccount(fetched, forceOverwrite: true) { success in
+                            if !success {
+                                print("RootView: failed to persist trialPeriodEnd when missing on fetch")
+                            }
+                        }
+                    } else {
+                        trialPeriodEnd = fetched.trialPeriodEnd
+                        if let end = fetched.trialPeriodEnd {
+                            subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
+                        }
+                    }
+
+                    // Daily summary goals with defaults
+                    caloriesBurnGoal = fetched.caloriesBurnGoal == 0 ? 800 : fetched.caloriesBurnGoal
+                    stepsGoal = fetched.stepsGoal == 0 ? 10_000 : fetched.stepsGoal
+                    distanceGoal = fetched.distanceGoal == 0 ? 3_000 : fetched.distanceGoal
+
+                    var resolvedItineraryEvents = fetched.itineraryEvents
+                    if resolvedItineraryEvents.isEmpty, let localAccount = fetchAccount(), !localAccount.itineraryEvents.isEmpty {
+                        resolvedItineraryEvents = localAccount.itineraryEvents
+                    }
+                    fetched.itineraryEvents = resolvedItineraryEvents
+
+                    // Cravings precedence: Firestore → in-memory (if already loaded this run) → local cache.
+                    // Keep existing in-memory cravings; ignore remote for now to avoid overwrites.
+                    fetched.cravings = cravings
+
+                    upsertLocalAccount(with: fetched)
+                    autoRestDayIndices = Set(fetched.autoRestDayIndices)
+                    // Use the fetched maintenance calories from the account on app load
+                    maintenanceCalories = fetched.maintenanceCalories
+                    calorieGoal = fetched.calorieGoal
+                    if let rawMF = fetched.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
+                        selectedMacroFocus = mf
+                    }
+                    hydrateTrackedMacros(fetched.trackedMacros)
+                    cravings = fetched.cravings
+                    hasLoadedCravingsFromRemote = true
+                    if fetched.mealReminders.isEmpty {
+                        mealReminders = MealReminder.defaults
+                    } else {
+                        mealReminders = fetched.mealReminders
+                    }
+                    activityTimers = fetched.activityTimers
+                    itineraryEvents = fetched.itineraryEvents
+                    scheduleMealNotifications(mealReminders)
+                    loadWeekData(for: selectedDate)
                 } else {
                     hasCompletedOnboarding = false
                 }
@@ -521,6 +617,7 @@ struct RootView: View {
 
     /// Decides when to hide the splash once initial data and onboarding checks are done.
     private func updateSplashVisibility() {
+        if showWelcomeVideo { return }
         if hasLoadedInitialData && !isCheckingOnboarding {
             withAnimation(.easeOut(duration: 0.35)) {
                 isShowingSplash = false
@@ -531,30 +628,43 @@ struct RootView: View {
 
 /// Lightweight launch splash that matches system appearance while data loads.
 private struct SplashScreenView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var isAnimating: Bool = false
     @State private var showDots: Bool = false
 
     var body: some View {
         let background: Color = colorScheme == .dark ? .black : .white
+        let accentOverride: Color? = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
         ZStack {
             background.ignoresSafeArea()
 
             VStack(spacing: 16) {
                 Spacer()
 
-                Image("logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 110, height: 110)
-                    .opacity(0.92)
+                if let accentOverride {
+                    Image("logo")
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(accentOverride)
+                        .scaledToFit()
+                        .frame(width: 110, height: 110)
+                        .opacity(0.92)
+                } else {
+                    Image("logo")
+                        .resizable()
+                        .renderingMode(.original)
+                        .scaledToFit()
+                        .frame(width: 110, height: 110)
+                        .opacity(0.92)
+                }
 
                 // Buffering / loading indicator (pulsing dots) placed directly below the logo.
                 // Dots exist initially but are invisible; reveal and start pulsing after 1.5s.
                 HStack(spacing: 10) {
                     ForEach(0..<3) { idx in
                         Circle()
-                            .fill(Color.primary.opacity(0.9))
+                            .fill((accentOverride ?? Color.primary).opacity(0.9))
                             .frame(width: 8, height: 8)
                             .scaleEffect(isAnimating ? 1.0 : 0.4)
                             .opacity(showDots ? (isAnimating ? 1.0 : 0.35) : 0)
@@ -588,6 +698,48 @@ private struct SplashScreenView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private struct WelcomeVideoSplashView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    var onFinished: () -> Void
+
+    @State private var player: AVPlayer? = nil
+
+    var body: some View {
+        ZStack {
+            // Background layer respects appearance so letterboxing shows correct color
+            let background: Color = colorScheme == .dark ? .black : .white
+            background.ignoresSafeArea()
+
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+                    .onAppear { player.play() }
+            }
+        }
+        .onAppear(perform: setupPlayer)
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+
+    private func setupPlayer() {
+        let name = colorScheme == .dark ? "welcome_dark" : "welcome_light"
+        guard let url = Bundle.main.url(forResource: name, withExtension: "m4v") else {
+            onFinished()
+            return
+        }
+
+        let item = AVPlayerItem(url: url)
+        let newPlayer = AVPlayer(playerItem: item)
+        player = newPlayer
+
+        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
+            onFinished()
         }
     }
 }
@@ -668,8 +820,14 @@ private extension RootView {
             }
             maintenanceCalories = 0
             calorieGoal = 0
+            trialPeriodEnd = nil
                 sportsConfigs = SportConfig.defaults
             return
+        }
+
+        trialPeriodEnd = account.trialPeriodEnd
+        if let end = trialPeriodEnd {
+            subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
         }
 
         // Respect an explicitly-empty tracked macros list from the account (do not fallback to defaults)
@@ -1835,8 +1993,8 @@ private extension RootView {
                 local.groceryItems = fetched.groceryItems
                 local.expenseCategories = fetched.expenseCategories
                 local.expenseCurrencySymbol = fetched.expenseCurrencySymbol
-                    // Persist weekly progress and supplements from server into local Account
                     local.weeklyProgress = fetched.weeklyProgress
+                    // Persist supplements from server into local Account
                     local.workoutSupplements = fetched.workoutSupplements
                     local.nutritionSupplements = fetched.nutritionSupplements
                 local.goals = fetched.goals
@@ -1858,6 +2016,10 @@ private extension RootView {
                 groceryItems = local.groceryItems
                 expenseCategories = local.expenseCategories
                 expenseCurrencySymbol = local.expenseCurrencySymbol
+                if let end = fetched.trialPeriodEnd {
+                    trialPeriodEnd = end
+                    subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
+                }
             } else {
                 let newAccount = Account(
                     id: fetched.id,
@@ -1902,6 +2064,10 @@ private extension RootView {
                 groceryItems = newAccount.groceryItems
                 expenseCategories = newAccount.expenseCategories
                 expenseCurrencySymbol = newAccount.expenseCurrencySymbol
+                if let end = newAccount.trialPeriodEnd {
+                    trialPeriodEnd = end
+                    subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
+                }
                 modelContext.insert(newAccount)
                 try modelContext.save()
             }
@@ -1988,6 +2154,7 @@ private extension RootView {
                                         local.sports = newAccount.sports
                                         local.soloMetrics = newAccount.soloMetrics
                                         local.teamMetrics = newAccount.teamMetrics
+                                        local.trialPeriodEnd = newAccount.trialPeriodEnd
                                         try modelContext.save()
                                         mealReminders = newAccount.mealReminders
                                         autoRestDayIndices = Set(newAccount.autoRestDayIndices)
@@ -1997,6 +2164,7 @@ private extension RootView {
                                         groceryItems = newAccount.groceryItems
                                         expenseCategories = newAccount.expenseCategories
                                         expenseCurrencySymbol = newAccount.expenseCurrencySymbol
+                                        trialPeriodEnd = newAccount.trialPeriodEnd
                                     }
                                 } catch {
                                     print("RootView: failed to apply account binding set: \(error)")

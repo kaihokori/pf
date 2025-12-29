@@ -37,6 +37,9 @@ struct ExpenseTrackerSection: View {
         accentColorOverride ?? .accentColor
     }
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     private var displayedCurrencySymbol: String {
         let trimmed = currencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? currentCurrencySymbol() : trimmed
@@ -102,7 +105,19 @@ struct ExpenseTrackerSection: View {
     }
 
     private var categoryColors: [Color] {
-        orderedCategories.map { Color(hex: $0.colorHex) ?? tint }
+        orderedCategories.map { cat in
+            if themeManager.selectedTheme != .multiColour {
+                return themeManager.selectedTheme.accent(for: colorScheme)
+            }
+            return Color(hex: cat.colorHex) ?? tint
+        }
+    }
+
+    private func effectiveCategoryColor(for category: ExpenseCategory) -> Color {
+        if themeManager.selectedTheme != .multiColour {
+            return themeManager.selectedTheme.accent(for: colorScheme)
+        }
+        return Color(hex: category.colorHex) ?? tint
     }
 
     private func categoryName(for id: Int) -> String {
@@ -288,6 +303,9 @@ struct ExpenseTrackerSection: View {
 private struct ExpenseEntryEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     var categories: [ExpenseCategory]
     var day: Date
     var entry: ExpenseEntry?
@@ -347,32 +365,39 @@ private struct ExpenseEntryEditorView: View {
                             .font(.subheadline.weight(.semibold))
 
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
-                            ForEach(orderedCategories, id: \.id) { category in
-                                let isSelected = category.id == selectedCategoryId
-                                Button {
-                                    selectedCategoryId = category.id
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Circle()
-                                            .fill((Color(hex: category.colorHex) ?? .accentColor).opacity(0.6))
-                                            .frame(width: 14, height: 14)
+                                ForEach(orderedCategories, id: \.id) { category in
+                                    let isSelected = category.id == selectedCategoryId
+                                    let color: Color = {
+                                        if themeManager.selectedTheme != .multiColour {
+                                            return themeManager.selectedTheme.accent(for: colorScheme)
+                                        }
+                                        return Color(hex: category.colorHex) ?? .accentColor
+                                    }()
 
-                                        Text(category.name)
-                                            .font(.footnote.weight(.semibold))
+                                    Button {
+                                        selectedCategoryId = category.id
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(color.opacity(0.6))
+                                                .frame(width: 14, height: 14)
+
+                                            Text(category.name)
+                                                .font(.footnote.weight(.semibold))
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 10)
+                                        .background(
+                                            (isSelected ? color.opacity(0.15) : Color.secondary.opacity(0.08)),
+                                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 14)
+                                                .stroke(color.opacity(isSelected ? 0.6 : 0.15), lineWidth: isSelected ? 1.2 : 1)
+                                        )
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        (isSelected ? (Color(hex: category.colorHex) ?? .accentColor).opacity(0.15) : Color.secondary.opacity(0.08)),
-                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .stroke((Color(hex: category.colorHex) ?? .accentColor).opacity(isSelected ? 0.6 : 0.15), lineWidth: isSelected ? 1.2 : 1)
-                                    )
-                                }
-                                .buttonStyle(.plain)
+                                    .buttonStyle(.plain)
                             }
                         }
                     }
@@ -483,6 +508,7 @@ struct ExpenseTrackerSection_Previews: PreviewProvider {
             onDeleteEntry: { _ in }
         )
         .previewLayout(.sizeThatFits)
+        .environmentObject(ThemeManager())
     }
 }
 #endif

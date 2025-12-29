@@ -96,7 +96,8 @@ class AccountFirestoreService {
                 // Preserve empty remote weightGroups arrays rather than substituting defaults.
                 weightGroups: remoteWeightGroups,
                 // Preserve empty remote activity timers arrays rather than substituting defaults.
-                activityTimers: remoteActivityTimers
+                activityTimers: remoteActivityTimers,
+                trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue()
             )
 
             completion(account)
@@ -138,7 +139,7 @@ class AccountFirestoreService {
     /// Persist account fields to Firestore. Set `includeCravings` to true only
     /// when the caller intentionally updates cravings to avoid wiping server
     /// data during unrelated saves.
-    func saveAccount(_ account: Account, includeCravings: Bool = false, completion: @escaping (Bool) -> Void) {
+    func saveAccount(_ account: Account, includeCravings: Bool = false, forceOverwrite: Bool = false, completion: @escaping (Bool) -> Void) {
         // Prefer the authenticated user's UID for the document id when signed in.
         let currentUID = Auth.auth().currentUser?.uid
         guard let id = (currentUID ?? account.id), !id.isEmpty else {
@@ -148,41 +149,43 @@ class AccountFirestoreService {
         }
         var data: [String: Any] = [:]
 
-        if let avatar = account.profileAvatar, !avatar.isEmpty {
-            data["profileAvatar"] = avatar
+        if forceOverwrite || (account.profileAvatar?.isEmpty == false) {
+            data["profileAvatar"] = account.profileAvatar ?? ""
         }
-        if let name = account.name, !name.isEmpty {
-            data["name"] = name
+        if forceOverwrite || (account.name?.isEmpty == false) {
+            data["name"] = account.name ?? ""
         }
-        if let gender = account.gender, !gender.isEmpty {
-            data["gender"] = gender
+        if forceOverwrite || (account.gender?.isEmpty == false) {
+            data["gender"] = account.gender ?? ""
         }
-        if let dob = account.dateOfBirth {
-            data["dateOfBirth"] = dob
+        if forceOverwrite || account.dateOfBirth != nil {
+            if let dob = account.dateOfBirth {
+                data["dateOfBirth"] = dob
+            }
         }
-        if let height = account.height, height != 0 {
-            data["height"] = height
+        if forceOverwrite || (account.height ?? 0) != 0 {
+            data["height"] = account.height ?? 0
         }
-        if let weight = account.weight, weight != 0 {
-            data["weight"] = weight
+        if forceOverwrite || (account.weight ?? 0) != 0 {
+            data["weight"] = account.weight ?? 0
         }
-        if account.maintenanceCalories != 0 {
+        if forceOverwrite || account.maintenanceCalories != 0 {
             data["maintenanceCalories"] = account.maintenanceCalories
         }
-        if account.calorieGoal != 0 {
+        if forceOverwrite || account.calorieGoal != 0 {
             data["calorieGoal"] = account.calorieGoal
         }
-        if let macroFocus = account.macroFocusRaw, !macroFocus.isEmpty {
-            data["macroFocus"] = macroFocus
+        if forceOverwrite || (account.macroFocusRaw?.isEmpty == false) {
+            data["macroFocus"] = account.macroFocusRaw ?? ""
         }
-        if account.intermittentFastingMinutes != 0 {
+        if forceOverwrite || account.intermittentFastingMinutes != 0 {
             data["intermittentFastingMinutes"] = account.intermittentFastingMinutes
         }
-        if let theme = account.theme, !theme.isEmpty {
-            data["theme"] = theme
+        if forceOverwrite || (account.theme?.isEmpty == false) {
+            data["theme"] = account.theme ?? ""
         }
-        if let unitSystem = account.unitSystem, !unitSystem.isEmpty {
-            data["unitSystem"] = unitSystem
+        if forceOverwrite || (account.unitSystem?.isEmpty == false) {
+            data["unitSystem"] = account.unitSystem ?? ""
         }
         data["caloriesBurnGoal"] = account.caloriesBurnGoal
         data["stepsGoal"] = account.stepsGoal
@@ -190,12 +193,13 @@ class AccountFirestoreService {
         let resolvedCurrency = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         data["expenseCurrencySymbol"] = resolvedCurrency.isEmpty ? Account.deviceCurrencySymbol : resolvedCurrency
         
-        if let startWeekOn = account.startWeekOn, !startWeekOn.isEmpty {
-            data["startWeekOn"] = startWeekOn
+        if forceOverwrite || (account.startWeekOn?.isEmpty == false) {
+            data["startWeekOn"] = account.startWeekOn ?? ""
         }
         data["autoRestDayIndices"] = account.autoRestDayIndices
         data["trackedMacros"] = account.trackedMacros.map { $0.asDictionary }
-        let categoriesToPersist = account.expenseCategories.isEmpty ? ExpenseCategory.defaultCategories() : account.expenseCategories
+        let shouldFallbackCategories = !forceOverwrite && account.expenseCategories.isEmpty
+        let categoriesToPersist = shouldFallbackCategories ? ExpenseCategory.defaultCategories() : account.expenseCategories
         data["expenseCategories"] = categoriesToPersist.map { $0.asDictionary }
         if includeCravings {
             data["cravings"] = account.cravings.map { $0.asDictionary }
@@ -206,7 +210,6 @@ class AccountFirestoreService {
         data["goals"] = account.goals.map { $0.asDictionary }
         data["mealReminders"] = account.mealReminders.map { $0.asDictionary }
         data["weeklyProgress"] = account.weeklyProgress.map { $0.asFirestoreDictionary() }
-
         // Persist split supplement lists; also emit legacy combined list for backward compatibility
         data["workoutSupplements"] = account.workoutSupplements.map { $0.asDictionary }
         data["nutritionSupplements"] = account.nutritionSupplements.map { $0.asDictionary }
@@ -224,17 +227,24 @@ class AccountFirestoreService {
         data["workoutSchedule"] = account.workoutSchedule.map { $0.asDictionary }
         // Persist itinerary events even when empty so deletions propagate.
         data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
+        if let trialEnd = account.trialPeriodEnd {
+            data["trialPeriodEnd"] = Timestamp(date: trialEnd)
+        } else if forceOverwrite {
+            data["trialPeriodEnd"] = FieldValue.delete()
+        }
 
         // Handle activityLevel carefully: avoid writing a default 'sedentary'
         // value into Firestore on initial saves (e.g. app launch). If the
         // activity is 'sedentary' and the remote document doesn't already
         // have an activityLevel, skip persisting it to avoid introducing
         // an implicit default. Otherwise include it as usual.
-        var shouldIncludeActivity = false
         if let activity = account.activityLevel, !activity.isEmpty {
-            if activity == ActivityLevelOption.sedentary.rawValue {
+            if forceOverwrite {
+                data["activityLevel"] = activity
+            } else if activity == ActivityLevelOption.sedentary.rawValue {
                 // Check remote doc to see if activityLevel already exists.
                 self.db.collection(self.collection).document(id).getDocument { snapshot, error in
+                    var shouldIncludeActivity = false
                     if let dataRemote = snapshot?.data(), let _ = dataRemote["activityLevel"] as? String {
                         // remote already has a value; include ours to update
                         shouldIncludeActivity = true

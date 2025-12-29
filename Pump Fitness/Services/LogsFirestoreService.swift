@@ -1,5 +1,4 @@
 import Foundation
-import FirebaseAuth
 import FirebaseFirestore
 import CoreLocation
 
@@ -31,11 +30,11 @@ final class LogsFirestoreService {
     private let collection = "logs"
 
     @discardableResult
-    func ensureLogDocument(for user: User) async -> Bool {
+    func ensureLogDocument(userId: String, displayName: String?) async -> Bool {
         do {
             try await db.collection(collection)
-                .document(user.uid)
-                .setData(["displayName": user.displayName ?? ""], merge: true)
+                .document(userId)
+                .setData(["displayName": displayName ?? ""], merge: true)
             return true
         } catch {
             print("LogsFirestoreService.ensureLogDocument error: \(error.localizedDescription)")
@@ -43,10 +42,10 @@ final class LogsFirestoreService {
         }
     }
 
-    func appendEntry(_ entry: LogEntry, for user: User) async {
+    func appendEntry(_ entry: LogEntry, userId: String, displayName: String?) async {
         do {
-            let document = db.collection(collection).document(user.uid)
-            try await document.setData(["displayName": user.displayName ?? ""], merge: true)
+            let document = db.collection(collection).document(userId)
+            try await document.setData(["displayName": displayName ?? ""], merge: true)
             try await document.updateData(["entries": FieldValue.arrayUnion([entry.asDictionary])])
         } catch {
             print("LogsFirestoreService.appendEntry error: \(error.localizedDescription)")

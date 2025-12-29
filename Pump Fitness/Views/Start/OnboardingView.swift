@@ -1,18 +1,25 @@
 import SwiftUI
 import Combine
 import FirebaseAuth
+import SwiftData
+import Foundation
 
 struct OnboardingView: View {
     var initialName: String? = nil
+    var isRetake: Bool = false
     var onComplete: (() -> Void)? = nil
     @StateObject private var viewModel: OnboardingViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @State private var isKeyboardVisible = false
 
-    init(initialName: String? = nil, onComplete: (() -> Void)? = nil) {
+    init(initialName: String? = nil, existingAccount: Account? = nil, isRetake: Bool = false, onComplete: (() -> Void)? = nil) {
         self.initialName = initialName
+        self.isRetake = isRetake
         self.onComplete = onComplete
-        _viewModel = StateObject(wrappedValue: OnboardingViewModel(initialName: initialName))
+        _viewModel = StateObject(wrappedValue: OnboardingViewModel(initialName: initialName, isRetake: isRetake, existingAccount: existingAccount))
     }
 
     var body: some View {
@@ -21,15 +28,31 @@ struct OnboardingView: View {
                 GradientBackground(theme: .other)
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 16) {
-                        CylindricalProgressView(currentIndex: viewModel.currentStepIndex, totalSteps: viewModel.steps.count)
+                        ProgressBarView(currentIndex: viewModel.currentStepIndex, totalSteps: viewModel.steps.count)
                             .animation(.easeInOut(duration: 0.3), value: viewModel.currentStepIndex)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(viewModel.currentStep.title)
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.primary)
-                                .padding(.top)
-                            Text(viewModel.currentStep.subtitle)
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                if let symbol = viewModel.currentStep.symbol {
+                                    Image(systemName: symbol)
+                                        .font(.title2.weight(.semibold))
+                                }
+                                Text(viewModel.currentStep.title)
+                                    .font(.title)
+                                    .fontWeight(.bold)
+                            }
+                            .foregroundStyle(.primary)
+                            .padding(.top)
+                            .frame(maxWidth: .infinity, alignment: .center)
+
+                            if let subtitle = viewModel.currentStep.subtitle {
+                                Text(subtitle)
+                                    .font(.headline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+
+                            Text(viewModel.currentStep.description)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -37,30 +60,77 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 24)
 
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 20) {
-                            switch viewModel.currentStep {
-                            case .aboutYou:
-                                AboutYouStepView(viewModel: viewModel)
-                            case .bodyBasics:
-                                BodyBasicsStepView(viewModel: viewModel)
-                            case .routine:
-                                RoutineStepView(viewModel: viewModel)
-                            case .calorieTarget:
-                                CalorieTargetStepView(viewModel: viewModel)
-                            case .macroTargets:
-                                MacroTargetsStepView(viewModel: viewModel)
-                            case .supplements:
-                                SupplementsStepView(viewModel: viewModel)
+                    ScrollViewReader { proxy in
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 20) {
+                                Color.clear.frame(height: 0).id("onboarding-top")
+                                switch viewModel.currentStep {
+                                case .accountSetup:
+                                    AccountSetupStepView(viewModel: viewModel)
+                                case .nutritionTracking:
+                                    NutritionTrackingStepView(viewModel: viewModel)
+                                case .dailySupplements:
+                                    DailySupplementsStepView(viewModel: viewModel)
+                                case .workoutSupplements:
+                                    WorkoutSupplementsStepView(viewModel: viewModel)
+                                case .dailyTasks:
+                                    DailyTasksStepView(viewModel: viewModel)
+                                case .goals:
+                                    GoalsStepView(viewModel: viewModel)
+                                case .habits:
+                                    HabitsStepView(viewModel: viewModel)
+                                case .workoutTracking:
+                                    WorkoutTrackingStepView(viewModel: viewModel)
+                                case .expenses:
+                                    ExpensesStepView(viewModel: viewModel)
+                                case .sports:
+                                    SportsStepView(viewModel: viewModel)
+                                case .travel:
+                                    TravelStepView(viewModel: viewModel)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .id(viewModel.currentStep)
+                        .scrollDismissesKeyboard(.immediately)
+                        .onChange(of: viewModel.currentStep) { _, _ in
+                            DispatchQueue.main.async {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    proxy.scrollTo("onboarding-top", anchor: .top)
+                                }
                             }
                         }
-                        .padding(.vertical, 8)
+                        .onAppear {
+                            proxy.scrollTo("onboarding-top", anchor: .top)
+                        }
                     }
-                    .scrollDismissesKeyboard(.immediately)
-                    .padding(.bottom)
+
+                    let trialEligible = viewModel.isLastStep && !viewModel.isRetake && !subscriptionManager.hasProAccess && subscriptionManager.trialStartDate == nil
+
+                    if trialEligible {
+                        Text("By continuing you'll begin a 14 day trial of Pro")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if !viewModel.isLastStep {
+                        Text("You can modify this later")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
                     HStack(spacing: 12) {
-                        if !viewModel.isFirstStep {
+                        if viewModel.isFirstStep && viewModel.isRetake {
+                            Button(action: { dismiss() }) {
+                                Text("Close")
+                                    .font(.headline)
+                                    .foregroundColor(Color.accentColor)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .surfaceCard(16)
+                            }
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                        } else if !viewModel.isFirstStep {
                             Button(action: { withAnimation { viewModel.goBack() } }) {
                                 Text("Back")
                                     .font(.headline)
@@ -87,6 +157,19 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
+
+                VStack {
+                    Spacer()
+                    KeyboardDismissBar(isVisible: isKeyboardVisible) {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                isKeyboardVisible = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                isKeyboardVisible = false
             }
             .interactiveDismissDisabled()
         }
@@ -96,33 +179,260 @@ struct OnboardingView: View {
     @State private var alertMessage = ""
 
     private func handleContinue() {
+        // If the user filled a "new" row but didn't tap +, add it automatically for the current step
+        func flushPendingForCurrentStep() {
+            switch viewModel.currentStep {
+            case .nutritionTracking:
+                if !viewModel.newMacroName.trimmingCharacters(in: .whitespaces).isEmpty,
+                   Double(viewModel.newMacroAmount) != nil {
+                    viewModel.addCustomMacro()
+                }
+            case .dailySupplements:
+                if !viewModel.newDailySupplementName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addDailySupplement()
+                }
+            case .workoutSupplements:
+                if !viewModel.newWorkoutSupplementName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addWorkoutSupplement()
+                }
+            case .dailyTasks:
+                if !viewModel.newTaskName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addDailyTask()
+                }
+            case .goals:
+                if !viewModel.newGoalTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addGoal()
+                }
+            case .habits:
+                if !viewModel.newHabitName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addHabit()
+                }
+            case .workoutTracking:
+                // `newBodyPart` is local to the view; nothing to flush here
+                break
+            case .sports:
+                if !viewModel.newSportName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addSport()
+                }
+            case .travel:
+                if !viewModel.newEventName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    viewModel.addItineraryEvent()
+                }
+            default:
+                break
+            }
+        }
+
+        flushPendingForCurrentStep()
+
         if viewModel.canContinue {
             if viewModel.isLastStep {
                 // Build Account from collected onboarding fields and save to Firestore
                 let uid = Auth.auth().currentUser?.uid
-                let account = Account(
-                    id: uid,
-                    profileAvatar: nil,
-                    name: viewModel.preferredName.trimmingCharacters(in: .whitespacesAndNewlines),
-                    gender: viewModel.selectedGender?.rawValue,
-                    dateOfBirth: viewModel.birthDate,
-                    height: heightInCentimeters(),
-                    weight: weightInKilograms(),
-                    theme: nil,
-                    unitSystem: viewModel.unitSystem.rawValue,
-                    activityLevel: ActivityLevelOption.moderatelyActive.rawValue,
-                    startWeekOn: nil
-                )
 
-                AccountFirestoreService().saveAccount(account) { success in
-                    DispatchQueue.main.async {
-                        if success {
+                let randomPaletteColor: () -> String = {
+                    ColorPalette.randomHex()
+                }
+
+                func resolvedColor(_ hex: String?) -> String {
+                    let trimmed = (hex ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? randomPaletteColor() : trimmed
+                }
+
+                // Map tracked macros
+                let trackedMacros: [TrackedMacro] = {
+                    let base: [TrackedMacro] = [
+                        TrackedMacro(name: "Protein", target: Double(viewModel.proteinValue) ?? 0, unit: "g", colorHex: "#FF3B30"),
+                        TrackedMacro(name: "Carbs", target: Double(viewModel.carbohydrateValue) ?? 0, unit: "g", colorHex: "#34C759"),
+                        TrackedMacro(name: "Fats", target: Double(viewModel.fatValue) ?? 0, unit: "g", colorHex: "#FF9500"),
+                        TrackedMacro(name: "Sodium", target: Double(viewModel.sodiumValue) ?? 0, unit: "mg", colorHex: "#5856D6"),
+                        TrackedMacro(name: "Water", target: Double(viewModel.waterIntakeValue) ?? 0, unit: "mL", colorHex: "#32ADE6")
+                    ]
+
+                    let custom = viewModel.customMacros.map { macro in
+                        TrackedMacro(
+                            id: macro.id,
+                            name: macro.name,
+                            target: macro.target,
+                            unit: macro.unit,
+                            colorHex: resolvedColor(macro.colorHex)
+                        )
+                    }
+
+                    return base + custom
+                }()
+                
+                // Map supplements
+                let nutritionSupplements = viewModel.dailySupplements
+                let workoutSupplements = viewModel.workoutSupplementsList
+                
+                // Map daily tasks
+                let dailyTasks = viewModel.dailyTasks.map { task in
+                    DailyTaskDefinition(
+                        id: task.id,
+                        name: task.name,
+                        time: task.time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "09:00" : task.time,
+                        colorHex: resolvedColor(task.colorHex),
+                        repeats: task.repeats
+                    )
+                }
+                
+                // Map goals
+                var goals = viewModel.goals
+                if let selectedGoal = viewModel.selectedGoal {
+                    let title = selectedGoal.displayName
+                    if !goals.contains(where: { $0.title.caseInsensitiveCompare(title) == .orderedSame }) {
+                        let defaultDue = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+                        goals.append(GoalItem(title: title, note: "", dueDate: defaultDue))
+                    }
+                }
+                
+                // Map habits
+                let habits = viewModel.habits.map { habit in
+                    HabitDefinition(id: habit.id, name: habit.name, colorHex: resolvedColor(habit.colorHex))
+                }
+                
+                // Map workout schedule (selected days now represent typical rest days)
+                let autoRestDayIndices = viewModel.selectedWorkoutDays.map { $0.id }.sorted()
+                let restDaySet = Set(autoRestDayIndices)
+                let sortedBodyParts = viewModel.trackedBodyParts.sorted()
+                let resolvedBodyParts = sortedBodyParts.isEmpty ? ["Full Body"] : sortedBodyParts
+                let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                var bodyPartIndex = 0
+
+                let workoutSchedule = Weekday.allCases.map { day in
+                    let isRestDay = restDaySet.contains(day.id)
+                    let sessions: [WorkoutSession]
+                    if isRestDay {
+                        sessions = []
+                    } else {
+                        let focus = resolvedBodyParts[bodyPartIndex % resolvedBodyParts.count]
+                        bodyPartIndex += 1
+                        sessions = [
+                            WorkoutSession(
+                                name: focus,
+                                colorHex: randomPaletteColor(),
+                                hour: 9,
+                                minute: 0
+                            )
+                        ]
+                    }
+                    return WorkoutScheduleItem(day: dayNames[day.id], sessions: sessions)
+                }
+                
+                // Map weight groups (body parts)
+                let weightGroups = sortedBodyParts.map { part in
+                    WeightGroupDefinition(name: part, exercises: [WeightExerciseDefinition(name: part)])
+                }
+                
+                // Calculate calorie goal if not set
+                var calorieGoal = Int(viewModel.calorieValue) ?? 0
+                if calorieGoal == 0 {
+                    let p = Double(viewModel.proteinValue) ?? 0
+                    let c = Double(viewModel.carbohydrateValue) ?? 0
+                    let f = Double(viewModel.fatValue) ?? 0
+                    calorieGoal = Int((p * 4) + (c * 4) + (f * 9))
+                }
+                
+                // Fetch existing account or create new
+                var account: Account
+                if let uid = uid {
+                    let descriptor = FetchDescriptor<Account>(predicate: #Predicate { $0.id == uid })
+                    if let existing = try? modelContext.fetch(descriptor).first {
+                        account = existing
+                    } else {
+                        account = Account(id: uid)
+                        modelContext.insert(account)
+                    }
+                } else {
+                    // Fallback for unauthenticated (shouldn't happen in this flow usually)
+                    account = Account()
+                    modelContext.insert(account)
+                }
+                
+                // Update properties
+                account.name = viewModel.preferredName.trimmingCharacters(in: .whitespacesAndNewlines)
+                account.gender = viewModel.selectedGender?.rawValue
+                account.dateOfBirth = viewModel.birthDate
+                account.height = heightInCentimeters()
+                account.weight = weightInKilograms()
+                account.unitSystem = viewModel.unitSystem.rawValue
+                account.activityLevel = viewModel.selectedActivityLevel.rawValue
+                account.maintenanceCalories = Int(viewModel.maintenanceCaloriesValue) ?? 0
+                account.calorieGoal = calorieGoal
+                account.macroFocusRaw = viewModel.selectedMacroFocus?.rawValue
+                
+                account.startWeekOn = account.startWeekOn?.isEmpty == false ? account.startWeekOn : "monday"
+                account.autoRestDayIndices = autoRestDayIndices
+                account.workoutSchedule = workoutSchedule
+                account.trackedMacros = trackedMacros
+                account.goals = goals
+                account.habits = habits
+                account.workoutSupplements = workoutSupplements
+                account.nutritionSupplements = nutritionSupplements
+                account.dailyTasks = dailyTasks
+                
+                // New sections
+                account.expenseCategories = viewModel.expenseCategories.map { category in
+                    ExpenseCategory(id: category.id, name: category.name, colorHex: resolvedColor(category.colorHex))
+                }
+                account.sports = viewModel.sports.map { sport in
+                    SportConfig(id: sport.id, name: sport.name, colorHex: resolvedColor(sport.colorHex), metrics: sport.metrics)
+                }
+                account.itineraryEvents = viewModel.itineraryEvents
+                account.expenseCurrencySymbol = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Account.deviceCurrencySymbol : account.expenseCurrencySymbol
+                
+                // Only update weight groups if user selected some, otherwise keep defaults or existing
+                if !weightGroups.isEmpty {
+                    account.weightGroups = weightGroups
+                } else if account.weightGroups.isEmpty {
+                    account.weightGroups = WeightGroupDefinition.defaults
+                }
+
+                // Set trial end if not already recorded
+                if account.trialPeriodEnd == nil {
+                    account.trialPeriodEnd = Calendar.current.date(byAdding: .day, value: 14, to: Date())
+                }
+
+                // Seed today's Day with calorie goals and macro focus so charts reflect onboarding choices immediately.
+                let weightUnitRaw = viewModel.unitSystem == .imperial ? "lbs" : "kg"
+                let today = Calendar.current.startOfDay(for: Date())
+                let day = Day.fetchOrCreate(for: today, in: modelContext, trackedMacros: trackedMacros)
+                day.calorieGoal = calorieGoal
+                day.maintenanceCalories = account.maintenanceCalories
+                day.macroFocusRaw = account.macroFocusRaw
+                day.weightUnitRaw = weightUnitRaw
+                day.ensureMacroConsumptions(for: trackedMacros)
+                if !dailyTasks.isEmpty {
+                    day.dailyTaskCompletions = dailyTasks.map { DailyTaskCompletion(id: $0.id, isCompleted: false) }
+                }
+                if !habits.isEmpty {
+                    day.habitCompletions = habits.map { HabitCompletion(id: UUID().uuidString, habitId: $0.id, isCompleted: false) }
+                }
+
+                // Save to SwiftData
+                do {
+                    try modelContext.save()
+                } catch {
+                    print("Failed to save account to SwiftData: \(error)")
+                }
+
+                let accountService = AccountFirestoreService()
+                let dayService = DayFirestoreService()
+
+                accountService.saveAccount(account, forceOverwrite: true) { accountSuccess in
+                    dayService.saveDay(day, forceWrite: true) { daySuccess in
+                        DispatchQueue.main.async {
+                            guard accountSuccess && daySuccess else {
+                                alertMessage = "Failed to save account setup. Please try again."
+                                showAlert = true
+                                return
+                            }
+                            _ = subscriptionManager.activateOnboardingTrialIfEligible()
                             hasCompletedOnboarding = true
+                            NotificationCenter.default.post(name: .appSoftReload, object: nil)
                             onComplete?()
                             dismiss()
-                        } else {
-                            alertMessage = "Failed to save account. Please try again."
-                            showAlert = true
                         }
                     }
                 }
@@ -139,7 +449,7 @@ struct OnboardingView: View {
 
     private func validationErrorMessage() -> String {
         switch viewModel.currentStep {
-        case .aboutYou:
+        case .accountSetup:
             let trimmedName = viewModel.preferredName.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedName.isEmpty {
                 return "Preferred name cannot be empty."
@@ -150,8 +460,6 @@ struct OnboardingView: View {
             if !isBirthDateWithinSupportedRange(viewModel.birthDate) {
                 return "Date of birth must produce an age between 0 and 120 years."
             }
-            return "Please complete all fields."
-        case .bodyBasics:
             if viewModel.selectedGender == nil {
                 return "Please select your gender."
             }
@@ -168,17 +476,7 @@ struct OnboardingView: View {
                 return "Weight must be between 20 kg and 1000 kg."
             }
             return "Please complete all fields."
-        case .routine:
-            return "Please complete all fields."
-        case .calorieTarget:
-            if viewModel.selectedMacroFocus == nil {
-                return "Please select your macro focus."
-            }
-            if let error = validateMacroField(value: viewModel.calorieValue, label: "Calorie target", min: 0, max: 20000) {
-                return error
-            }
-            return "Please complete all fields."
-        case .macroTargets:
+        case .nutritionTracking:
             if let error = validateMacroField(value: viewModel.proteinValue, label: "Protein target", min: 0, max: 10000) {
                 return error
             }
@@ -188,20 +486,34 @@ struct OnboardingView: View {
             if let error = validateMacroField(value: viewModel.fatValue, label: "Fat target", min: 0, max: 10000) {
                 return error
             }
-            if let error = validateMacroField(value: viewModel.fibreValue, label: "Fibre target", min: 0, max: 5000) {
-                return error
-            }
+            
             guard parsedNumber(from: viewModel.sodiumValue) != nil else {
                 return "Please enter a valid sodium target."
             }
             guard parsedNumber(from: viewModel.waterIntakeValue) != nil else {
                 return "Please enter a valid water intake target."
             }
-            return "Please complete all fields."
-        case .supplements:
-            if viewModel.selectedSupplements.contains(.other) && viewModel.otherSupplementName.trimmingCharacters(in: .whitespaces).isEmpty {
-                return "Please specify your other supplement(s)."
+            if viewModel.selectedMacroFocus == nil {
+                return "Please select your macro focus."
             }
+            return "Please complete all fields."
+        case .dailySupplements:
+            return "Please complete all fields."
+        case .workoutSupplements:
+            return "Please complete all fields."
+        case .dailyTasks:
+            return "Please complete all fields."
+        case .goals:
+            return "Please complete all fields."
+        case .habits:
+            return "Please complete all fields."
+        case .workoutTracking:
+            return "Please complete all fields."
+        case .expenses:
+            return "Please complete all fields."
+        case .sports:
+            return "Please complete all fields."
+        case .travel:
             return "Please complete all fields."
         }
     }
@@ -254,16 +566,19 @@ struct OnboardingView: View {
     }
 }
 
-private struct AboutYouStepView: View {
+private struct AccountSetupStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @State private var showActivityExplainer = false
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 24) {
             TextFieldWithLabel(
                 "Preferred name",
                 text: $viewModel.preferredName,
                 prompt: Text("e.g. Alex")
             )
+            
             VStack(alignment: .leading, spacing: 8) {
                 Text("Date of birth")
                     .font(.footnote)
@@ -273,19 +588,8 @@ private struct AboutYouStepView: View {
                     range: PumpDateRange.birthdate,
                     isError: !viewModel.isValidBirthDate
                 )
-                .padding(.vertical, 5)
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
 
-private struct BodyBasicsStepView: View {
-    @ObservedObject var viewModel: OnboardingViewModel
-    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
             Text("Gender")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -298,6 +602,13 @@ private struct BodyBasicsStepView: View {
                         viewModel.selectedGender = option
                     }
                 }
+            }
+            if viewModel.selectedGender == .preferNotSay {
+                Text("Automatic maintenance calorie calculations are disabled unless you select Male or Female.")
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 10)
             }
 
             Text("Unit of Measurement")
@@ -353,45 +664,36 @@ private struct BodyBasicsStepView: View {
                     unitLabel: viewModel.unitSystem.weightUnit
                 )
             }
-        }
-        .onAppear {
-            // When the calorie target step appears, if a macro focus is already
-            // selected and the user hasn't entered a calorie value, populate
-            // calculated macro targets automatically.
-            if let focus = viewModel.selectedMacroFocus,
-               focus != .custom,
-               viewModel.calorieValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                viewModel.selectMacroFocus(focus)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct RoutineStepView: View {
-    @ObservedObject var viewModel: OnboardingViewModel
-    private let pillColumns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Workout days each week")
+            
+            ActivityLevelSelector(selection: $viewModel.selectedActivityLevel)
+            
+            Button(action: { showActivityExplainer = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                    Text("Tap for Explanation")
+                    Spacer()
+                }
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            WorkoutsPerWeekView(selectedDays: viewModel.selectedWorkoutDays) { day in
-                viewModel.toggleDay(day)
             }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $showActivityExplainer) {
+            ActivityLevelExplainer()
+        }
     }
 }
 
-private struct CalorieTargetStepView: View {
+private struct NutritionTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    private let pillColumns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+    @State private var showMacroExplainer = false
+    @State private var showMaintenanceExplainer = false
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Macro focus")
+            SectionTitle("Macro Goal")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
@@ -405,57 +707,71 @@ private struct CalorieTargetStepView: View {
                 }
             }
 
-            LabeledNumericField(
-                label: "Calorie Target",
-                value: Binding(
-                    get: { viewModel.calorieValue },
-                    set: { viewModel.updateMacroField(.calories, newValue: $0) }
-                ),
-                unitLabel: "cal"
-            )
+            Button(action: { showMacroExplainer = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                    Text("Tap for Explanation")
+                    Spacer()
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
 
-                if let maintenance = viewModel.estimatedMaintenanceCalories,
-                    let focus = viewModel.selectedMacroFocus,
-                    focus != .custom {
-                let recommendation = CalorieGoalPlanner.recommendation(for: focus, maintenanceCalories: maintenance)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Recommended for \(focus.displayName)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(maintenance) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentCaloriesText) = \(recommendation.value) cal")
-                        .font(.body)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Color.accentColor)
-                    Text("We base this on your estimated maintenance of \(maintenance) cal. Adjust manually if you need a custom target.")
+            SectionTitle("Tracked Macros")
+            VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Maintenance Calories")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        TextField(
+                            "0",
+                            text: Binding(
+                                get: { viewModel.maintenanceCaloriesValue },
+                                set: { viewModel.updateMaintenanceCalories($0) }
+                            )
+                        )
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.plain)
+                        Text("cal")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        let disableAuto = viewModel.shouldDisableMaintenanceAuto
+                        Button(action: { viewModel.calculateMaintenanceCalories() }) {
+                            Text("Auto")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                        .fill(Color.accentColor)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(disableAuto)
+                        .opacity(disableAuto ? 0.5 : 1)
+                    }
+                    .padding()
+                    .surfaceCard(12)
+
+                    // Tap for Explanation (opens Maintenance Calories Explainer)
+                    Button(action: {
+                        showMacroExplainer = true
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle")
+                            Text("Tap for Explanation")
+                            Spacer()
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-            } else if viewModel.selectedMacroFocus == .custom {
-                Text("Custom targets override the preset strategy.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            if viewModel.selectedGender == .preferNotSay {
-                Text("Maintenance cannot be calculated unless you select \"Male\" or \"Female\".")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Maintenance is calculated with the Mifflin-St Jeor equation plus your workout schedule, then applies the selected macro focus multiplier.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct MacroTargetsStepView: View {
-    @ObservedObject var viewModel: OnboardingViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            VStack(spacing: 16) {
+                
                 LabeledNumericField(
                     label: "Protein",
                     value: Binding(
@@ -483,23 +799,7 @@ private struct MacroTargetsStepView: View {
                     unitLabel: "g"
                 )
 
-                LabeledNumericField(
-                    label: "Fibre",
-                    value: Binding(
-                        get: { viewModel.fibreValue },
-                        set: { viewModel.updateMacroField(.fibre, newValue: $0) }
-                    ),
-                    unitLabel: "g"
-                )
-
-                LabeledNumericField(
-                    label: "Sodium",
-                    value: Binding(
-                        get: { viewModel.sodiumValue },
-                        set: { viewModel.updateMacroField(.sodium, newValue: $0) }
-                    ),
-                    unitLabel: "mg"
-                )
+                // Fibre field removed per request
 
                 LabeledNumericField(
                     label: "Water Intake",
@@ -509,46 +809,773 @@ private struct MacroTargetsStepView: View {
                     ),
                     unitLabel: "ml"
                 )
+
+                // Single consolidated Auto button for macros
+                HStack {
+                    Spacer()
+                    Button(action: { viewModel.autoCalculateAllMacros() }) {
+                        Text("Auto Calculate Macros")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                    .fill(Color.accentColor)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            
+            // Quick Add
+            let availableMacroPresets = MacroPreset.allCases.filter { preset in
+                !viewModel.customMacros.contains(where: { $0.name.lowercased() == preset.displayName.lowercased() })
             }
 
-            MacroCalculationExplainer()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct SupplementsStepView: View {
-    @ObservedObject var viewModel: OnboardingViewModel
-    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            SectionTitle("Daily Supplements")
-            LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
-                ForEach(SupplementOption.allCases) { option in
-                    SelectablePillComponent(
-                        label: option.displayName,
-                        isSelected: viewModel.selectedSupplements.contains(option)
-                    ) {
-                        if viewModel.selectedSupplements.contains(option) {
-                            viewModel.selectedSupplements.remove(option)
-                            if option == .other {
-                                viewModel.otherSupplementName = ""
+            if !availableMacroPresets.isEmpty {
+                SectionTitle("Quick Add")
+                VStack(spacing: 8) {
+                    ForEach(availableMacroPresets, id: \.self) { preset in
+                        HStack {
+                            Text(preset.displayName)
+                            Spacer()
+                            Button(action: { addPresetMacro(preset) }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.accentColor)
                             }
-                        } else if viewModel.selectedSupplements.count < 8 {
-                            viewModel.selectedSupplements.insert(option)
+                            .disabled(!viewModel.canAddCustomMacros)
                         }
+                        .padding()
+                        .surfaceCard(12)
                     }
                 }
             }
-            if viewModel.selectedSupplements.contains(.other) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Please specify other supplement(s)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    TextField("Enter supplement name(s)", text: $viewModel.otherSupplementName)
+
+            SectionTitle("Custom Macros")
+            VStack(spacing: 8) {
+                ForEach($viewModel.customMacros) { $macro in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(macro.name)
+                                .fontWeight(.medium)
+                            HStack(spacing: 8) {
+                                TextField("Amount", value: $macro.target, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .frame(width: 80)
+                                Text(macro.unit)
+                                    .frame(width: 50)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(action: { viewModel.removeCustomMacro(macro) }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .surfaceCard(12)
+                }
+
+                HStack(spacing: 8) {
+                    TextField("Name", text: $viewModel.newMacroName)
+                        .frame(maxWidth: .infinity)
+                    TextField("Amount", text: $viewModel.newMacroAmount)
+                        .keyboardType(.decimalPad)
+                        .frame(width: 80)
+                    TextField("Unit", text: $viewModel.newMacroUnit)
+                        .frame(width: 50)
+
+                    Button(action: { viewModel.addCustomMacro() }) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.accentColor)
+                            .font(.title2)
+                    }
+                    .disabled(!viewModel.canAddCustomMacros)
+                }
+                .padding()
+                .surfaceCard(12)
+            }
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxCustomMacros) Macros")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+            .sheet(isPresented: $showMaintenanceExplainer) {
+                MaintenanceCaloriesExplainer()
+            }
+            .sheet(isPresented: $showMacroExplainer) {
+                NavigationStack {
+                    MacroCalculationExplainer()
+                        .padding(.horizontal, 18)
+                        .navigationTitle("Macro Information")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showMacroExplainer = false
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
+                }
+            }
+
+    
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func addPresetMacro(_ preset: MacroPreset) {
+        // Parse allowedLabel like "100g" or "2500mL" into numeric target and unit
+        let allowed = preset.allowedLabel
+        let digits = allowed.unicodeScalars.filter { CharacterSet(charactersIn: "0123456789.").contains($0) }
+        let suffixScalars = allowed.unicodeScalars.filter { !CharacterSet(charactersIn: "0123456789.").contains($0) }
+        let numberString = String(String.UnicodeScalarView(digits))
+        let suffix = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetValue = Double(numberString) ?? 0
+
+        let colorHex: String = {
+            switch preset {
+            case .protein: return "#D84A4A"
+            case .carbs: return "#E6C84F"
+            case .fats: return "#E39A3B"
+            case .fibre: return "#4CAF6A"
+            case .water: return "#4A7BD0"
+            case .sodium: return "#4FB6C6"
+            case .potassium: return "#7A5FD1"
+            case .sugar: return "#C85FA8"
+            case .cholesterol: return "#2a65edff"
+            }
+        }()
+
+        let macro = TrackedMacro(name: preset.displayName, target: targetValue, unit: suffix.isEmpty ? "g" : suffix, colorHex: colorHex)
+        viewModel.customMacros.append(macro)
+    }
+
+}
+
+private struct DailySupplementsStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @State private var dailyAmounts: [String: String] = [:]
+
+    private let dailyPresets: [Supplement] = [
+        Supplement(name: "Vitamin D", amountLabel: "50 μg"),
+        Supplement(name: "Vitamin B Complex", amountLabel: "50 mg"),
+        Supplement(name: "Magnesium", amountLabel: "200 mg"),
+        Supplement(name: "Probiotics", amountLabel: "10 Billion CFU"),
+        Supplement(name: "Fish Oil", amountLabel: "1000 mg"),
+        Supplement(name: "Ashwagandha", amountLabel: "500 mg"),
+        Supplement(name: "Melatonin", amountLabel: "3 mg"),
+        Supplement(name: "Calcium", amountLabel: "500 mg"),
+        Supplement(name: "Iron", amountLabel: "18 mg"),
+        Supplement(name: "Zinc", amountLabel: "15 mg"),
+        Supplement(name: "Vitamin C", amountLabel: "1000 mg"),
+        Supplement(name: "Caffeine", amountLabel: "200 mg")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Tracked Supplements
+            if !viewModel.dailySupplements.isEmpty {
+                SectionTitle("Tracked Supplements")
+                VStack(spacing: 8) {
+                    ForEach($viewModel.dailySupplements) { $supplement in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 6) {
+                                TextField("Name", text: $supplement.name)
+                                    .fontWeight(.medium)
+                                TextField(
+                                    "Amount",
+                                    text: Binding(
+                                        get: { supplement.amountLabel ?? "" },
+                                        set: { supplement.amountLabel = $0.isEmpty ? nil : $0 }
+                                    )
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button(action: { viewModel.removeDailySupplement(supplement) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                         .padding()
-                        .surfaceCard(10)
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            SectionTitle("Quick Add")
+            VStack(spacing: 8) {
+                ForEach(dailyPresets) { option in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(option.name)
+                                .fontWeight(.medium)
+                            Text(option.amountLabel ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(action: {
+                            let amount = option.amountLabel ?? ""
+                            let sup = Supplement(name: option.name, amountLabel: amount.isEmpty ? nil : amount)
+                            viewModel.dailySupplements.append(sup)
+                            dailyAmounts[option.name] = option.amountLabel ?? ""
+                        }) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!viewModel.canAddDailySupplements)
+                        .opacity(viewModel.canAddDailySupplements ? 1 : 0.5)
+                    }
+                    .padding()
+                    .surfaceCard(12)
+                }
+            }
+
+            // Custom Supplements
+            SectionTitle("Custom Supplements")
+            HStack(spacing: 8) {
+                TextField("Name", text: $viewModel.newDailySupplementName)
+                    .frame(maxWidth: .infinity)
+                TextField("Amount", text: $viewModel.newDailySupplementAmount)
+                    .frame(width: 120)
+
+                Button(action: { viewModel.addDailySupplement() }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.title2)
+                }
+                .disabled(!viewModel.canAddDailySupplements)
+            }
+            .padding()
+            .surfaceCard(12)
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxDailySupplements) Daily Supplements")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            if dailyAmounts.isEmpty {
+                for preset in dailyPresets {
+                    dailyAmounts[preset.name] = preset.amountLabel ?? ""
+                }
+            }
+        }
+    }
+
+}
+
+private struct WorkoutSupplementsStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @State private var workoutAmounts: [String: String] = [:]
+    
+    private let workoutPresets: [Supplement] = [
+        Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
+        Supplement(name: "Creatine", amountLabel: "5 g"),
+        Supplement(name: "Whey Protein", amountLabel: "30 g"),
+        Supplement(name: "BCAA", amountLabel: "10 g"),
+        Supplement(name: "Electrolytes", amountLabel: "1 scoop")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Tracked Supplements
+            if !viewModel.workoutSupplementsList.isEmpty {
+                SectionTitle("Tracked Supplements")
+                VStack(spacing: 8) {
+                    ForEach($viewModel.workoutSupplementsList) { $supplement in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 6) {
+                                TextField("Name", text: $supplement.name)
+                                    .fontWeight(.medium)
+                                TextField(
+                                    "Amount",
+                                    text: Binding(
+                                        get: { supplement.amountLabel ?? "" },
+                                        set: { supplement.amountLabel = $0.isEmpty ? nil : $0 }
+                                    )
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button(action: { viewModel.removeWorkoutSupplement(supplement) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            SectionTitle("Quick Add")
+            VStack(spacing: 8) {
+                ForEach(workoutPresets) { option in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(option.name)
+                                .fontWeight(.medium)
+                            Text(option.amountLabel ?? "")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(action: {
+                            let amount = option.amountLabel ?? ""
+                            let sup = Supplement(name: option.name, amountLabel: amount.isEmpty ? nil : amount)
+                            viewModel.workoutSupplementsList.append(sup)
+                            workoutAmounts[option.name] = option.amountLabel ?? ""
+                        }) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!viewModel.canAddWorkoutSupplements)
+                        .opacity(viewModel.canAddWorkoutSupplements ? 1 : 0.5)
+                    }
+                    .padding()
+                    .surfaceCard(12)
+                }
+            }
+
+            // Custom Supplements
+            SectionTitle("Custom Supplements")
+            HStack(spacing: 8) {
+                TextField("Name", text: $viewModel.newWorkoutSupplementName)
+                    .frame(maxWidth: .infinity)
+                TextField("Amount", text: $viewModel.newWorkoutSupplementAmount)
+                    .frame(width: 120)
+
+                Button(action: { viewModel.addWorkoutSupplement() }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.title2)
+                }
+                .disabled(!viewModel.canAddWorkoutSupplements)
+            }
+            .padding()
+            .surfaceCard(12)
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxWorkoutSupplements) Workout Supplements")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            if workoutAmounts.isEmpty {
+                for preset in workoutPresets {
+                    workoutAmounts[preset.name] = preset.amountLabel ?? ""
+                }
+            }
+        }
+    }
+}
+
+private struct DailyTasksStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    
+    private let taskPresets = ["Wake Up", "Coffee", "Stretch", "Lunch", "Workout"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            if !viewModel.dailyTasks.isEmpty {
+                SectionTitle("Tracked Tasks")
+                VStack(spacing: 8) {
+                    ForEach($viewModel.dailyTasks) { $task in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                TextField("Task Name", text: $task.name)
+                                    .fontWeight(.medium)
+                                DatePicker("", selection: Binding(
+                                    get: {
+                                        let formatter = DateFormatter()
+                                        formatter.dateFormat = "HH:mm"
+                                        return formatter.date(from: task.time) ?? Date()
+                                    },
+                                    set: { newDate in
+                                        let formatter = DateFormatter()
+                                        formatter.dateFormat = "HH:mm"
+                                        task.time = formatter.string(from: newDate)
+                                    }
+                                ), displayedComponents: .hourAndMinute)
+                                .labelsHidden()
+                            }
+                            Spacer()
+                            Button(action: { viewModel.removeDailyTask(task) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            let availablePresets = taskPresets.filter { preset in
+                !viewModel.dailyTasks.contains(where: { $0.name == preset })
+            }
+            
+            if !availablePresets.isEmpty {
+                SectionTitle("Quick Add")
+                VStack(spacing: 8) {
+                    ForEach(availablePresets, id: \.self) { preset in
+                        HStack {
+                            Text(preset)
+                            Spacer()
+                            Button(action: {
+                                let time: String = {
+                                    switch preset {
+                                    case "Wake Up": return "07:00"
+                                    case "Coffee": return "08:00"
+                                    case "Stretch": return "09:00"
+                                    case "Lunch": return "12:30"
+                                    case "Workout": return "18:00"
+                                    default: return "09:00"
+                                    }
+                                }()
+                                let task = DailyTaskDefinition(name: preset, time: time)
+                                viewModel.dailyTasks.append(task)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .disabled(!viewModel.canAddDailyTasks)
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Custom Task
+            SectionTitle("Custom Task")
+            HStack(spacing: 12) {
+                TextField("Name", text: $viewModel.newTaskName)
+                DatePicker("", selection: $viewModel.newTaskTime, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .frame(maxWidth: 90)
+                Spacer(minLength: 0)
+                Button(action: { viewModel.addDailyTask() }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+                .disabled(!viewModel.canAddDailyTasks)
+            }
+            .padding()
+            .surfaceCard(12)
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxDailyTasks) Daily Tasks")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct GoalsStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    
+    private let goalPresets = ["10 min Walk", "Read 10 pages", "Prep healthy lunch"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Tracked Goals
+            if !viewModel.goals.isEmpty {
+                SectionTitle("Tracked Goals")
+                VStack(spacing: 8) {
+                    ForEach($viewModel.goals) { $goal in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                TextField("Goal Title", text: $goal.title)
+                                    .fontWeight(.medium)
+                                TextField("Note", text: $goal.note)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                DatePicker("", selection: $goal.dueDate, displayedComponents: .date)
+                                    .labelsHidden()
+                            }
+                            Spacer()
+                            Button(action: { viewModel.removeGoal(goal) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            let availablePresets = goalPresets.filter { preset in
+                !viewModel.goals.contains(where: { $0.title == preset })
+            }
+            
+            if !availablePresets.isEmpty {
+                SectionTitle("Quick Add")
+                VStack(spacing: 8) {
+                    ForEach(availablePresets, id: \.self) { preset in
+                        HStack {
+                            Text(preset)
+                            Spacer()
+                            Button(action: {
+                                let today = Date()
+                                let due: Date = {
+                                    switch preset {
+                                    case "10 min Walk": return today
+                                    case "Read 10 pages": return Calendar.current.date(byAdding: .day, value: 3, to: today) ?? today
+                                    case "Prep healthy lunch": return Calendar.current.date(byAdding: .day, value: 14, to: today) ?? today
+                                    default: return Calendar.current.date(byAdding: .day, value: 30, to: today) ?? today
+                                    }
+                                }()
+                                let goal = GoalItem(title: preset, dueDate: due)
+                                viewModel.goals.append(goal)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .disabled(!viewModel.canAddGoals)
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Custom Goal
+            SectionTitle("Custom Goal")
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    TextField("Title", text: $viewModel.newGoalTitle)
+                    DatePicker("", selection: $viewModel.newGoalDueDate, displayedComponents: .date)
+                        .labelsHidden()
+                    Spacer(minLength: 0)
+                }
+                .padding([.leading, .vertical])
+                .surfaceCard(12)
+
+                HStack(spacing: 12) {
+                    TextField("Note (Optional)", text: $viewModel.newGoalNote)
+                    Spacer(minLength: 0)
+                    Button(action: { viewModel.addGoal() }) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.accentColor)
+                    }
+                    .disabled(!viewModel.canAddGoals)
+                }
+                .padding()
+                .surfaceCard(12)
+            }
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxGoals) Goals")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct HabitsStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    
+    private let habitPresets = ["Morning Stretch", "Meditation", "Read"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+          // Tracked Habits
+            if !viewModel.habits.isEmpty {
+                SectionTitle("Tracked Habits")
+                VStack(spacing: 8) {
+                    ForEach($viewModel.habits) { $habit in
+                        HStack {
+                            TextField("Habit Name", text: $habit.name)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Button(action: { viewModel.removeHabit(habit) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            let availablePresets = habitPresets.filter { preset in
+                !viewModel.habits.contains(where: { $0.name == preset })
+            }
+            
+            if !availablePresets.isEmpty {
+                SectionTitle("Quick Add")
+                VStack(spacing: 8) {
+                    ForEach(availablePresets, id: \.self) { preset in
+                        HStack {
+                            Text(preset)
+                            Spacer()
+                            Button(action: {
+                                let habit = HabitDefinition(name: preset, colorHex: "#007AFF")
+                                viewModel.habits.append(habit)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .disabled(!viewModel.canAddHabits)
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Custom Habit
+            SectionTitle("Custom Habit")
+            HStack(spacing: 12) {
+                TextField("Name", text: $viewModel.newHabitName)
+                Spacer(minLength: 0)
+                Button(action: { viewModel.addHabit() }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+                .disabled(!viewModel.canAddHabits)
+            }
+            .padding()
+            .surfaceCard(12)
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxHabits) Habits")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct WorkoutTrackingStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @State private var newBodyPart: String = ""
+    private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+
+    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            SectionTitle("Typical Rest Days")
+            Text("Select the days you typically rest")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            WorkoutsPerWeekView(selectedDays: viewModel.selectedWorkoutDays) { day in
+                viewModel.toggleDay(day)
+            }
+
+            if !viewModel.trackedBodyParts.isEmpty {
+                SectionTitle("Tracked Body Parts")
+                VStack(spacing: 8) {
+                    ForEach(Array(viewModel.trackedBodyParts).sorted(), id: \.self) { part in
+                        HStack {
+                            Text(part)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Button(action: {
+                                viewModel.trackedBodyParts.remove(part)
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            let availablePresets = bodyPartPresets.filter { !viewModel.trackedBodyParts.contains($0) }
+            
+            if !availablePresets.isEmpty {
+                SectionTitle("Quick Add")
+                VStack(spacing: 8) {
+                    ForEach(availablePresets, id: \.self) { preset in
+                        HStack {
+                            Text(preset)
+                            Spacer()
+                            Button(action: {
+                                viewModel.trackedBodyParts.insert(preset)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+            
+            // Custom Body Part
+            SectionTitle("Custom Body Part")
+            HStack(spacing: 12) {
+                TextField("Add a body part...", text: $newBodyPart)
+                    .onSubmit { addBodyPart() }
+                Spacer(minLength: 0)
+                Button(action: addBodyPart) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+            }
+            .padding()
+            .surfaceCard(12)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func addBodyPart() {
+        let trimmed = newBodyPart.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        viewModel.trackedBodyParts.insert(trimmed)
+        newBodyPart = ""
+    }
+}
+
+private struct ExpensesStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(spacing: 8) {
+                ForEach($viewModel.expenseCategories) { $category in
+                    HStack {
+                        Circle()
+                            .fill(Color(hex: category.colorHex) ?? .gray)
+                            .frame(width: 12, height: 12)
+                        TextField("Category Name", text: $category.name)
+                            .fontWeight(.medium)
+                        Image(systemName: "pencil")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .surfaceCard(12)
                 }
             }
         }
@@ -556,19 +1583,152 @@ private struct SupplementsStepView: View {
     }
 }
 
-private struct CylindricalProgressView: View {
+private struct SportsStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    
+    private let sportPresets = SportConfig.defaults
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Tracked Sports
+            if !viewModel.sports.isEmpty {
+                SectionTitle("Tracked Sports")
+                VStack(spacing: 8) {
+                    ForEach($viewModel.sports) { $sport in
+                        HStack {
+                            TextField("Sport Name", text: $sport.name)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Button(action: { viewModel.removeSport(sport) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Quick Add
+            let availablePresets = sportPresets.filter { preset in
+                !viewModel.sports.contains(where: { $0.name == preset.name })
+            }
+            
+            if !availablePresets.isEmpty {
+                SectionTitle("Quick Add")
+                VStack(spacing: 8) {
+                    ForEach(availablePresets, id: \.self) { preset in
+                        HStack {
+                            Text(preset.name)
+                            Spacer()
+                            Button(action: {
+                                viewModel.sports.append(preset)
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .disabled(!viewModel.canAddSports)
+                            .opacity(viewModel.canAddSports ? 1 : 0.5)
+                        }
+                        .padding()
+                        .surfaceCard(12)
+                    }
+                }
+            }
+
+            // Custom Sport
+            SectionTitle("Custom Sport")
+            HStack(spacing: 12) {
+                TextField("Sport Name", text: $viewModel.newSportName)
+                Spacer(minLength: 0)
+                Button(action: { viewModel.addSport() }) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+                .disabled(!viewModel.canAddSports)
+            }
+            .padding()
+            .surfaceCard(12)
+            VStack(alignment: .center) {
+                Text("You can add up to \(viewModel.maxSports) Sports")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct TravelStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.2), Color.blue.opacity(0.25)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(height: 220)
+
+                Image("travel")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 140)
+                    .opacity(0.9)
+                    .padding(.leading, 16)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Travel light; we'll remember the plans.")
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(.primary)
+                    Text("You can add itineraries later from the Travel tab.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(16)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ProgressBarView: View {
     let currentIndex: Int
     let totalSteps: Int
 
+    private var progress: Double {
+        guard totalSteps > 0 else { return 0 }
+        return Double(currentIndex + 1) / Double(totalSteps)
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(0..<totalSteps, id: \.self) { index in
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(index <= currentIndex ? Color.accentColor : Color(.systemGray4))
+                    .fill(Color(.systemGray5))
                     .frame(height: 8)
-                    .opacity(index <= currentIndex ? 1 : 0.4)
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(red: 0.74, green: 0.43, blue: 0.97),
+                                Color(red: 0.83, green: 0.99, blue: 0.94)
+                            ]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(0, geo.size.width * CGFloat(progress)), height: 8)
+                    .animation(.easeInOut(duration: 0.25), value: progress)
             }
         }
+        .frame(height: 8)
     }
 }
 
@@ -657,6 +1817,44 @@ public struct LabeledNumericField: View {
     }
 }
 
+public struct LabeledNumericFieldWithAuto: View {
+    let label: String
+    @Binding var value: String
+    let unitLabel: String
+    let onAuto: () -> Void
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                TextField("0", text: $value)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.plain)
+                Text(unitLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button(action: onAuto) {
+                    Text("Auto")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                .fill(Color.accentColor)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+            .surfaceCard(12)
+        }
+    }
+}
+
 public struct TextFieldWithLabel: View {
     var label: String
     @Binding var text: String
@@ -689,22 +1887,32 @@ public struct SectionTitle: View {
     }
 
     public var body: some View {
-        Text(text.uppercased())
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-            .padding(.bottom, -4)
+        HStack(spacing: 8) {
+            Image(systemName: symbolFor(text))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(text.uppercased())
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, -4)
+    }
+
+    private func symbolFor(_ text: String) -> String {
+        let lower = text.lowercased()
+        if lower.contains("tracked") { return "checkmark.seal.fill" }
+        if lower.contains("quick add") || lower.contains("quick") { return "sparkles" }
+        if lower.contains("custom") { return "pencil" }
+        if lower.contains("macro") || lower.contains("calorie") { return "chart.pie.fill" }
+        return "circle.grid.3x3.fill"
     }
 }
 
 final class OnboardingViewModel: ObservableObject {
-    @Published private(set) var currentStep: OnboardingStep = .aboutYou
+    @Published private(set) var currentStep: OnboardingStep = .accountSetup
     @Published var preferredName: String
     @Published var birthDate: Date = PumpDateRange.birthdate.upperBound
-
-    init(initialName: String? = nil) {
-        self.preferredName = initialName ?? ""
-    }
 
     @Published var selectedGender: GenderOption?
     @Published var unitSystem: UnitSystem = .metric
@@ -712,23 +1920,172 @@ final class OnboardingViewModel: ObservableObject {
     @Published var heightFeet: String = ""
     @Published var heightInches: String = ""
     @Published var weightValue: String = ""
+    @Published var selectedActivityLevel: ActivityLevelOption = .moderatelyActive
 
     @Published var selectedGoal: GoalOption?
-    @Published var selectedWorkoutDays: Set<Weekday> = []
+    @Published var selectedWorkoutDays: Set<Weekday> = [] // UI collects typical rest days; invert for workout calculations
+
+    private var workoutDaysCount: Int {
+        max(0, Weekday.allCases.count - selectedWorkoutDays.count)
+    }
     @Published var selectedMacroFocus: MacroFocusOption?
+    @Published var maintenanceCaloriesValue: String = ""
     @Published var calorieValue: String = ""
     @Published var proteinValue: String = ""
     @Published var fatValue: String = ""
     @Published var carbohydrateValue: String = ""
-    @Published var fibreValue: String = ""
+    
     @Published var sodiumValue: String = ""
     @Published var waterIntakeValue: String = ""
-    @Published var selectedSupplements: Set<SupplementOption> = []
-    @Published var otherSupplementName: String = ""
+    
+    // Custom Macros & Supplements
+    @Published var customMacros: [TrackedMacro] = []
+    @Published var newMacroName: String = ""
+    @Published var newMacroAmount: String = ""
+    @Published var newMacroUnit: String = "g"
+    
+    @Published var dailySupplements: [Supplement] = []
+    @Published var newDailySupplementName: String = ""
+    @Published var newDailySupplementAmount: String = ""
+    
+    @Published var workoutSupplementsList: [Supplement] = []
+    @Published var newWorkoutSupplementName: String = ""
+    @Published var newWorkoutSupplementAmount: String = ""
+    
+    // New properties
+    @Published var dailyTasks: [DailyTaskDefinition] = []
+    @Published var newTaskName: String = ""
+    @Published var newTaskTime: Date = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    
+    @Published var goals: [GoalItem] = []
+    @Published var newGoalTitle: String = ""
+    @Published var newGoalNote: String = ""
+    @Published var newGoalDueDate: Date = Date().addingTimeInterval(86400 * 30)
+    
+    @Published var habits: [HabitDefinition] = []
+    @Published var newHabitName: String = ""
+    @Published var newHabitColor: Color = .blue
+    
+    @Published var trackedBodyParts: Set<String> = []
+    
+    // Expenses, Sports, Travel
+    @Published var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
+    
+    @Published var sports: [SportConfig] = []
+    @Published var newSportName: String = ""
+    
+    @Published var itineraryEvents: [ItineraryEvent] = []
+    @Published var newEventName: String = ""
+    @Published var newEventDate: Date = Date()
+    @Published var newEventType: ItineraryCategory = .other
+    
     private var lastCalculatedTargets: MacroTargetsSnapshot?
+    let isRetake: Bool
 
-    let steps: [OnboardingStep] = OnboardingStep.allCases
+    // Limits for onboarding additions
+    let maxCustomMacros: Int = 8
+    let maxDailySupplements: Int = 8
+    let maxDailyTasks: Int = 12
+    let maxGoals: Int = 12
+    let maxHabits: Int = 3
+    let maxWorkoutSupplements: Int = 8
+    let maxSports: Int = 8
 
+    var canAddCustomMacros: Bool { customMacros.count < maxCustomMacros }
+    var canAddDailySupplements: Bool { dailySupplements.count < maxDailySupplements }
+    var canAddWorkoutSupplements: Bool { workoutSupplementsList.count < maxWorkoutSupplements }
+    var canAddDailyTasks: Bool { dailyTasks.count < maxDailyTasks }
+    var canAddGoals: Bool { goals.count < maxGoals }
+    var canAddHabits: Bool { habits.count < maxHabits }
+    var canAddSports: Bool { sports.count < maxSports }
+
+    var steps: [OnboardingStep] {
+        if isRetake {
+            return [
+                .accountSetup,
+                .nutritionTracking,
+                .dailySupplements,
+                .habits,
+                .dailyTasks,
+                .expenses,
+                .workoutTracking,
+                .workoutSupplements,
+                .sports,
+                .travel
+            ]
+        } else {
+            return [
+                .accountSetup,
+                .nutritionTracking,
+                .dailySupplements,
+                .habits,
+                .dailyTasks,
+                .expenses,
+                .workoutTracking,
+                .workoutSupplements,
+                .sports,
+                .travel
+            ]
+        }
+    }
+
+    init(initialName: String? = nil, isRetake: Bool = false, existingAccount: Account? = nil) {
+        self.preferredName = initialName ?? ""
+        self.isRetake = isRetake
+
+        if let account = existingAccount {
+            preferredName = account.name ?? preferredName
+            birthDate = account.dateOfBirth ?? birthDate
+            selectedGender = GenderOption(rawValue: account.gender ?? "")
+            unitSystem = UnitSystem(rawValue: account.unitSystem ?? unitSystem.rawValue) ?? .metric
+            if unitSystem == .imperial {
+                let cm = account.height ?? 0
+                if cm > 0 {
+                    let inchesTotal = cm / 2.54
+                    let feet = Int(inchesTotal / 12)
+                    let inches = inchesTotal - Double(feet * 12)
+                    heightFeet = String(feet)
+                    heightInches = String(format: "%.1f", inches)
+                }
+            } else {
+                if let cm = account.height, cm > 0 {
+                    heightValue = String(format: "%.0f", cm)
+                }
+            }
+            if let kg = account.weight, kg > 0 {
+                weightValue = unitSystem == .imperial ? UnitConverter.convertWeight(kg, from: .metric, to: .imperial) : String(format: "%.1f", kg)
+            }
+            selectedActivityLevel = ActivityLevelOption(rawValue: account.activityLevel ?? ActivityLevelOption.moderatelyActive.rawValue) ?? .moderatelyActive
+            maintenanceCaloriesValue = account.maintenanceCalories > 0 ? String(account.maintenanceCalories) : ""
+            calorieValue = account.calorieGoal > 0 ? String(account.calorieGoal) : ""
+            macroFocusRawToSelection(account.macroFocusRaw)
+            customMacros = account.trackedMacros.filter { defaultMacroNames.contains($0.name) == false }
+            goals = account.goals
+            expenseCategories = account.expenseCategories
+            habits = account.habits
+            dailyTasks = account.dailyTasks
+            dailySupplements = account.nutritionSupplements
+            workoutSupplementsList = account.workoutSupplements
+            sports = account.sports
+            trackedBodyParts = Set(account.weightGroups.map { $0.name })
+        }
+    }
+
+    private var defaultMacroNames: Set<String> {
+        ["Protein", "Carbs", "Fats", "Sodium", "Water"]
+    }
+
+    private func macroFocusRawToSelection(_ raw: String?) {
+        guard let raw else { return }
+        if let focus = MacroFocusOption(rawValue: raw) {
+            selectedMacroFocus = focus
+        }
+    }
+
+
+extension Notification.Name {
+    static let appSoftReload = Notification.Name("app.softReload")
+}
     var currentStepIndex: Int {
         steps.firstIndex(of: currentStep) ?? 0
     }
@@ -736,7 +2093,12 @@ final class OnboardingViewModel: ObservableObject {
     var isFirstStep: Bool { currentStepIndex == 0 }
     var isLastStep: Bool { currentStepIndex == steps.count - 1 }
 
-    var buttonTitle: String { isLastStep ? "Finish" : "Continue" }
+    var buttonTitle: String { 
+        if isRetake && isLastStep {
+            return "Save"
+        }
+        return isLastStep ? "Finish" : "Continue" 
+    }
 
     var estimatedMaintenanceCalories: Int? {
         MacroCalculator.estimateMaintenanceCalories(
@@ -747,35 +2109,46 @@ final class OnboardingViewModel: ObservableObject {
             heightFeet: heightFeet,
             heightInches: heightInches,
             weightValue: weightValue,
-            workoutDays: selectedWorkoutDays.count
+            workoutDays: workoutDaysCount
         )
+    }
+
+    var shouldDisableMaintenanceAuto: Bool {
+        selectedGender == .preferNotSay || selectedMacroFocus == nil || selectedMacroFocus == .custom
     }
 
     var canContinue: Bool {
         switch currentStep {
-        case .aboutYou:
-            return !preferredName.trimmingCharacters(in: .whitespaces).isEmpty && isValidBirthDate
-        case .bodyBasics:
-            if unitSystem == .imperial {
-                return selectedGender != nil && Double(heightFeet) != nil && Double(heightInches) != nil && Double(weightValue) != nil
-            } else {
-                return selectedGender != nil && Double(heightValue) != nil && Double(weightValue) != nil
-            }
-        case .routine:
-            return true
-        case .calorieTarget:
-            return selectedMacroFocus != nil && Double(calorieValue) != nil
-        case .macroTargets:
-            return Double(proteinValue) != nil
+        case .accountSetup:
+            let basicValid = !preferredName.trimmingCharacters(in: .whitespaces).isEmpty && isValidBirthDate && selectedGender != nil
+            let heightValid = unitSystem == .imperial ? (Double(heightFeet) != nil && Double(heightInches) != nil) : (Double(heightValue) != nil)
+            let weightValid = Double(weightValue) != nil
+            return basicValid && heightValid && weightValid
+        case .nutritionTracking:
+             let macrosValid = Double(proteinValue) != nil
                 && Double(fatValue) != nil
                 && Double(carbohydrateValue) != nil
-                && Double(fibreValue) != nil
                 && Double(sodiumValue) != nil
                 && Double(waterIntakeValue) != nil
-        case .supplements:
-            if selectedSupplements.contains(.other) {
-                return !otherSupplementName.trimmingCharacters(in: .whitespaces).isEmpty
-            }
+            let macroFocusValid = selectedMacroFocus != nil
+            return macrosValid && macroFocusValid
+        case .dailySupplements:
+            return true
+        case .workoutSupplements:
+            return true
+        case .dailyTasks:
+            return true
+        case .goals:
+            return true
+        case .habits:
+            return true
+        case .workoutTracking:
+            return true // Optional?
+        case .expenses:
+            return true
+        case .sports:
+            return true
+        case .travel:
             return true
         }
     }
@@ -852,14 +2225,13 @@ final class OnboardingViewModel: ObservableObject {
             lastCalculatedTargets = nil
             return
         }
+        
+        // Auto-populate maintenance calories if empty
+        if maintenanceCaloriesValue.isEmpty, let maintenance = estimatedMaintenanceCalories {
+            maintenanceCaloriesValue = String(maintenance)
+        }
 
-        // Calculate the simple recommended calories shown in the UI so we can
-        // insert the same value into the calorie field.
-        let maintenance = estimatedMaintenanceCalories ?? 0
-        let recommended = CalorieGoalPlanner.recommendation(for: option, maintenanceCalories: maintenance).value
-
-        // Try to compute full macro targets; if available, apply them but
-        // override the calories with the UI recommendation so values match.
+        // Try to compute full macro targets using the new logic from MaintenanceCaloriesExplainer
         if let input = MacroCalculator.makeInput(
             genderOption: selectedGender,
             birthDate: birthDate,
@@ -868,16 +2240,76 @@ final class OnboardingViewModel: ObservableObject {
             heightFeet: heightFeet,
             heightInches: heightInches,
             weightValue: weightValue,
-            workoutDays: selectedWorkoutDays.count,
-            goal: selectedGoal,
+            workoutDays: workoutDaysCount,
             macroFocus: option
         ), let result = MacroCalculator.calculateTargets(for: input) {
-            applyMacroTargets(result, overrideCalories: recommended)
+            applyMacroTargets(result)
         } else {
-            // Fallback: set only the calorie value to the recommendation
-            calorieValue = String(recommended)
             lastCalculatedTargets = nil
         }
+    }
+
+    func updateMaintenanceCalories(_ newValue: String) {
+        maintenanceCaloriesValue = newValue
+
+        guard let focus = selectedMacroFocus, focus != .custom else { return }
+        guard let autoMaintenance = estimatedMaintenanceCalories else { return }
+
+        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let enteredValue = Double(trimmed) else { return }
+
+        if Int(enteredValue.rounded()) != autoMaintenance {
+            markMacroFocusAsCustom()
+        }
+    }
+    
+    func calculateMaintenanceCalories() {
+        guard !shouldDisableMaintenanceAuto else { return }
+        if let maintenance = estimatedMaintenanceCalories {
+            updateMaintenanceCalories(String(maintenance))
+        }
+    }
+    
+    func autoCalculateMacro(_ field: MacroField) {
+        guard let input = MacroCalculator.makeInput(
+            genderOption: selectedGender,
+            birthDate: birthDate,
+            unitSystem: unitSystem,
+            heightValue: heightValue,
+            heightFeet: heightFeet,
+            heightInches: heightInches,
+            weightValue: weightValue,
+            workoutDays: workoutDaysCount,
+            macroFocus: selectedMacroFocus ?? .balanced
+        ), let result = MacroCalculator.calculateTargets(for: input) else { return }
+        
+        switch field {
+        case .calories: calorieValue = String(result.calories)
+        case .protein: proteinValue = String(result.protein)
+        case .fats: fatValue = String(result.fats)
+        case .carbohydrates: carbohydrateValue = String(result.carbohydrates)
+        case .sodium: sodiumValue = String(result.sodiumMg)
+        case .water: waterIntakeValue = String(result.waterMl)
+        }
+    }
+
+    /// Auto-calculate all macro targets and apply them to the view model fields.
+    func autoCalculateAllMacros() {
+        // Prefer provided gender, otherwise default to male for calculation
+        let genderForCalc = selectedGender ?? .male
+        guard let input = MacroCalculator.makeInput(
+            genderOption: genderForCalc,
+            birthDate: birthDate,
+            unitSystem: unitSystem,
+            heightValue: heightValue,
+            heightFeet: heightFeet,
+            heightInches: heightInches,
+            weightValue: weightValue,
+            workoutDays: workoutDaysCount,
+            macroFocus: selectedMacroFocus ?? .balanced
+        ), let result = MacroCalculator.calculateTargets(for: input) else { return }
+
+        applyMacroTargets(result)
     }
 
     private func applyMacroTargets(_ result: MacroCalculator.Result, overrideCalories: Int? = nil) {
@@ -885,7 +2317,6 @@ final class OnboardingViewModel: ObservableObject {
         proteinValue = String(result.protein)
         carbohydrateValue = String(result.carbohydrates)
         fatValue = String(result.fats)
-        fibreValue = String(result.fibre)
         sodiumValue = String(result.sodiumMg)
         waterIntakeValue = String(result.waterMl)
         lastCalculatedTargets = MacroTargetsSnapshot(result: result, overrideCalories: overrideCalories)
@@ -897,7 +2328,6 @@ final class OnboardingViewModel: ObservableObject {
         case .protein: proteinValue = newValue
         case .fats: fatValue = newValue
         case .carbohydrates: carbohydrateValue = newValue
-        case .fibre: fibreValue = newValue
         case .sodium: sodiumValue = newValue
         case .water: waterIntakeValue = newValue
         }
@@ -913,35 +2343,229 @@ final class OnboardingViewModel: ObservableObject {
             markMacroFocusAsCustom()
         }
     }
-}
-
-enum OnboardingStep: CaseIterable, Equatable {
-    case aboutYou
-    case bodyBasics
-    case routine
-    case calorieTarget
-    case macroTargets
-    case supplements
-
-    var title: String {
-        switch self {
-        case .aboutYou: return "Basic Details"
-        case .bodyBasics: return "Body Basics"
-        case .routine: return "Your Routine"
-        case .calorieTarget: return "Calorie Target"
-        case .macroTargets: return "Macro Targets"
-        case .supplements: return "Supplements"
+    
+    func addCustomMacro() {
+        guard !newMacroName.trimmingCharacters(in: .whitespaces).isEmpty,
+              let amount = Double(newMacroAmount) else { return }
+        
+        let macro = TrackedMacro(
+            name: newMacroName,
+            target: amount,
+            unit: newMacroUnit.isEmpty ? "g" : newMacroUnit,
+            colorHex: "#8E8E93"
+        )
+        customMacros.append(macro)
+        
+        // Reset fields
+        newMacroName = ""
+        newMacroAmount = ""
+        newMacroUnit = "g"
+    }
+    
+    func removeCustomMacro(_ macro: TrackedMacro) {
+        if let index = customMacros.firstIndex(of: macro) {
+            customMacros.remove(at: index)
+        }
+    }
+    
+    func addDailySupplement() {
+        guard !newDailySupplementName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let supplement = Supplement(
+            name: newDailySupplementName,
+            amountLabel: newDailySupplementAmount.isEmpty ? nil : newDailySupplementAmount
+        )
+        dailySupplements.append(supplement)
+        
+        // Reset fields
+        newDailySupplementName = ""
+        newDailySupplementAmount = ""
+    }
+    
+    func removeDailySupplement(_ supplement: Supplement) {
+        if let index = dailySupplements.firstIndex(of: supplement) {
+            dailySupplements.remove(at: index)
         }
     }
 
-    var subtitle: String {
+    func addWorkoutSupplement() {
+        guard !newWorkoutSupplementName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let supplement = Supplement(
+            name: newWorkoutSupplementName,
+            amountLabel: newWorkoutSupplementAmount.isEmpty ? nil : newWorkoutSupplementAmount
+        )
+        workoutSupplementsList.append(supplement)
+        
+        // Reset fields
+        newWorkoutSupplementName = ""
+        newWorkoutSupplementAmount = ""
+    }
+    
+    func removeWorkoutSupplement(_ supplement: Supplement) {
+        if let index = workoutSupplementsList.firstIndex(of: supplement) {
+            workoutSupplementsList.remove(at: index)
+        }
+    }
+    
+    func addDailyTask() {
+        guard !newTaskName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        let timeString = formatter.string(from: newTaskTime)
+        
+        let task = DailyTaskDefinition(name: newTaskName, time: timeString)
+        dailyTasks.append(task)
+        
+        newTaskName = ""
+    }
+    
+    func removeDailyTask(_ task: DailyTaskDefinition) {
+        if let index = dailyTasks.firstIndex(of: task) {
+            dailyTasks.remove(at: index)
+        }
+    }
+    
+    func addGoal() {
+        guard !newGoalTitle.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let goal = GoalItem(title: newGoalTitle, note: newGoalNote, dueDate: newGoalDueDate)
+        goals.append(goal)
+        
+        newGoalTitle = ""
+        newGoalNote = ""
+        newGoalDueDate = Date().addingTimeInterval(86400 * 30)
+    }
+    
+    func removeGoal(_ goal: GoalItem) {
+        if let index = goals.firstIndex(of: goal) {
+            goals.remove(at: index)
+        }
+    }
+    
+    func addHabit() {
+        guard !newHabitName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let habit = HabitDefinition(name: newHabitName, colorHex: newHabitColor.toHex() ?? "#007AFF")
+        habits.append(habit)
+        
+        newHabitName = ""
+        newHabitColor = .blue
+    }
+    
+    func removeHabit(_ habit: HabitDefinition) {
+        if let index = habits.firstIndex(of: habit) {
+            habits.remove(at: index)
+        }
+    }
+    
+    func addSport() {
+        guard !newSportName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let sport = SportConfig(name: newSportName, colorHex: "#007AFF", metrics: [])
+        sports.append(sport)
+        
+        newSportName = ""
+    }
+    
+    func removeSport(_ sport: SportConfig) {
+        if let index = sports.firstIndex(of: sport) {
+            sports.remove(at: index)
+        }
+    }
+    
+    func addItineraryEvent() {
+        guard !newEventName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        
+        let event = ItineraryEvent(
+            name: newEventName,
+            notes: "",
+            date: newEventDate,
+            type: newEventType.rawValue
+        )
+        itineraryEvents.append(event)
+        
+        newEventName = ""
+        newEventDate = Date()
+        newEventType = .other
+    }
+    
+    func removeItineraryEvent(_ event: ItineraryEvent) {
+        if let index = itineraryEvents.firstIndex(of: event) {
+            itineraryEvents.remove(at: index)
+        }
+    }
+}
+
+enum OnboardingStep: CaseIterable, Equatable {
+    case accountSetup
+    case nutritionTracking
+    case dailySupplements
+    case workoutSupplements
+    case dailyTasks
+    case goals
+    case habits
+    case workoutTracking
+    case expenses
+    case sports
+    case travel
+
+    var title: String {
         switch self {
-        case .aboutYou: return "Tell us a little about yourself"
-        case .bodyBasics: return "Dial in the essentials"
-        case .routine: return "Tune your weekly rhythm"
-        case .calorieTarget: return "Lock in your daily calories"
-        case .macroTargets: return "Fine-tune your macro mix"
-        case .supplements: return "Optimise your nutrition"
+        case .accountSetup: return "Profile"
+        case .nutritionTracking: return "Nutrition"
+        case .dailySupplements: return "Daily Supplements"
+        case .workoutSupplements: return "Workout Supplements"
+        case .dailyTasks: return "Routine"
+        case .goals: return "Routine"
+        case .habits: return "Routine"
+        case .workoutTracking: return "Workout"
+        case .expenses: return "Routine"
+        case .sports: return "Sports"
+        case .travel: return "Travel"
+        }
+    }
+
+    var subtitle: String? {
+        switch self {
+        case .dailyTasks: return "Daily Tasks"
+        case .goals: return "Goals"
+        case .habits: return "Habits"
+        case .expenses: return "Expenses"
+        default: return nil
+        }
+    }
+
+    var symbol: String? {
+        switch self {
+        case .accountSetup: return "person.crop.circle"
+        case .nutritionTracking: return "fork.knife"
+        case .dailySupplements: return "pills"
+        case .workoutSupplements: return "bolt.heart"
+        case .dailyTasks: return "checklist"
+        case .goals: return "target"
+        case .habits: return "arrow.triangle.2.circlepath"
+        case .workoutTracking: return "figure.strengthtraining.traditional"
+        case .expenses: return "dollarsign.circle"
+        case .sports: return "sportscourt"
+        case .travel: return "airplane"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .accountSetup: return "Hey! Good to see you. Let's get to know you."
+        case .nutritionTracking: return "Let's set up nutrition for you or you could set up your own!"
+        case .dailySupplements: return "What lifestyle supplements do you take daily?"
+        case .workoutSupplements: return "Do you take any workout supplements?"
+        case .dailyTasks: return "We could set up daily tasks for you too! What’s your daily routine like?"
+        case .goals: return "Are there any goals you want to keep track of?"
+        case .habits: return "Are there any Habits you want to get into a routine with?"
+        case .workoutTracking: return "Let’s build that muscle! Could you share your workout routine?"
+        case .expenses: return "Yeah we know! We could help you manage your expenses!"
+        case .sports: return "What sports do you want to track your performance in?"
+        case .travel: return "Keep track of plans before you voyage around the world"
         }
     }
 }
@@ -1018,7 +2642,6 @@ extension OnboardingViewModel {
         case protein
         case fats
         case carbohydrates
-        case fibre
         case sodium
         case water
     }
@@ -1028,7 +2651,6 @@ extension OnboardingViewModel {
         let protein: String
         let carbohydrates: String
         let fats: String
-        let fibre: String
         let sodium: String
         let water: String
 
@@ -1037,7 +2659,6 @@ extension OnboardingViewModel {
             protein = String(result.protein)
             carbohydrates = String(result.carbohydrates)
             fats = String(result.fats)
-            fibre = String(result.fibre)
             sodium = String(result.sodiumMg)
             water = String(result.waterMl)
         }
@@ -1048,7 +2669,6 @@ extension OnboardingViewModel {
             case .protein: return protein
             case .fats: return fats
             case .carbohydrates: return carbohydrates
-            case .fibre: return fibre
             case .sodium: return sodium
             case .water: return water
             }
@@ -1134,6 +2754,37 @@ enum UnitConverter {
             return String(format: "%.1f", value / 2.20462)
         default:
             return String(format: "%.1f", value)
+        }
+    }
+}
+
+private struct KeyboardDismissBar: View {
+    var isVisible: Bool
+    var onDismiss: () -> Void
+
+    var body: some View {
+        Group {
+            if isVisible {
+                HStack {
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: isVisible)
+            } else {
+                EmptyView()
+                    .frame(height: 0)
+            }
         }
     }
 }

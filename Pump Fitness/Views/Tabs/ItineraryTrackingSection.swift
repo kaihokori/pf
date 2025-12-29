@@ -89,6 +89,7 @@ struct ItineraryTrackingSection: View {
             } else {
                 ForEach(groupedEvents, id: \.date) { group in
                     ItineraryGroupView(date: group.date, items: group.items, onEdit: onEdit, onDelete: onDelete)
+                        .environmentObject(ThemeManager())
                 }
             }
         }
@@ -109,48 +110,67 @@ struct ItineraryTrackingSection: View {
     }
 
     static func itineraryRow(for event: ItineraryEvent, isFirst: Bool, isLast: Bool, coordinateSpaceName: String? = nil) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack {
-                Circle()
-                    .fill(event.category.color)
-                    .frame(width: 12, height: 12)
-                    .shadow(color: event.category.color.opacity(0.35), radius: 4, y: 2)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(key: DotYPreferenceKey.self, value: [geo.frame(in: coordinateSpaceName == nil ? .global : .named(coordinateSpaceName!)).midY])
-                        }
-                    )
-            }
-            .frame(width: 22)
+        ItineraryRowView(event: event, isFirst: isFirst, isLast: isLast, coordinateSpaceName: coordinateSpaceName)
+    }
 
-            VStack(alignment: .leading, spacing: 6) {
+    private struct ItineraryRowView: View {
+        let event: ItineraryEvent
+        let isFirst: Bool
+        let isLast: Bool
+        let coordinateSpaceName: String?
+
+        @EnvironmentObject private var themeManager: ThemeManager
+        @Environment(\.colorScheme) private var colorScheme
+
+        private var displayColor: Color {
+            if themeManager.selectedTheme == .multiColour { return event.category.color }
+            return themeManager.selectedTheme.accent(for: colorScheme)
+        }
+
+        var body: some View {
+            HStack(alignment: .center, spacing: 12) {
+                VStack {
+                    Circle()
+                        .fill(displayColor)
+                        .frame(width: 12, height: 12)
+                        .shadow(color: displayColor.opacity(0.35), radius: 4, y: 2)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(key: DotYPreferenceKey.self, value: [geo.frame(in: coordinateSpaceName == nil ? .global : .named(coordinateSpaceName!)).midY])
+                            }
+                        )
+                }
+                .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .center, spacing: 8) {
                         Text(event.name)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text(event.timeWindowLabel)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.thinMaterial, in: .capsule)
-                        .foregroundStyle(.secondary)
-                }
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(event.timeWindowLabel)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.thinMaterial, in: .capsule)
+                            .foregroundStyle(.secondary)
+                    }
 
-                if let locName = event.locationName, !locName.isEmpty {
-                    Text(locName)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if let locName = event.locationName, !locName.isEmpty {
+                        Text(locName)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .glassEffect(in: .rect(cornerRadius: 16.0))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .glassEffect(in: .rect(cornerRadius: 16.0))
         }
     }
 
@@ -165,6 +185,7 @@ struct ItineraryTrackingSection: View {
 struct ItineraryTrackingSection_Previews: PreviewProvider {
     static var previews: some View {
         ItineraryTrackingSection()
+            .environmentObject(ThemeManager())
             .padding()
             .previewLayout(.sizeThatFits)
     }

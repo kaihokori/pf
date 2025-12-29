@@ -27,7 +27,6 @@ struct GroceryListSection: View {
             if items.isEmpty {
                 emptyState
             } else {
-                // Horizontal scroll of columns, each column contains up to 5 items
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
                         let perColumn = 5

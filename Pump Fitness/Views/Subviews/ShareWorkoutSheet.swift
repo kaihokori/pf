@@ -535,7 +535,6 @@ struct WeightsSection: View {
         VStack(spacing: 16) {
             SectionHeader(title: group.name.uppercased(), icon: "dumbbell.fill", color: color)
 
-            // Grid: up to 6 exercises (3 columns x 2 rows); if >6, replace 6th with "+X more"
             let display: [WeightExerciseDefinition] = {
                 if group.exercises.count > 6 {
                     var list = Array(group.exercises.prefix(5))

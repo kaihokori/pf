@@ -110,7 +110,7 @@ private struct MapEventAnnotationView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
-                .fill(event.category.color)
+                .fill(displayColor)
                 .frame(width: 35, height: 35)
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.white, lineWidth: 2)
@@ -119,23 +119,41 @@ private struct MapEventAnnotationView: View {
                 .foregroundStyle(.white)
         }
     }
+    
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var displayColor: Color {
+        if themeManager.selectedTheme == .multiColour { return event.category.color }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
 }
 
 private struct UserLocationAnnotationView: View {
     var body: some View {
         ZStack {
+            let accent: Color = environmentAccent
+
             Circle()
-                .fill(Color.accentColor.opacity(0.25))
+                .fill(accent.opacity(0.25))
                 .frame(width: 28, height: 28)
 
             Circle()
-                .fill(Color.accentColor)
+                .fill(accent)
                 .frame(width: 12, height: 12)
                 .overlay(
                     Circle()
                         .stroke(Color.white, lineWidth: 2)
                 )
         }
+    }
+    
+    @EnvironmentObject private var themeManager_for_userloc: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme_for_userloc: ColorScheme
+
+    private var environmentAccent: Color {
+        if themeManager_for_userloc.selectedTheme == .multiColour { return Color.accentColor }
+        return themeManager_for_userloc.selectedTheme.accent(for: colorScheme_for_userloc)
     }
 }
 
@@ -731,12 +749,13 @@ struct ItineraryEventEditorView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
                 ForEach(ItineraryCategory.allCases, id: \.self) { category in
                     let isSelected = category == selectedCategory
+                    let displayColor: Color = (themeManagerForEditor.selectedTheme == .multiColour) ? category.color : themeManagerForEditor.selectedTheme.accent(for: editorColorScheme)
                     Button {
                         selectedCategory = category
                     } label: {
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(category.color.opacity(0.6))
+                                .fill(displayColor.opacity(0.6))
                                 .frame(width: 14, height: 14)
 
                             Text(category.displayName)
@@ -746,12 +765,12 @@ struct ItineraryEventEditorView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .background(
-                            (isSelected ? category.color.opacity(0.15) : Color.secondary.opacity(0.08)),
+                            (isSelected ? displayColor.opacity(0.15) : Color.secondary.opacity(0.08)),
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(category.color.opacity(isSelected ? 0.6 : 0.15), lineWidth: isSelected ? 1.2 : 1)
+                                .stroke(displayColor.opacity(isSelected ? 0.6 : 0.15), lineWidth: isSelected ? 1.2 : 1)
                         )
                     }
                     .buttonStyle(.plain)
@@ -759,6 +778,9 @@ struct ItineraryEventEditorView: View {
             }
         }
     }
+
+    @EnvironmentObject private var themeManagerForEditor: ThemeManager
+    @Environment(\.colorScheme) private var editorColorScheme
 
     private var detailsSection: some View {
         VStack(alignment: .leading, spacing: 12) {

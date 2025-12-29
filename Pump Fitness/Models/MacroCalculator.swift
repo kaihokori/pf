@@ -58,7 +58,6 @@ struct MacroCalculator {
         var heightCm: Double
         var weightKg: Double
         var activityLevel: ActivityLevel
-        var goal: GoalOption
         var macroFocus: MacroFocusOption
     }
 
@@ -83,142 +82,92 @@ struct MacroCalculator {
             return nil
         }
 
-        let bmr: Double
+        // Mifflin-St Jeor Formula
+        let rmr: Double
         if input.gender == .male {
-            bmr = 10 * weight + 6.25 * height - 5 * ageYears + 5
+            rmr = 10 * weight + 6.25 * height - 5 * ageYears + 5
         } else {
-            bmr = 10 * weight + 6.25 * height - 5 * ageYears - 161
+            rmr = 10 * weight + 6.25 * height - 5 * ageYears - 161
         }
 
-        guard bmr.isFinite else { return nil }
+        guard rmr.isFinite else { return nil }
 
-        let tdee = bmr * input.activityLevel.multiplier
-
-        var desiredCalories = tdee
-        switch input.goal {
-        case .loseFat:
-            desiredCalories = tdee * 0.8
-        case .gainMuscle:
-            desiredCalories = tdee * 1.15
-        case .recomposition:
-            desiredCalories = tdee * 0.9
-        case .maintain:
-            desiredCalories = tdee
-        }
-
-        let isMale = input.gender == .male
-        let hardFloor = isMale ? 1500.0 : 1200.0
-        let bmrFloor = bmr * 1.05
-        let softFloor = max(hardFloor, bmrFloor, tdee * 0.75)
-        let softCeiling = tdee * 1.25
-        var calorieTarget = clamp(desiredCalories, min: softFloor, max: softCeiling)
-        calorieTarget = round(calorieTarget)
-
-        guard let split = macroSplitStrategy(from: input.macroFocus) else {
+        let tdee = rmr * input.activityLevel.multiplier
+        
+        // Calculate Target Calories and Macros based on MacroFocus
+        var targetCalories: Double
+        var proteinG: Double
+        var fatsG: Double
+        var carbsG: Double
+        
+        switch input.macroFocus {
+        case .leanCutting:
+            // Calories: TDEE - 500
+            // Protein: 2.5 x BW
+            // Fats: 20%
+            // Carbs: Remainder
+            targetCalories = tdee - 500
+            proteinG = 2.5 * weight
+            fatsG = (targetCalories * 0.20) / 9.0
+            let remainingCalories = targetCalories - (proteinG * 4) - (fatsG * 9)
+            carbsG = max(0, remainingCalories / 4.0)
+            
+        case .lowCarb:
+            // Calories: TDEE - 500
+            // Protein: 2.1 x BW
+            // Carbs: 10%
+            // Fats: Remainder
+            targetCalories = tdee - 500
+            proteinG = 2.1 * weight
+            carbsG = (targetCalories * 0.10) / 4.0
+            let remainingCalories = targetCalories - (proteinG * 4) - (carbsG * 4)
+            fatsG = max(0, remainingCalories / 9.0)
+            
+        case .balanced:
+            // Calories: TDEE
+            // Protein: 2.3 x BW
+            // Fats: 30%
+            // Carbs: Remainder (Target ~40%)
+            targetCalories = tdee
+            proteinG = 2.3 * weight
+            fatsG = (targetCalories * 0.30) / 9.0
+            let remainingCalories = targetCalories - (proteinG * 4) - (fatsG * 9)
+            carbsG = max(0, remainingCalories / 4.0)
+            
+        case .leanBulking:
+            // Calories: TDEE + 350
+            // Protein: 2.5 x BW
+            // Fats: 20%
+            // Carbs: Remainder (Target ~50%)
+            targetCalories = tdee + 350
+            proteinG = 2.5 * weight
+            fatsG = (targetCalories * 0.20) / 9.0
+            let remainingCalories = targetCalories - (proteinG * 4) - (fatsG * 9)
+            carbsG = max(0, remainingCalories / 4.0)
+            
+        case .custom:
             return nil
         }
-
-        let proteinPerKg = split.proteinPerKg
-        let fatPerKg = split.fatPerKg
-
-        let proteinMinG = weight * 1.4
-        let proteinMaxG = min(weight * 2.4, 220)
-        var proteinG = clamp(weight * proteinPerKg, min: proteinMinG, max: proteinMaxG)
-
-        let fatMinG = max(0.6 * weight, 35)
-        let fatMaxG = min(1.2 * weight, 120)
-        var fatsG = clamp(weight * fatPerKg, min: fatMinG, max: fatMaxG)
-
-        var caloriesFromProtein = proteinG * 4
-        var caloriesFromFats = fatsG * 9
-        var pfCalories = caloriesFromProtein + caloriesFromFats
-
-        let maxPfRatio = split == .lowCarb ? 0.9 : 0.8
-        let maxPfCalories = calorieTarget * maxPfRatio
-
-        if pfCalories > maxPfCalories {
-            var extra = pfCalories - maxPfCalories
-
-            var fatCalories = caloriesFromFats
-            let fatCalsMin = fatMinG * 9
-            let fatReducible = max(0, fatCalories - fatCalsMin)
-            let fatReduction = min(extra, fatReducible)
-            fatCalories -= fatReduction
-            extra -= fatReduction
-            fatsG = fatCalories / 9
-
-            var proteinCalories = caloriesFromProtein
-            let proteinCalsMin = proteinMinG * 4
-            let proteinReducible = max(0, proteinCalories - proteinCalsMin)
-            let proteinReduction = min(extra, proteinReducible)
-            proteinCalories -= proteinReduction
-            extra -= proteinReduction
-            proteinG = proteinCalories / 4
-
-            caloriesFromProtein = proteinCalories
-            caloriesFromFats = fatCalories
-            pfCalories = caloriesFromProtein + caloriesFromFats
-        }
-
-        let caloriesForCarbs = max(0, calorieTarget - pfCalories)
-        let carbsG = caloriesForCarbs / 4
-
-        let fibreFromCalories = (calorieTarget / 1000) * 14
+        
+        // Safety clamps
+        targetCalories = max(1200, targetCalories)
+        
+        // Fibre: 14g per 1000 kcal, clamped 20-40g
+        let fibreFromCalories = (targetCalories / 1000) * 14
         let fibreG = clamp(fibreFromCalories, min: 20, max: 40)
-
-        let roundedCalories = Int(round(calorieTarget))
-        let roundedProtein = Int(round(proteinG))
-        let roundedCarbs = Int(round(carbsG))
-        let roundedFats = Int(round(fatsG))
-        let roundedFibre = Int(round(fibreG))
 
         let sodiumMg = 2300
         let waterMl = max(2000, Int(round(weight * 35.0)))
 
         return Result(
-            calories: roundedCalories,
-            protein: roundedProtein,
-            carbohydrates: roundedCarbs,
-            fats: roundedFats,
-            fibre: roundedFibre,
+            calories: Int(round(targetCalories)),
+            protein: Int(round(proteinG)),
+            carbohydrates: Int(round(carbsG)),
+            fats: Int(round(fatsG)),
+            fibre: Int(round(fibreG)),
             sodiumMg: sodiumMg,
             waterMl: waterMl
         )
-    }
-
-    private enum MacroSplitStrategy {
-        case leanCutting
-        case balanced
-        case lowCarb
-        case leanBulking
-
-        var proteinPerKg: Double {
-            switch self {
-            case .leanCutting: return 2.0
-            case .balanced: return 1.8
-            case .lowCarb: return 2.2
-            case .leanBulking: return 1.9
-            }
-        }
-
-        var fatPerKg: Double {
-            switch self {
-            case .leanCutting: return 0.8
-            case .balanced: return 0.9
-            case .lowCarb: return 1.0
-            case .leanBulking: return 1.0
-            }
-        }
-    }
-
-    private static func macroSplitStrategy(from focus: MacroFocusOption) -> MacroSplitStrategy? {
-        switch focus {
-        case .leanCutting: return .leanCutting
-        case .lowCarb: return .lowCarb
-        case .balanced: return .balanced
-        case .leanBulking: return .leanBulking
-        case .custom: return nil
-        }
     }
 
     private static func age(inYearsAt referenceDate: Date, birthDate: Date) -> Double? {
@@ -250,12 +199,10 @@ extension MacroCalculator {
         heightInches: String,
         weightValue: String,
         workoutDays: Int,
-        goal: GoalOption?,
         macroFocus: MacroFocusOption
     ) -> Input? {
                 guard let genderOption = genderOption,
                             genderOption != .preferNotSay,
-                            let goal = goal,
                             macroFocus != .custom,
                             let heightCm = heightInCentimeters(unitSystem: unitSystem, heightValue: heightValue, heightFeet: heightFeet, heightInches: heightInches),
                             let weightKg = weightInKilograms(unitSystem: unitSystem, weightValue: weightValue) else {
@@ -271,7 +218,6 @@ extension MacroCalculator {
             heightCm: heightCm,
             weightKg: weightKg,
             activityLevel: activityLevel,
-            goal: goal,
             macroFocus: macroFocus
         )
     }

@@ -36,7 +36,11 @@ private struct HabitsEditorView: View {
 
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: UUID?
+    @State private var showProSubscription: Bool = false
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @Environment(\.colorScheme) private var colorScheme
     private let freeHabits = 3
     private let proHabits = 8
     private var canAddMore: Bool {
@@ -67,15 +71,21 @@ private struct HabitsEditorView: View {
                                     let binding = $working[idx]
                                     HStack(spacing: 12) {
                                         Button {
+                                            // Only allow color picking in multiColour theme
+                                            guard themeManager.selectedTheme == .multiColour else { return }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
+                                            let resolved = Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor
+                                            let effective = themeManager.selectedTheme == .multiColour ? resolved : themeManager.selectedTheme.accent(for: colorScheme)
                                             Circle()
-                                                .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.15))
+                                                .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor)))
+                                                .overlay(Image(systemName: "checklist") .foregroundStyle(effective))
                                         }
                                         .buttonStyle(.plain)
+                                        .disabled(themeManager.selectedTheme != .multiColour)
+                                        .opacity(themeManager.selectedTheme == .multiColour ? 1 : 0.9)
 
                                         TextField("Name", text: binding.name)
                                             .font(.subheadline.weight(.semibold))
@@ -106,10 +116,12 @@ private struct HabitsEditorView: View {
                             VStack(spacing: 12) {
                                 ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
                                     HStack(spacing: 14) {
+                                        let presetResolved = Color(hex: preset.colorHex) ?? Color.accentColor
+                                        let presetEffective = themeManager.selectedTheme == .multiColour ? presetResolved : themeManager.selectedTheme.accent(for: colorScheme)
                                         Circle()
-                                            .fill((Color(hex: preset.colorHex) ?? Color.accentColor).opacity(0.15))
+                                            .fill(presetEffective.opacity(0.15))
                                             .frame(width: 44, height: 44)
-                                            .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: preset.colorHex) ?? Color.accentColor)))
+                                            .overlay(Image(systemName: "checklist") .foregroundStyle(presetEffective))
 
                                         VStack(alignment: .leading) {
                                             Text(preset.name)
@@ -133,6 +145,36 @@ private struct HabitsEditorView: View {
                                 }
                             }
                         }
+                    }
+
+                    if !isPro {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more habit slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // Custom composer
@@ -161,10 +203,6 @@ private struct HabitsEditorView: View {
                                 Text("You can track up to \(freeHabits) habits.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
-                            } else {
-                                Text("You can track up to \(proHabits) habits.")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -188,14 +226,24 @@ private struct HabitsEditorView: View {
         }
         .onAppear(perform: loadInitial)
         .sheet(isPresented: $showColorPickerSheet) {
-            ColorPickerSheet { hex in
-                applyColor(hex: hex)
-                showColorPickerSheet = false
-            } onCancel: {
-                showColorPickerSheet = false
+            // Only present the color picker when using multiColour theme
+            if themeManager.selectedTheme == .multiColour {
+                ColorPickerSheet { hex in
+                    applyColor(hex: hex)
+                    showColorPickerSheet = false
+                } onCancel: {
+                    showColorPickerSheet = false
+                }
+                .presentationDetents([.height(180)])
+                .presentationDragIndicator(.visible)
+            } else {
+                // Fallback empty view to satisfy sheet when theme disallows color picking
+                EmptyView()
             }
-            .presentationDetents([.height(180)])
-            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
         }
     }
 
@@ -386,8 +434,8 @@ struct RoutineTabView: View {
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
     @State private var showRoutineShareSheet: Bool = false
-    @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = false
-    @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = false
+    @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
+    @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = true
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -711,30 +759,51 @@ struct RoutineTabView: View {
                                     } label: {
                                         VStack(spacing: 8) {
                                             HStack {
-                                                Image("logo")
-                                                    .resizable()
-                                                    .renderingMode(.original)
-                                                    .aspectRatio(contentMode: .fit)
-                                                    .frame(height: 40)
-                                                    .padding(.leading, 4)
-                                                    .offset(y: 6)
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
                                                 
                                                 Text("PRO")
                                                     .font(.subheadline)
                                                     .fontWeight(.semibold)
-                                                    .foregroundColor(.white)
+                                                    .foregroundStyle(accent ?? Color.white)
                                                     .padding(.horizontal, 8)
                                                     .padding(.vertical, 4)
                                                     .background(
                                                         RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(LinearGradient(
-                                                                gradient: Gradient(colors: [
-                                                                    Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                    Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                ]),
-                                                                startPoint: .topLeading,
-                                                                endPoint: .bottomTrailing
-                                                            ))
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
                                                     )
                                                     .offset(y: 6)
                                             }
@@ -855,9 +924,6 @@ struct RoutineTabView: View {
                     expenseCategories: expenseCategories
                 )
             }
-            .navigationDestination(isPresented: $showAccountsView) {
-                AccountsView(account: $account)
-            }
         }
         .tint(accentOverride ?? .accentColor)
         .accentColor(accentOverride ?? .accentColor)
@@ -902,10 +968,15 @@ private struct DailyTasksEditorView: View {
     @State private var newName: String = ""
     @State private var newTimeDate: Date = Date()
     @State private var hasLoaded: Bool = false
+    @State private var showProSubscription: Bool = false
     
     
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: String?
+
+    @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @Environment(\.colorScheme) private var colorScheme
 
     private var presets: [DailyTaskItem] {
         [
@@ -939,15 +1010,20 @@ private struct DailyTasksEditorView: View {
                                     let binding = $working[idx]
                                     HStack(spacing: 12) {
                                         Button {
+                                            guard themeManager.selectedTheme == .multiColour else { return }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
+                                            let resolved = Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor
+                                            let effective = themeManager.selectedTheme == .multiColour ? resolved : themeManager.selectedTheme.accent(for: colorScheme)
                                             Circle()
-                                                .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.15))
+                                                .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor)))
+                                                .overlay(Image(systemName: "checklist") .foregroundStyle(effective))
                                         }
                                         .buttonStyle(.plain)
+                                        .disabled(themeManager.selectedTheme != .multiColour)
+                                        .opacity(themeManager.selectedTheme == .multiColour ? 1 : 0.95)
                                         
                                         VStack(alignment: .leading, spacing: 6) {
                                             TextField("Name", text: binding.name)
@@ -1001,35 +1077,6 @@ private struct DailyTasksEditorView: View {
                         }
                     }
 
-                    // Upgrade CTA
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-
-                                Text("Unlock unlimited tasks + other benefits")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .surfaceCard(16)
-                    }
-                    .buttonStyle(.plain)
-
                     // Quick Add
                     if !presets.filter({ !isPresetSelected($0) }).isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1039,10 +1086,12 @@ private struct DailyTasksEditorView: View {
                             VStack(spacing: 12) {
                                 ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
                                     HStack(spacing: 14) {
+                                        let presetResolved = Color(hex: preset.colorHex) ?? Color.accentColor
+                                        let presetEffective = themeManager.selectedTheme == .multiColour ? presetResolved : themeManager.selectedTheme.accent(for: colorScheme)
                                         Circle()
-                                            .fill((Color(hex: preset.colorHex) ?? Color.accentColor).opacity(0.15))
+                                            .fill(presetEffective.opacity(0.15))
                                             .frame(width: 44, height: 44)
-                                            .overlay(Image(systemName: "checklist") .foregroundStyle((Color(hex: preset.colorHex) ?? Color.accentColor)))
+                                            .overlay(Image(systemName: "checklist") .foregroundStyle(presetEffective))
 
                                         VStack(alignment: .leading) {
                                             Text(preset.name)
@@ -1055,9 +1104,10 @@ private struct DailyTasksEditorView: View {
                                         Spacer()
 
                                         Button(action: { togglePreset(preset) }) {
+                                            let plusColor = themeManager.selectedTheme == .multiColour ? Color.accentColor : themeManager.selectedTheme.accent(for: colorScheme)
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 24, weight: .semibold))
-                                                .foregroundStyle(Color.accentColor)
+                                                .foregroundStyle(plusColor)
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(!canAddMore)
@@ -1069,6 +1119,36 @@ private struct DailyTasksEditorView: View {
                                 }
                             }
                         }
+                    }
+
+                    if !isPro {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock unlimited tasks + other benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // Custom composer
@@ -1090,9 +1170,10 @@ private struct DailyTasksEditorView: View {
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
 
                                 Button(action: addCustomTask) {
+                                    let plusColor = themeManager.selectedTheme == .multiColour ? Color.accentColor : themeManager.selectedTheme.accent(for: colorScheme)
                                     Image(systemName: "plus.circle.fill")
                                         .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(plusColor)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(!canAddCustom)
@@ -1126,14 +1207,22 @@ private struct DailyTasksEditorView: View {
         }
         .onAppear(perform: loadInitial)
         .sheet(isPresented: $showColorPickerSheet) {
-            ColorPickerSheet { hex in
-                applyColor(hex: hex)
-                showColorPickerSheet = false
-            } onCancel: {
-                showColorPickerSheet = false
+            if themeManager.selectedTheme == .multiColour {
+                ColorPickerSheet { hex in
+                    applyColor(hex: hex)
+                    showColorPickerSheet = false
+                } onCancel: {
+                    showColorPickerSheet = false
+                }
+                .presentationDetents([.height(180)])
+                .presentationDragIndicator(.visible)
+            } else {
+                EmptyView()
             }
-            .presentationDetents([.height(180)])
-            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
         }
     }
 
@@ -1202,6 +1291,9 @@ private struct DailyTasksEditorView: View {
 
 private struct ActivityTimersEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var themeManager: ThemeManager
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var timers: [ActivityTimerItem]
     var isPro: Bool
     var onSave: ([ActivityTimerItem]) -> Void
@@ -1212,6 +1304,7 @@ private struct ActivityTimersEditorView: View {
     @State private var hasLoaded: Bool = false
     @State private var showColorPickerSheet: Bool = false
     @State private var colorPickerTargetId: String?
+    @State private var showProSubscription: Bool = false
 
     private let minDuration = 10
     private let maxDuration = 180
@@ -1256,15 +1349,20 @@ private struct ActivityTimersEditorView: View {
                                     let binding = $working[idx]
                                     HStack(spacing: 12) {
                                         Button {
+                                            guard themeManager.selectedTheme == .multiColour else { return }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
+                                            let resolved = Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor
+                                            let effective = themeManager.selectedTheme == .multiColour ? resolved : themeManager.selectedTheme.accent(for: colorScheme)
                                             Circle()
-                                                .fill((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor).opacity(0.15))
+                                                .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "clock") .foregroundStyle((Color(hex: binding.colorHex.wrappedValue) ?? Color.accentColor)))
+                                                .overlay(Image(systemName: "clock") .foregroundStyle(effective))
                                         }
                                         .buttonStyle(.plain)
+                                        .disabled(themeManager.selectedTheme != .multiColour)
+                                        .opacity(themeManager.selectedTheme == .multiColour ? 1 : 0.95)
 
                                         VStack(alignment: .leading, spacing: 8) {
                                             TextField("Name", text: binding.name)
@@ -1320,10 +1418,12 @@ private struct ActivityTimersEditorView: View {
                             VStack(spacing: 12) {
                                 ForEach(presets.filter { !isPresetSelected($0) }, id: \.id) { preset in
                                     HStack(spacing: 14) {
+                                        let presetResolved = Color(hex: preset.colorHex) ?? Color.accentColor
+                                        let presetEffective = themeManager.selectedTheme == .multiColour ? presetResolved : themeManager.selectedTheme.accent(for: colorScheme)
                                         Circle()
-                                            .fill((Color(hex: preset.colorHex) ?? Color.accentColor).opacity(0.15))
+                                            .fill(presetEffective.opacity(0.15))
                                             .frame(width: 44, height: 44)
-                                            .overlay(Image(systemName: "clock") .foregroundStyle((Color(hex: preset.colorHex) ?? Color.accentColor)))
+                                            .overlay(Image(systemName: "clock") .foregroundStyle(presetEffective))
 
                                         VStack(alignment: .leading) {
                                             Text(preset.name)
@@ -1336,9 +1436,10 @@ private struct ActivityTimersEditorView: View {
                                         Spacer()
 
                                         Button(action: { togglePreset(preset) }) {
+                                            let plusColor = themeManager.selectedTheme == .multiColour ? Color.accentColor : themeManager.selectedTheme.accent(for: colorScheme)
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 24, weight: .semibold))
-                                                .foregroundStyle(Color.accentColor)
+                                                .foregroundStyle(plusColor)
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(!canAddMore)
@@ -1352,33 +1453,35 @@ private struct ActivityTimersEditorView: View {
                         }
                     }
 
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
+                    if !isPro {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
 
-                                Text("Unlock more grocery slots + other benefits")
-                                    .font(.caption2)
+                                    Text("Unlock more grocery slots + other benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
                                     .foregroundStyle(.secondary)
                             }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
+                            .padding(12)
+                            .surfaceCard(16)
                         }
-                        .padding(12)
-                        .surfaceCard(16)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Custom Timer")
@@ -1414,9 +1517,10 @@ private struct ActivityTimersEditorView: View {
                                 .frame(maxWidth: .infinity)
 
                                 Button(action: addCustomTimer) {
+                                    let plusColor = themeManager.selectedTheme == .multiColour ? Color.accentColor : themeManager.selectedTheme.accent(for: colorScheme)
                                     Image(systemName: "plus.circle.fill")
                                         .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(plusColor)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(!canAddCustom)
@@ -1426,10 +1530,6 @@ private struct ActivityTimersEditorView: View {
                         }
                         if !isPro {
                             Text("You can track up to \(freeTimersAllowed) timers.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("You can track up to \(proTimersAllowed) timers.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -1454,14 +1554,22 @@ private struct ActivityTimersEditorView: View {
         }
         .onAppear(perform: loadInitial)
         .sheet(isPresented: $showColorPickerSheet) {
-            ColorPickerSheet { hex in
-                applyColor(hex: hex)
-                showColorPickerSheet = false
-            } onCancel: {
-                showColorPickerSheet = false
+            if themeManager.selectedTheme == .multiColour {
+                ColorPickerSheet { hex in
+                    applyColor(hex: hex)
+                    showColorPickerSheet = false
+                } onCancel: {
+                    showColorPickerSheet = false
+                }
+                .presentationDetents([.height(180)])
+                .presentationDragIndicator(.visible)
+            } else {
+                EmptyView()
             }
-            .presentationDetents([.height(180)])
-            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
         }
     }
 
@@ -1469,7 +1577,7 @@ private struct ActivityTimersEditorView: View {
         guard !hasLoaded else { return }
         // Respect an explicitly-empty timers list; do not substitute defaults for UI editing.
         let initial = timers
-        let limit = isPro ? proTimersAllowed : freeTimersAllowed
+        let limit = isPro ? 9999 : freeTimersAllowed
         working = Array(initial.prefix(limit))
         hasLoaded = true
     }
@@ -1545,6 +1653,7 @@ private struct ActivityTimersEditorView: View {
 
 private struct GoalsEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Binding var goals: [GoalItem]
     var isPro: Bool
     var onSave: ([GoalItem]) -> Void
@@ -1553,6 +1662,7 @@ private struct GoalsEditorView: View {
     @State private var newNote: String = ""
     @State private var newDate: Date = Date()
     @State private var hasLoaded: Bool = false
+    @State private var showProSubscription: Bool = false
     
     private let freeGoals = 12
     private var canAddMore: Bool {
@@ -1626,34 +1736,6 @@ private struct GoalsEditorView: View {
                         }
                     }
 
-                    Button(action: { /* TODO: present upgrade flow */ }) {
-                        HStack(alignment: .center) {
-                            Image(systemName: "sparkles")
-                                .font(.title3)
-                                .foregroundStyle(Color.accentColor)
-                                .padding(.trailing, 8)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upgrade to Pro")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-
-                                Text("Unlock more goal slots + other benefits")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(12)
-                        .surfaceCard(16)
-                    }
-                    .buttonStyle(.plain)
-
                     // Quick Add
                     if !presets.filter({ !isPresetSelected($0) }).isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1694,6 +1776,38 @@ private struct GoalsEditorView: View {
                                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
                                 }
                             }
+                        }
+                    }
+
+                    if !isPro {
+                        if !isPro {
+                            Button(action: { showProSubscription = true }) {
+                                HStack(alignment: .center) {
+                                    Image(systemName: "sparkles")
+                                        .font(.title3)
+                                        .foregroundStyle(Color.accentColor)
+                                        .padding(.trailing, 8)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Upgrade to Pro")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+
+                                        Text("Unlock more goal slots + other benefits")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(12)
+                                .surfaceCard(16)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -1758,6 +1872,10 @@ private struct GoalsEditorView: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitial() {
@@ -1803,6 +1921,7 @@ private struct GoalsEditorView: View {
 
 private struct GroceryListEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Binding var items: [GroceryItem]
     var onSave: ([GroceryItem]) -> Void
 
@@ -1810,6 +1929,7 @@ private struct GroceryListEditorView: View {
     @State private var newName: String = ""
     @State private var newNote: String = ""
     @State private var hasLoaded: Bool = false
+    @State private var showProSubscription: Bool = false
 
     private let maxItems: Int = 8
 
@@ -1910,6 +2030,36 @@ private struct GroceryListEditorView: View {
                         }
                     }
 
+                    if !subscriptionManager.hasProAccess {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more grocery slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("New Item")
                             .font(.subheadline.weight(.semibold))
@@ -1960,6 +2110,10 @@ private struct GroceryListEditorView: View {
             }
         }
         .onAppear(perform: loadInitial)
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private func loadInitial() {
@@ -2643,6 +2797,9 @@ private struct HabitTrackingSection: View {
     let currentDayIndex: Int
     var onToggle: (UUID, Bool) -> Void
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
     private var emptyState: some View {
@@ -2669,6 +2826,10 @@ private struct HabitTrackingSection: View {
                     ForEach(habits.indices, id: \.self) { idx in
                         let habit = habits[idx]
                         let rowColor: Color = {
+                            // When app theme is not multiColour, override all habit colors with theme accent
+                            if themeManager.selectedTheme != .multiColour {
+                                return themeManager.selectedTheme.accent(for: colorScheme)
+                            }
                             if !habit.colorHex.isEmpty, let c = Color(hex: habit.colorHex) {
                                 return c
                             }

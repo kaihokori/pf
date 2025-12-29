@@ -130,7 +130,7 @@ struct ProSubscriptionView: View {
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.vertical)
+                        .padding(.bottom)
                         .padding(.horizontal, 10)
 
                         ZStack(alignment: .top) {
@@ -144,9 +144,9 @@ struct ProSubscriptionView: View {
                                 ]),
                                 ProBenefitCategory(name: "Routine Management", image: "checklist.checked", color: .blue, benefits: [
                                     ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organized."),
-                                    ProBenefit(icon: "timer", title: "Activity Timers", description: "Use up to 6 activity timers for your routines."),
+                                    ProBenefit(icon: "timer", title: "Activity Timers", description: "Create unlimited activity timers for your routines."),
                                     ProBenefit(icon: "target", title: "Goals", description: "Set and track unlimited goals."),
-                                    ProBenefit(icon: "repeat", title: "Habits", description: "Build up to 8 habits to improve your lifestyle."),
+                                    ProBenefit(icon: "repeat", title: "Habits", description: "Add unlimited habits to improve your lifestyle."),
                                     ProBenefit(icon: "dollarsign.circle.fill", title: "Expense Tracker", description: "Manage your expenses with unlimited entries.")
                                 ]),
                                 ProBenefitCategory(name: "Workout Features", image: "figure.strengthtraining.traditional", color: .orange, benefits: [
@@ -188,25 +188,42 @@ struct ProSubscriptionView: View {
                                   .padding(.horizontal)
                                   .padding(.top)
                                 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    LazyHStack(spacing: 12) {
-                                        ForEach(Array(subscriptionManager.products.enumerated()), id: \.element.id) { index, product in
-                                            SubscriptionOptionCard(
-                                                product: product,
-                                                tag: index == 1 ? "Most Popular" : (index == 2 ? "Best Value" : nil),
-                                                savings: savingsString(for: product),
-                                                isSelected: selectedProduct?.id == product.id,
-                                                action: { selectedProduct = product }
-                                            )
+                                ScrollViewReader { proxy in
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        LazyHStack(spacing: 12) {
+                                            ForEach(Array(subscriptionManager.products.enumerated()), id: \.element.id) { index, product in
+                                                SubscriptionOptionCard(
+                                                    product: product,
+                                                    tag: index == 1 ? "Most Popular" : (index == 2 ? "Best Value" : nil),
+                                                    savings: savingsString(for: product),
+                                                    isSelected: selectedProduct?.id == product.id,
+                                                    action: { selectedProduct = product }
+                                                )
+                                                .id(product.id)
+                                            }
+                                        }
+                                        .padding(.horizontal)
+                                    }
+                                    // Scroll to the selected (middle) product when selection changes
+                                    .onChange(of: selectedProduct?.id) { _, newId in
+                                        guard let newId else { return }
+                                        withAnimation(.easeInOut) {
+                                            proxy.scrollTo(newId, anchor: .center)
                                         }
                                     }
-                                    .padding(.horizontal)
+                                    .onAppear {
+                                        // Attempt to center the pre-selected product when view appears
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                            if let id = selectedProduct?.id {
+                                                proxy.scrollTo(id, anchor: .center)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                .padding(.top, -20)
                 .padding(.bottom, 100) // Extra bottom padding to avoid overlap with CTA
                 
                 // Sticky CTA Button
@@ -245,8 +262,11 @@ struct ProSubscriptionView: View {
                     }
                     .padding(.horizontal)
                     Button(action: {
-                        // Prevent attempting to purchase if the user already has Pro
-                        guard !subscriptionManager.hasProAccess else { return }
+                        // Prevent attempting to purchase only if the user already owns Pro
+                        // and is not currently within a free trial period.
+                        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive {
+                            return
+                        }
 
                         if let product = selectedProduct {
                             Task {
@@ -263,16 +283,16 @@ struct ProSubscriptionView: View {
                             }
                         }
                     }) {
-                        Text(subscriptionManager.hasProAccess ? "You are a Pro Member" : "Continue")
+                        Text((subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive) ? "You are a Pro Member" : "Continue")
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background((selectedProduct == nil || subscriptionManager.hasProAccess) ? Color.gray : Color.blue)
+                            .background((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.blue)
                             .cornerRadius(16)
-                            .shadow(color: ((selectedProduct == nil || subscriptionManager.hasProAccess) ? Color.gray : Color.blue).opacity(0.3), radius: 8, x: 0, y: 4)
+                            .shadow(color: ((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.blue).opacity(0.3), radius: 8, x: 0, y: 4)
                     }
-                    .disabled(selectedProduct == nil || subscriptionManager.hasProAccess)
+                    .disabled(selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive))
                     .padding(.horizontal)
                     .padding(.bottom, 10)
                     .background(
@@ -349,7 +369,7 @@ struct SubscriptionOptionCard: View {
                         .minimumScaleFactor(0.8)
                     // Price block (total + weekly) kept together for consistent spacing
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(product.displayPrice)
+                        Text(weeklyPriceString(for: product))
                             .font(.title2)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
@@ -357,9 +377,9 @@ struct SubscriptionOptionCard: View {
                             .minimumScaleFactor(0.8)
 
                         HStack(alignment: .center) {
-                            Text(weeklyPriceString(for: product))
-                              .font(.subheadline)
-                              .fontWeight(.semibold)
+                            Text(product.price, format: product.priceFormatStyle)
+                              .font(.callout)
+                              .foregroundStyle(.secondary)
                             Spacer()
                             if let savings {
                                 Text(savings)
@@ -417,24 +437,20 @@ struct SubscriptionOptionCard: View {
         let unit = subscription.subscriptionPeriod.unit
         let value = subscription.subscriptionPeriod.value
 
-        let weeks: Double
+        let weeks: Decimal
         switch unit {
-        case .day: weeks = Double(value) / 7.0
-        case .week: weeks = Double(value)
-        case .month: weeks = Double(value) * 30.4375 / 7.0
-        case .year: weeks = Double(value) * 365.2425 / 7.0
+        case .day: weeks = Decimal(value) / 7.0
+        case .week: weeks = Decimal(value)
+        case .month: weeks = Decimal(value) * 30.4375 / 7.0
+        case .year: weeks = Decimal(value) * 365.2425 / 7.0
         @unknown default:
-            weeks = Double(value)
+            weeks = Decimal(value)
         }
 
-        let priceDouble = NSDecimalNumber(decimal: product.price).doubleValue
         guard weeks > 0 else { return product.displayPrice }
-        let perWeek = priceDouble / weeks
+        let perWeek = product.price / weeks
 
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = Locale.current
-        return (formatter.string(from: NSNumber(value: perWeek)) ?? product.displayPrice) + "/wk"
+        return perWeek.formatted(product.priceFormatStyle) + "/wk"
     }
 
     private func strippedProductName(_ name: String) -> String {

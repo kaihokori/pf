@@ -115,7 +115,6 @@ struct RoutineShareSheet: View {
 
     @MainActor
     private func renderCurrentCard() -> UIImage? {
-        // Force export width to 540, allow flexible height up to 960
         let width: CGFloat = 540
 
         let renderView = RoutineShareCard(

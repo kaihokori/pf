@@ -116,7 +116,7 @@ struct ActivityTimersSection: View {
     var timers: [ActivityTimerItem]
 
     @AppStorage("activityTimers.runStates.json") private var storedRunStates: String = ""
-    @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = false
+    @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = true
     @State private var runStates: [String: Date] = [:]
     @State private var now: Date = Date()
 

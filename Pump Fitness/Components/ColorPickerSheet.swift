@@ -4,7 +4,7 @@ public struct ColorPickerSheet: View {
     public var onSelect: (String) -> Void
     public var onCancel: (() -> Void)? = nil
 
-    let colors: [String] = ["#D84A4A", "#E6C84F", "#E39A3B", "#4CAF6A", "#4A7BD0", "#4FB6C6", "#7A5FD1", "#C85FA8", "#2C2C2E"]
+    // Use the shared palette so the app stays consistent when picking colours
     private let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
 
 
@@ -17,7 +17,7 @@ public struct ColorPickerSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(colors, id: \.self) { hex in
+                    ForEach(ColorPalette.defaultColors, id: \.self) { hex in
                         let resolved = Color(hex: hex) ?? .accentColor
                         Button {
                             onSelect(hex)

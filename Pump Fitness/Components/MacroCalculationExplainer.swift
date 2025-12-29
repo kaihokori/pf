@@ -1,75 +1,132 @@
 import SwiftUI
 
 struct MacroCalculationExplainer: View {
-    private let rows = MacroCalculationExplanation.rows
+    private let goalRows = MacroGoalExplanation.rows
+    private let macroRows = MacroCalculationExplanation.rows
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("How This Works")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text("Targets start with the Mifflin-St Jeor calorie estimate, then each macro uses the rules below. Adjusting weight, focus, or calories refreshes the math automatically.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
+        ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ForEach(rows) { row in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(row.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text(row.description)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    if row.id != rows.last?.id {
-                        Divider()
+                Text("How This Works")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Text("Targets start with the Mifflin-St Jeor calorie estimate, then each macro focus applies its own calorie and macro split. Adjusting weight, focus, or calories refreshes the math automatically.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Macro Goals")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(goalRows) { row in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(row.title)
+                                .font(.subheadline.weight(.semibold))
+                            Text("Formula: \(row.formula)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text("Example: \(row.example)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        if row.id != goalRows.last?.id {
+                            Divider()
+                        }
                     }
                 }
+                .padding(18)
+                .surfaceCard(18)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Daily Guidelines")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(macroRows) { row in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(row.title)
+                                .font(.subheadline.weight(.semibold))
+                            Text("Formula: \(row.formula)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text("Example: \(row.example)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        if row.id != macroRows.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(18)
+                .surfaceCard(18)
             }
-            .padding(18)
-            .surfaceCard(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top)
     }
+}
+
+private struct MacroGoalExplanation: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let formula: String
+    let example: String
+
+    static let rows: [MacroGoalExplanation] = [
+        MacroGoalExplanation(
+            id: "leanCutting",
+            title: "Lean Cutting",
+            formula: "Calories = TDEE − 500; Protein = 2.5 g/kg BW; Fat = 20% of calories; Carbs = remaining calories ÷ 4",
+            example: "With TDEE 2,400 kcal and 75 kg: Calories ≈ 1,900 kcal, Protein ≈ 188 g, Fat ≈ 42 g, Carbs ≈ 193 g"
+        ),
+        MacroGoalExplanation(
+            id: "lowCarb",
+            title: "Low Carb",
+            formula: "Calories = TDEE − 500; Protein = 2.1 g/kg BW; Carbs = 10% of calories; Fat = remaining calories ÷ 9",
+            example: "With TDEE 2,400 kcal and 75 kg: Calories ≈ 1,900 kcal, Protein ≈ 158 g, Carbs ≈ 48 g, Fat ≈ 120 g"
+        ),
+        MacroGoalExplanation(
+            id: "balanced",
+            title: "Balanced",
+            formula: "Calories = TDEE; Protein = 2.3 g/kg BW; Fat = 30% of calories; Carbs = remaining calories ÷ 4",
+            example: "With TDEE 2,400 kcal and 75 kg: Calories ≈ 2,400 kcal, Protein ≈ 173 g, Fat ≈ 80 g, Carbs ≈ 248 g"
+        ),
+        MacroGoalExplanation(
+            id: "leanBulking",
+            title: "Lean Bulking",
+            formula: "Calories = TDEE + 350; Protein = 2.5 g/kg BW; Fat = 20% of calories; Carbs = remaining calories ÷ 4",
+            example: "With TDEE 2,400 kcal and 75 kg: Calories ≈ 2,750 kcal, Protein ≈ 188 g, Fat ≈ 61 g, Carbs ≈ 362 g"
+        )
+    ]
 }
 
 private struct MacroCalculationExplanation: Identifiable, Equatable {
     let id: String
     let title: String
-    let description: String
+    let formula: String
+    let example: String
 
     static let rows: [MacroCalculationExplanation] = [
         MacroCalculationExplanation(
-            id: "protein",
-            title: "Protein",
-            description: "Body weight × macro-focus multiplier (≈1.8–2.2 g/kg) with a safety floor of 1.4 g/kg and a 2.4 g/kg (220 g) ceiling."
-        ),
-        MacroCalculationExplanation(
-            id: "fats",
-            title: "Fats",
-            description: "Body weight × macro-focus multiplier (≈0.8–1.0 g/kg) but always between 0.6 and 1.2 g/kg (35–120 g)."
-        ),
-        MacroCalculationExplanation(
-            id: "carbs",
-            title: "Carbohydrates",
-            description: "Whatever calories remain after protein and fat are allocated. We divide the remainder by 4 cal/g to get grams so totals match your calorie target."
-        ),
-        MacroCalculationExplanation(
             id: "fibre",
             title: "Fibre",
-            description: "14 g for every 1,000 calories eaten, clamped between 20 g and 40 g for practicality."
+            formula: "14 g per 1,000 kcal, clamped 20–40 g",
+            example: "At 1,900–2,750 kcal plans this lands around 27–39 g, within the 20–40 g clamp"
         ),
         MacroCalculationExplanation(
             id: "sodium",
             title: "Sodium",
-            description: "A steady 2,300 mg per day guideline until we add personalised intake ranges."
+            formula: "Fixed 2,300 mg guideline",
+            example: "Applies to every goal until personalised ranges are added"
         ),
         MacroCalculationExplanation(
             id: "water",
             title: "Water",
-            description: "Body weight × 35 ml with a minimum of roughly 2 L to keep hydration goals realistic."
+            formula: "Body weight × 35 ml with a 2,000 ml floor",
+            example: "At 75 kg → ≈ 2,625 ml/day"
         )
     ]
 }

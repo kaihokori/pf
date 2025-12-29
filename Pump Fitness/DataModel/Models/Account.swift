@@ -135,7 +135,7 @@ struct DailyTaskDefinition: Codable, Hashable, Identifiable {
     var colorHex: String
     var repeats: Bool
 
-    init(id: String = UUID().uuidString, name: String, time: String, colorHex: String = "#FF3B30", repeats: Bool = true) {
+    init(id: String = UUID().uuidString, name: String, time: String, colorHex: String = ColorPalette.randomHex(), repeats: Bool = true) {
         self.id = id
         self.name = name
         self.time = time
@@ -147,7 +147,7 @@ struct DailyTaskDefinition: Codable, Hashable, Identifiable {
         guard let name = dictionary["name"] as? String else { return nil }
         let id = dictionary["id"] as? String ?? UUID().uuidString
         let time = dictionary["time"] as? String ?? "00:00"
-        let colorHex = dictionary["colorHex"] as? String ?? "#FF3B30"
+        let colorHex = dictionary["colorHex"] as? String ?? ColorPalette.randomHex()
         let repeats = dictionary["repeats"] as? Bool ?? true
         self.init(id: id, name: name, time: time, colorHex: colorHex, repeats: repeats)
     }
@@ -924,6 +924,7 @@ class Account: ObservableObject {
     var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
     var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
+    var trialPeriodEnd: Date? = nil
 
     init(
         id: String? = UUID().uuidString,
@@ -964,7 +965,8 @@ class Account: ObservableObject {
         stepsGoal: Int = 10_000,
         distanceGoal: Double = 3_000,
         weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults,
-        activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
+        activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers,
+        trialPeriodEnd: Date? = nil
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -1016,6 +1018,7 @@ class Account: ObservableObject {
         guard let id = self.id, !id.isEmpty else {
             completion?(false)
             return
+        self.trialPeriodEnd = trialPeriodEnd
         }
 
         service.fetchCravings(withId: id) { remote in

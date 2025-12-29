@@ -30,7 +30,7 @@ struct SportsTabView: View {
     @State private var showAccountsView = false
     @State private var showTimeTrackingEditor = false
     @State private var timeTrackingConfig = TimeTrackingConfig.defaultConfig
-    @StateObject private var weatherModel = WeatherViewModel()
+    @ObservedObject var weatherModel: WeatherViewModel
     @State private var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
     @State private var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
     @State private var teamMetricValuesStore: [String: String] = [:]
@@ -195,22 +195,7 @@ struct SportsTabView: View {
 
     // MARK: - Weather Section
 
-    struct WeatherSnapshot: Identifiable {
-        let id = UUID()
-        let time: Date
-        let label: String
-        let temperature: Int
-        let temperatureDelta: Int?
-        let precipitationChance: Int
-        let min: Int
-        let max: Int
-        let uvIndex: Int
-        let windSpeed: Int
-        let humidity: Int
-        let symbol: String
-        let description: String
-        let isDaylight: Bool
-    }
+
 
     // Weather visual grouping used across WeatherSection and surrounding layout
     private enum WeatherGroup {
@@ -484,330 +469,11 @@ struct SportsTabView: View {
         }
     }
 
-    enum WeatherLoadState: Equatable {
-        case idle
-        case loading
-        case loaded
-        case locationUnavailable
-        case failed(String)
-    }
 
-    @MainActor
-    final class WeatherViewModel: ObservableObject {
-        @Published var currentSnapshot: WeatherSnapshot?
-        @Published var upcomingSnapshots: [WeatherSnapshot] = []
-        @Published var state: WeatherLoadState = .idle
-        @Published var regionDescription: String? = nil
 
-        private let calendar = Calendar.current
-        private let weatherService: WeatherService
-        private let locationProvider: LocationProvider
-        private let geocoder = CLGeocoder()
 
-        init(weatherService: WeatherService? = nil, locationProvider: LocationProvider? = nil) {
-            self.weatherService = weatherService ?? WeatherService()
-            self.locationProvider = locationProvider ?? LocationProvider()
-        }
 
-        func refresh(for date: Date) async {
-            state = .loading
-            do {
-                let location = try await locationProvider.currentLocation()
-                await updateRegionDescription(for: location)
-                if calendar.isDateInFuture(date) || calendar.isDateInToday(date) {
-                    try await loadForecast(location: location, date: date)
-                } else {
-                    try await loadHistorical(location: location, date: date)
-                }
-                state = .loaded
-            } catch {
-                currentSnapshot = nil
-                upcomingSnapshots = []
-                regionDescription = nil
-                if error is LocationError {
-                    state = .locationUnavailable
-                } else if let clError = error as? CLError, [.denied, .locationUnknown, .network].contains(clError.code) {
-                    state = .locationUnavailable
-                } else {
-                    let ns = error as NSError
-                    if ns.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && ns.code == 2 {
-                        state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
-                    } else if error.localizedDescription.contains("WDSJWTAuthenticatorServiceListener") {
-                        state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
-                    } else {
-                        state = .failed(error.localizedDescription)
-                    }
-                }
-            }
-        }
 
-        private func updateRegionDescription(for location: CLLocation) async {
-            geocoder.cancelGeocode()
-            do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(location)
-                if let placemark = placemarks.first {
-                    var components: [String] = []
-                    if let locality = placemark.locality, !locality.isEmpty {
-                        components.append(locality)
-                    }
-                    if let admin = placemark.administrativeArea, !admin.isEmpty {
-                        components.append(admin)
-                    } else if let country = placemark.country, !country.isEmpty {
-                        components.append(country)
-                    }
-                    let description = components.joined(separator: ", ")
-                    regionDescription = description.isEmpty ? nil : description
-                } else {
-                    regionDescription = nil
-                }
-            } catch {
-                regionDescription = nil
-            }
-        }
-
-        
-
-        private func loadForecast(location: CLLocation, date: Date) async throws {
-            let weather = try await weatherService.weather(for: location)
-            let dayForecast = weather.dailyForecast
-            let hourly = weather.hourlyForecast
-            apply(hourly: hourly, daily: dayForecast, target: date)
-        }
-
-        private func loadHistorical(location: CLLocation, date: Date) async throws {
-            if #available(iOS 17.0, *) {
-                let weather = try await weatherService.weather(for: location)
-                apply(current: weather.currentWeather, hourly: weather.hourlyForecast, daily: weather.dailyForecast, target: date)
-            } else {
-                try await loadForecast(location: location, date: date)
-                state = .failed("Historical weather requires iOS 17. Showing forecast instead.")
-            }
-        }
-
-        private func apply(current: CurrentWeather, hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
-            let anchor = anchorHour(for: target, hourly: hourly)
-
-            if calendar.isDateInToday(target) {
-                let currentTemp = Int(current.temperature.value.rounded())
-                let delta = deltaVsPreviousDay(for: target, currentTemp: currentTemp, daily: daily)
-                currentSnapshot = makeSnapshot(date: target, hourTemp: anchor, current: current, day: dailyForecast(for: target, from: daily), delta: delta)
-            } else if let anchor {
-                let anchorDay = dailyForecast(for: anchor.date, from: daily)
-                let anchorTemp = Int(anchor.temperature.value.rounded())
-                let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
-                currentSnapshot = makeSnapshot(from: anchor, day: anchorDay, delta: delta)
-            } else {
-                let currentTemp = Int(current.temperature.value.rounded())
-                let delta = deltaVsPreviousDay(for: target, currentTemp: currentTemp, daily: daily)
-                currentSnapshot = makeSnapshot(date: target, hourTemp: nil, current: current, day: dailyForecast(for: target, from: daily), delta: delta)
-            }
-
-            upcomingSnapshots = snapshotsWithDelta(hourly: hourly, daily: daily, anchor: anchor, count: 12)
-        }
-
-        private func apply(hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
-            let anchor = anchorHour(for: target, hourly: hourly)
-            if let anchor {
-                let anchorTemp = Int(anchor.temperature.value.rounded())
-                let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
-                currentSnapshot = makeSnapshot(from: anchor, day: dailyForecast(for: anchor.date, from: daily), delta: delta)
-            }
-            upcomingSnapshots = snapshotsWithDelta(hourly: hourly, daily: daily, anchor: anchor, count: 12)
-        }
-
-        private func dailyForecast(for date: Date, from forecast: Forecast<DayWeather>) -> DayWeather? {
-            forecast.first { calendar.isDate($0.date, inSameDayAs: date) }
-        }
-
-        private func sortedHours(_ hourly: Forecast<HourWeather>) -> [HourWeather] {
-            hourly.sorted { $0.date < $1.date }
-        }
-
-        private func anchorHour(for date: Date, hourly: Forecast<HourWeather>) -> HourWeather? {
-            let hours = sortedHours(hourly)
-            guard !hours.isEmpty else { return nil }
-            let referenceDate = calendar.isDateInToday(date) ? Date() : calendar.startOfDay(for: date)
-            if let match = hours.first(where: { $0.date >= referenceDate }) { return match }
-            return hours.first
-        }
-
-        private func nextHours(after anchor: HourWeather?, hourly: Forecast<HourWeather>, count: Int) -> [HourWeather] {
-            let hours = sortedHours(hourly)
-            guard let anchor else { return Array(hours.prefix(count)) }
-            guard let idx = hours.firstIndex(where: { $0.date == anchor.date }) else {
-                return Array(hours.prefix(count))
-            }
-            let slice = hours.dropFirst(idx + 1)
-            return Array(slice.prefix(count))
-        }
-
-        private func deltaVsPreviousDay(for date: Date, currentTemp: Int, daily: Forecast<DayWeather>) -> Int? {
-            guard let previousDate = calendar.date(byAdding: .day, value: -1, to: date),
-                  let previousDay = dailyForecast(for: previousDate, from: daily) else { return nil }
-            return currentTemp - Int(previousDay.highTemperature.value.rounded())
-        }
-
-        private func snapshotsWithDelta(hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, anchor: HourWeather?, count: Int) -> [WeatherSnapshot] {
-            let hours = sortedHours(hourly)
-            guard !hours.isEmpty else { return [] }
-
-            var startIndex = 0
-            if let anchor, let idx = hours.firstIndex(where: { $0.date == anchor.date }) {
-                startIndex = min(hours.count, idx + 1)
-            }
-
-            let endIndex = min(hours.count, startIndex + count)
-            var result: [WeatherSnapshot] = []
-
-            for i in startIndex..<endIndex {
-                let hour = hours[i]
-                let previous = i > 0 ? hours[i - 1] : nil
-                let delta = previous.map { Int(hour.temperature.value.rounded()) - Int($0.temperature.value.rounded()) }
-                let day = dailyForecast(for: hour.date, from: daily)
-                result.append(makeSnapshot(from: hour, day: day, delta: delta))
-            }
-
-            return result
-        }
-
-        private func makeSnapshot(date: Date, hourTemp: HourWeather?, current: CurrentWeather, day: DayWeather?, delta: Int?) -> WeatherSnapshot {
-            WeatherSnapshot(
-                time: date,
-                label: DateFormatter.shortHour.string(from: date),
-                temperature: Int(hourTemp?.temperature.value ?? current.temperature.value.rounded()),
-                temperatureDelta: delta,
-                precipitationChance: Int(((hourTemp?.precipitationChance ?? 0) * 100).rounded()),
-                min: Int((day?.lowTemperature.value ?? current.temperature.value).rounded()),
-                max: Int((day?.highTemperature.value ?? current.temperature.value).rounded()),
-                uvIndex: Int(Double(current.uvIndex.value)),
-                windSpeed: Int(current.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
-                humidity: Int((current.humidity * 100).rounded()),
-                symbol: current.symbolName,
-                description: (hourTemp?.condition.description ?? current.condition.description),
-                isDaylight: hourTemp?.isDaylight ?? current.isDaylight
-            )
-        }
-
-        private func makeSnapshot(from hour: HourWeather, day: DayWeather?, delta: Int?) -> WeatherSnapshot {
-            WeatherSnapshot(
-                time: hour.date,
-                label: DateFormatter.shortHour.string(from: hour.date),
-                temperature: Int(hour.temperature.value.rounded()),
-                temperatureDelta: delta,
-                precipitationChance: Int((hour.precipitationChance * 100).rounded()),
-                min: Int((day?.lowTemperature.value ?? hour.temperature.value).rounded()),
-                max: Int((day?.highTemperature.value ?? hour.temperature.value).rounded()),
-                uvIndex: Int(Double(hour.uvIndex.value)),
-                windSpeed: Int(hour.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
-                humidity: Int((hour.humidity * 100).rounded()),
-                symbol: hour.symbolName,
-                description: hour.condition.description,
-                isDaylight: hour.isDaylight
-            )
-        }
-    }
-
-    enum LocationError: LocalizedError {
-        case denied
-        case unavailable
-
-        var errorDescription: String? {
-            switch self {
-            case .denied: return "Location access denied. Enable it in Settings to load weather."
-            case .unavailable: return "Could not determine location."
-            }
-        }
-    }
-
-    final class LocationProvider: NSObject, CLLocationManagerDelegate {
-        static let shared = LocationProvider()
-
-        private let manager = CLLocationManager()
-        private var locationContinuation: CheckedContinuation<CLLocation, Error>?
-        private var authContinuation: CheckedContinuation<Void, Error>?
-
-        override init() {
-            super.init()
-            manager.delegate = self
-            manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
-        }
-
-        func currentLocation() async throws -> CLLocation {
-            // Only use cached location if it is recent (within 5 minutes)
-            if let location = manager.location, abs(location.timestamp.timeIntervalSinceNow) < 300 {
-                return location
-            }
-
-            switch manager.authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse:
-                return try await requestFreshLocation()
-            case .notDetermined:
-                try await requestAuthorization()
-                return try await requestFreshLocation()
-            case .restricted, .denied:
-                throw LocationError.denied
-            @unknown default:
-                throw LocationError.unavailable
-            }
-        }
-
-        private func requestAuthorization() async throws {
-            manager.requestWhenInUseAuthorization()
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                authContinuation = continuation
-            }
-        }
-
-        private func requestFreshLocation() async throws -> CLLocation {
-            manager.requestLocation()
-            return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
-                locationContinuation = continuation
-            }
-        }
-
-        private var hasAuthorization: Bool {
-            switch manager.authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse: return true
-            case .notDetermined, .restricted, .denied: return false
-            @unknown default: return false
-            }
-        }
-
-        func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-            switch manager.authorizationStatus {
-            case .authorizedAlways, .authorizedWhenInUse:
-                authContinuation?.resume()
-                authContinuation = nil
-            case .denied, .restricted:
-                authContinuation?.resume(throwing: LocationError.denied)
-                authContinuation = nil
-                locationContinuation?.resume(throwing: LocationError.denied)
-                locationContinuation = nil
-            case .notDetermined:
-                break
-            @unknown default:
-                authContinuation?.resume(throwing: LocationError.unavailable)
-                authContinuation = nil
-                locationContinuation?.resume(throwing: LocationError.unavailable)
-                locationContinuation = nil
-            }
-        }
-
-        func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-            locationContinuation?.resume(throwing: error)
-            locationContinuation = nil
-        }
-
-        func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-            guard let location = locations.last else {
-                locationContinuation?.resume(throwing: LocationError.unavailable)
-                locationContinuation = nil
-                return
-            }
-            locationContinuation?.resume(returning: location)
-            locationContinuation = nil
-        }
-    }
 
     private struct WeatherMetricPill: View {
         let title: String
@@ -846,15 +512,27 @@ struct SportsTabView: View {
             ZStack {
                 backgroundView
                 VStack(spacing: 0) {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            HeaderComponent(
-                                showCalendar: $showCalendar,
-                                selectedDate: $selectedDate,
-                                onProfileTap: { showAccountsView = true },
-                                isPro: isPro
-                            )
-                            .environmentObject(account)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                HeaderComponent(
+                                    showCalendar: $showCalendar,
+                                    selectedDate: $selectedDate,
+                                    onProfileTap: { showAccountsView = true },
+                                    isPro: isPro
+                                )
+                                .environmentObject(account)
+                                .onAppear {
+                                    if #available(iOS 17.0, *) {
+                                        if SportsTips.currentStep == 0 && isPro {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                                withAnimation {
+                                                    proxy.scrollTo("teamPlay", anchor: .center)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
                             VStack(spacing: 0) {
                                 if Calendar.current.isDateInToday(selectedDate) {
@@ -957,6 +635,16 @@ struct SportsTabView: View {
                                     .font(.title3)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.primary)
+                                    .sportsTip(.teamAndSoloPlay, isEnabled: isPro, onStepChange: { step in
+                                        if step == 1 {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                withAnimation {
+                                                    proxy.scrollTo("editPlays", anchor: .center)
+                                                }
+                                            }
+                                        }
+                                    })
+                                    .id("teamPlay")
 
                                 Spacer()
 
@@ -970,6 +658,16 @@ struct SportsTabView: View {
                                         .padding(.vertical, 8)
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
                                 }
+                                .sportsTip(.editPlays, isEnabled: isPro, onStepChange: { step in
+                                    if step == 2 {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation {
+                                                proxy.scrollTo("editSports", anchor: .center)
+                                            }
+                                        }
+                                    }
+                                })
+                                .id("editPlays")
                                 .buttonStyle(.plain)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -988,7 +686,6 @@ struct SportsTabView: View {
                                 onScoreChange: handleTeamScoreChange
                             )
                                 .padding(.horizontal, 18)
-                                .sportsTip(.teamPlay, isEnabled: isPro)
 
                             HStack {
                                 Text("Solo Play Tracking")
@@ -1023,7 +720,6 @@ struct SportsTabView: View {
                                onValueChange: handleSoloMetricValueChange
                            )
                                .padding(.horizontal, 18)
-                               .sportsTip(.soloPlay, isEnabled: isPro)
 
                             HStack {
                                 Text("Sports Tracking")
@@ -1043,6 +739,16 @@ struct SportsTabView: View {
                                         .padding(.vertical, 8)
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
                                 }
+                                .sportsTip(.editSports, isEnabled: isPro, onStepChange: { step in
+                                    if step == 3 {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation {
+                                                proxy.scrollTo("sportsTracking", anchor: .center)
+                                            }
+                                        }
+                                    }
+                                })
+                                .id("editSports")
                                 .buttonStyle(.plain)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1053,7 +759,6 @@ struct SportsTabView: View {
                             if sports.isEmpty {
                                 sportsEmptyState
                                     .padding(.horizontal, 18)
-                                    .sportsTip(.sportsTracking, isEnabled: isPro)
                             } else {
                                 VStack(alignment: .leading, spacing: 0) {
                                     ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
@@ -1164,19 +869,37 @@ struct SportsTabView: View {
                                         }
                                         .padding(.horizontal, 8)
 
-                                        Button {
-                                            dataEntrySportIndex = idx
-                                            editingSportRecord = nil
-                                            dataEntryDefaultDate = selectedDate
-                                        } label: {
-                                            Label("Submit Data", systemImage: "paperplane.fill")
-                                                .font(.callout.weight(.semibold))
-                                                .padding(.vertical, 18)
-                                                .frame(maxWidth: .infinity, minHeight: 52)
-                                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        if idx == 0 {
+                                            Button {
+                                                dataEntrySportIndex = idx
+                                                editingSportRecord = nil
+                                                dataEntryDefaultDate = selectedDate
+                                            } label: {
+                                                Label("Submit Data", systemImage: "paperplane.fill")
+                                                    .font(.callout.weight(.semibold))
+                                                    .padding(.vertical, 18)
+                                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            }
+                                            .sportsTip(.sportsTracking, isEnabled: isPro)
+                                            .id("sportsTracking")
+                                            .padding(.horizontal, 8)
+                                            .buttonStyle(.plain)
+                                        } else {
+                                            Button {
+                                                dataEntrySportIndex = idx
+                                                editingSportRecord = nil
+                                                dataEntryDefaultDate = selectedDate
+                                            } label: {
+                                                Label("Submit Data", systemImage: "paperplane.fill")
+                                                    .font(.callout.weight(.semibold))
+                                                    .padding(.vertical, 18)
+                                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            }
+                                            .padding(.horizontal, 8)
+                                            .buttonStyle(.plain)
                                         }
-                                        .padding(.horizontal, 8)
-                                        .buttonStyle(.plain)
                                     }
                                     .padding(20)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1187,7 +910,6 @@ struct SportsTabView: View {
                                 }
                                 }
                                 .padding(.top, -12)
-                                .sportsTip(.sportsTracking, isEnabled: isPro)
                             }
                         }
                       }
@@ -1196,6 +918,7 @@ struct SportsTabView: View {
                       .blur(radius: isPro ? 0 : 4)
                       .disabled(!isPro)
                     }
+                  }
                     .overlay {
                         if !isPro {
                             ZStack {
@@ -3479,10 +3202,10 @@ struct SportsTips {
     @Parameter
     static var currentStep: Int = 0
 
-    struct TeamPlayTip: Tip {
-        var title: Text { Text("Team Play") }
-        var message: Text? { Text("Track team scores and metrics.") }
-        var image: Image? { Image(systemName: "person.3.fill") }
+    struct TeamAndSoloPlayTip: Tip {
+        var title: Text { Text("Team and Solo Play") }
+        var message: Text? { Text("Manually note your sessions.") }
+        var image: Image? { Image(systemName: "figure.run") }
         
         var rules: [Rule] {
             #Rule(SportsTips.$currentStep) { $0 == 0 }
@@ -3493,10 +3216,10 @@ struct SportsTips {
         }
     }
 
-    struct SoloPlayTip: Tip {
-        var title: Text { Text("Solo Play") }
-        var message: Text? { Text("Track your individual performance.") }
-        var image: Image? { Image(systemName: "figure.run") }
+    struct EditPlaysTip: Tip {
+        var title: Text { Text("Edit Plays") }
+        var message: Text? { Text("Tap Edit to add and remove fields.") }
+        var image: Image? { Image(systemName: "pencil") }
         
         var rules: [Rule] {
             #Rule(SportsTips.$currentStep) { $0 == 1 }
@@ -3507,13 +3230,27 @@ struct SportsTips {
         }
     }
 
-    struct SportsTrackingTip: Tip {
-        var title: Text { Text("Sports Tracking") }
-        var message: Text? { Text("Log activities for specific sports.") }
-        var image: Image? { Image(systemName: "sportscourt.fill") }
+    struct EditSportsTip: Tip {
+        var title: Text { Text("Edit Sports") }
+        var message: Text? { Text("Tap Edit to add and remove sports you play.") }
+        var image: Image? { Image(systemName: "pencil") }
         
         var rules: [Rule] {
             #Rule(SportsTips.$currentStep) { $0 == 2 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct SportsTrackingTip: Tip {
+        var title: Text { Text("Sports Tracking") }
+        var message: Text? { Text("Tap Submit Data to manually add values to keep track of.") }
+        var image: Image? { Image(systemName: "sportscourt.fill") }
+        
+        var rules: [Rule] {
+            #Rule(SportsTips.$currentStep) { $0 == 3 }
         }
         
         var actions: [Action] {
@@ -3523,8 +3260,9 @@ struct SportsTips {
 }
 
 enum SportsTipType {
-    case teamPlay
-    case soloPlay
+    case teamAndSoloPlay
+    case editPlays
+    case editSports
     case sportsTracking
 }
 
@@ -3547,27 +3285,388 @@ extension View {
     @ViewBuilder
     func applySportsTip(_ type: SportsTipType, onStepChange: ((Int) -> Void)? = nil) -> some View {
         switch type {
-        case .teamPlay:
-            self.popoverTip(SportsTips.TeamPlayTip()) { action in
+        case .teamAndSoloPlay:
+            self.popoverTip(SportsTips.TeamAndSoloPlayTip()) { action in
                 if action.id == "next" {
                     SportsTips.currentStep = 1
                     onStepChange?(1)
                 }
             }
-        case .soloPlay:
-            self.popoverTip(SportsTips.SoloPlayTip()) { action in
+        case .editPlays:
+            self.popoverTip(SportsTips.EditPlaysTip()) { action in
                 if action.id == "next" {
                     SportsTips.currentStep = 2
                     onStepChange?(2)
                 }
             }
-        case .sportsTracking:
-            self.popoverTip(SportsTips.SportsTrackingTip()) { action in
-                if action.id == "finish" {
+        case .editSports:
+            self.popoverTip(SportsTips.EditSportsTip()) { action in
+                if action.id == "next" {
                     SportsTips.currentStep = 3
                     onStepChange?(3)
                 }
             }
+        case .sportsTracking:
+            self.popoverTip(SportsTips.SportsTrackingTip()) { action in
+                if action.id == "finish" {
+                    SportsTips.currentStep = 4
+                    onStepChange?(4)
+                }
+            }
         }
+    }
+}
+
+// MARK: - Weather Models & ViewModel
+
+struct WeatherSnapshot: Identifiable {
+    let id = UUID()
+    let time: Date
+    let label: String
+    let temperature: Int
+    let temperatureDelta: Int?
+    let precipitationChance: Int
+    let min: Int
+    let max: Int
+    let uvIndex: Int
+    let windSpeed: Int
+    let humidity: Int
+    let symbol: String
+    let description: String
+    let isDaylight: Bool
+}
+
+enum WeatherLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case locationUnavailable
+    case failed(String)
+}
+
+@MainActor
+final class WeatherViewModel: ObservableObject {
+    @Published var currentSnapshot: WeatherSnapshot?
+    @Published var upcomingSnapshots: [WeatherSnapshot] = []
+    @Published var state: WeatherLoadState = .idle
+    @Published var regionDescription: String? = nil
+    private var lastFetchTime: Date?
+    private var lastFetchedTargetDate: Date?
+
+    private let calendar = Calendar.current
+    private let weatherService: WeatherService
+    private let locationProvider: LocationProvider
+    private let geocoder = CLGeocoder()
+
+    init(weatherService: WeatherService? = nil, locationProvider: LocationProvider? = nil) {
+        self.weatherService = weatherService ?? WeatherService()
+        self.locationProvider = locationProvider ?? LocationProvider()
+    }
+
+    func refresh(for date: Date) async {
+        // Cache check: if we fetched for this same target date less than 5 minutes ago, skip.
+        if let lastFetchTime, let lastFetchedTargetDate,
+           calendar.isDate(date, inSameDayAs: lastFetchedTargetDate),
+           abs(lastFetchTime.timeIntervalSinceNow) < 300,
+           state == .loaded {
+            return
+        }
+
+        state = .loading
+        do {
+            let location = try await locationProvider.currentLocation()
+            await updateRegionDescription(for: location)
+            if calendar.isDateInFuture(date) || calendar.isDateInToday(date) {
+                try await loadForecast(location: location, date: date)
+            } else {
+                try await loadHistorical(location: location, date: date)
+            }
+            state = .loaded
+            lastFetchTime = Date()
+            lastFetchedTargetDate = date
+        } catch {
+            currentSnapshot = nil
+            upcomingSnapshots = []
+            regionDescription = nil
+            if error is LocationError {
+                state = .locationUnavailable
+            } else if let clError = error as? CLError, [.denied, .locationUnknown, .network].contains(clError.code) {
+                state = .locationUnavailable
+            } else {
+                let ns = error as NSError
+                if ns.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && ns.code == 2 {
+                    state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
+                } else if error.localizedDescription.contains("WDSJWTAuthenticatorServiceListener") {
+                    state = .failed("WeatherKit not authorized. Check entitlements and Apple ID.")
+                } else {
+                    state = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func updateRegionDescription(for location: CLLocation) async {
+        geocoder.cancelGeocode()
+        do {
+            let placemarks = try await geocoder.reverseGeocodeLocation(location)
+            if let placemark = placemarks.first {
+                var components: [String] = []
+                if let locality = placemark.locality, !locality.isEmpty {
+                    components.append(locality)
+                }
+                if let admin = placemark.administrativeArea, !admin.isEmpty {
+                    components.append(admin)
+                } else if let country = placemark.country, !country.isEmpty {
+                    components.append(country)
+                }
+                let description = components.joined(separator: ", ")
+                regionDescription = description.isEmpty ? nil : description
+            } else {
+                regionDescription = nil
+            }
+        } catch {
+            regionDescription = nil
+        }
+    }
+
+    private func loadForecast(location: CLLocation, date: Date) async throws {
+        let weather = try await weatherService.weather(for: location)
+        let dayForecast = weather.dailyForecast
+        let hourly = weather.hourlyForecast
+        apply(hourly: hourly, daily: dayForecast, target: date)
+    }
+
+    private func loadHistorical(location: CLLocation, date: Date) async throws {
+        if #available(iOS 17.0, *) {
+            let weather = try await weatherService.weather(for: location)
+            apply(current: weather.currentWeather, hourly: weather.hourlyForecast, daily: weather.dailyForecast, target: date)
+        } else {
+            try await loadForecast(location: location, date: date)
+            state = .failed("Historical weather requires iOS 17. Showing forecast instead.")
+        }
+    }
+
+    private func apply(current: CurrentWeather, hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
+        let anchor = anchorHour(for: target, hourly: hourly)
+
+        if calendar.isDateInToday(target) {
+            let currentTemp = Int(current.temperature.value.rounded())
+            let delta = deltaVsPreviousDay(for: target, currentTemp: currentTemp, daily: daily)
+            currentSnapshot = makeSnapshot(date: target, hourTemp: anchor, current: current, day: dailyForecast(for: target, from: daily), delta: delta)
+        } else if let anchor {
+            let anchorDay = dailyForecast(for: anchor.date, from: daily)
+            let anchorTemp = Int(anchor.temperature.value.rounded())
+            let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
+            currentSnapshot = makeSnapshot(from: anchor, day: anchorDay, delta: delta)
+        } else {
+            let currentTemp = Int(current.temperature.value.rounded())
+            let delta = deltaVsPreviousDay(for: target, currentTemp: currentTemp, daily: daily)
+            currentSnapshot = makeSnapshot(date: target, hourTemp: nil, current: current, day: dailyForecast(for: target, from: daily), delta: delta)
+        }
+
+        upcomingSnapshots = snapshotsWithDelta(hourly: hourly, daily: daily, anchor: anchor, count: 12)
+    }
+
+    private func apply(hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, target: Date) {
+        let anchor = anchorHour(for: target, hourly: hourly)
+        if let anchor {
+            let anchorTemp = Int(anchor.temperature.value.rounded())
+            let delta = deltaVsPreviousDay(for: anchor.date, currentTemp: anchorTemp, daily: daily)
+            currentSnapshot = makeSnapshot(from: anchor, day: dailyForecast(for: anchor.date, from: daily), delta: delta)
+        }
+        upcomingSnapshots = snapshotsWithDelta(hourly: hourly, daily: daily, anchor: anchor, count: 12)
+    }
+
+    private func dailyForecast(for date: Date, from forecast: Forecast<DayWeather>) -> DayWeather? {
+        forecast.first { calendar.isDate($0.date, inSameDayAs: date) }
+    }
+
+    private func sortedHours(_ hourly: Forecast<HourWeather>) -> [HourWeather] {
+        hourly.sorted { $0.date < $1.date }
+    }
+
+    private func anchorHour(for date: Date, hourly: Forecast<HourWeather>) -> HourWeather? {
+        let hours = sortedHours(hourly)
+        guard !hours.isEmpty else { return nil }
+        let referenceDate = calendar.isDateInToday(date) ? Date() : calendar.startOfDay(for: date)
+        if let match = hours.first(where: { $0.date >= referenceDate }) { return match }
+        return hours.first
+    }
+
+    private func nextHours(after anchor: HourWeather?, hourly: Forecast<HourWeather>, count: Int) -> [HourWeather] {
+        let hours = sortedHours(hourly)
+        guard let anchor else { return Array(hours.prefix(count)) }
+        guard let idx = hours.firstIndex(where: { $0.date == anchor.date }) else {
+            return Array(hours.prefix(count))
+        }
+        let slice = hours.dropFirst(idx + 1)
+        return Array(slice.prefix(count))
+    }
+
+    private func deltaVsPreviousDay(for date: Date, currentTemp: Int, daily: Forecast<DayWeather>) -> Int? {
+        guard let previousDate = calendar.date(byAdding: .day, value: -1, to: date),
+              let previousDay = dailyForecast(for: previousDate, from: daily) else { return nil }
+        return currentTemp - Int(previousDay.highTemperature.value.rounded())
+    }
+
+    private func snapshotsWithDelta(hourly: Forecast<HourWeather>, daily: Forecast<DayWeather>, anchor: HourWeather?, count: Int) -> [WeatherSnapshot] {
+        let hours = sortedHours(hourly)
+        guard !hours.isEmpty else { return [] }
+
+        var startIndex = 0
+        if let anchor, let idx = hours.firstIndex(where: { $0.date == anchor.date }) {
+            startIndex = min(hours.count, idx + 1)
+        }
+
+        let endIndex = min(hours.count, startIndex + count)
+        var result: [WeatherSnapshot] = []
+
+        for i in startIndex..<endIndex {
+            let hour = hours[i]
+            let previous = i > 0 ? hours[i - 1] : nil
+            let delta = previous.map { Int(hour.temperature.value.rounded()) - Int($0.temperature.value.rounded()) }
+            let day = dailyForecast(for: hour.date, from: daily)
+            result.append(makeSnapshot(from: hour, day: day, delta: delta))
+        }
+
+        return result
+    }
+
+    private func makeSnapshot(date: Date, hourTemp: HourWeather?, current: CurrentWeather, day: DayWeather?, delta: Int?) -> WeatherSnapshot {
+        WeatherSnapshot(
+            time: date,
+            label: DateFormatter.shortHour.string(from: date),
+            temperature: Int(hourTemp?.temperature.value ?? current.temperature.value.rounded()),
+            temperatureDelta: delta,
+            precipitationChance: Int(((hourTemp?.precipitationChance ?? 0) * 100).rounded()),
+            min: Int((day?.lowTemperature.value ?? current.temperature.value).rounded()),
+            max: Int((day?.highTemperature.value ?? current.temperature.value).rounded()),
+            uvIndex: Int(Double(current.uvIndex.value)),
+            windSpeed: Int(current.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
+            humidity: Int((current.humidity * 100).rounded()),
+            symbol: current.symbolName,
+            description: (hourTemp?.condition.description ?? current.condition.description),
+            isDaylight: hourTemp?.isDaylight ?? current.isDaylight
+        )
+    }
+
+    private func makeSnapshot(from hour: HourWeather, day: DayWeather?, delta: Int?) -> WeatherSnapshot {
+        WeatherSnapshot(
+            time: hour.date,
+            label: DateFormatter.shortHour.string(from: hour.date),
+            temperature: Int(hour.temperature.value.rounded()),
+            temperatureDelta: delta,
+            precipitationChance: Int((hour.precipitationChance * 100).rounded()),
+            min: Int((day?.lowTemperature.value ?? hour.temperature.value).rounded()),
+            max: Int((day?.highTemperature.value ?? hour.temperature.value).rounded()),
+            uvIndex: Int(Double(hour.uvIndex.value)),
+            windSpeed: Int(hour.wind.speed.converted(to: .kilometersPerHour).value.rounded()),
+            humidity: Int((hour.humidity * 100).rounded()),
+            symbol: hour.symbolName,
+            description: hour.condition.description,
+            isDaylight: hour.isDaylight
+        )
+    }
+}
+
+enum LocationError: LocalizedError {
+    case denied
+    case unavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .denied: return "Location access denied. Enable it in Settings to load weather."
+        case .unavailable: return "Could not determine location."
+        }
+    }
+}
+
+final class LocationProvider: NSObject, CLLocationManagerDelegate {
+    static let shared = LocationProvider()
+
+    private let manager = CLLocationManager()
+    private var locationContinuation: CheckedContinuation<CLLocation, Error>?
+    private var authContinuation: CheckedContinuation<Void, Error>?
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+    }
+
+    func currentLocation() async throws -> CLLocation {
+        // Only use cached location if it is recent (within 5 minutes)
+        if let location = manager.location, abs(location.timestamp.timeIntervalSinceNow) < 300 {
+            return location
+        }
+
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            return try await requestFreshLocation()
+        case .notDetermined:
+            try await requestAuthorization()
+            return try await requestFreshLocation()
+        case .restricted, .denied:
+            throw LocationError.denied
+        @unknown default:
+            throw LocationError.unavailable
+        }
+    }
+
+    private func requestAuthorization() async throws {
+        manager.requestWhenInUseAuthorization()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            authContinuation = continuation
+        }
+    }
+
+    private func requestFreshLocation() async throws -> CLLocation {
+        manager.requestLocation()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
+            locationContinuation = continuation
+        }
+    }
+
+    private var hasAuthorization: Bool {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: return true
+        case .notDetermined, .restricted, .denied: return false
+        @unknown default: return false
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            authContinuation?.resume()
+            authContinuation = nil
+        case .denied, .restricted:
+            authContinuation?.resume(throwing: LocationError.denied)
+            authContinuation = nil
+            locationContinuation?.resume(throwing: LocationError.denied)
+            locationContinuation = nil
+        case .notDetermined:
+            break
+        @unknown default:
+            authContinuation?.resume(throwing: LocationError.unavailable)
+            authContinuation = nil
+            locationContinuation?.resume(throwing: LocationError.unavailable)
+            locationContinuation = nil
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        locationContinuation?.resume(throwing: error)
+        locationContinuation = nil
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else {
+            locationContinuation?.resume(throwing: LocationError.unavailable)
+            locationContinuation = nil
+            return
+        }
+        locationContinuation?.resume(returning: location)
+        locationContinuation = nil
     }
 }

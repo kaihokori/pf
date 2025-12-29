@@ -469,7 +469,7 @@ struct WorkoutTabView: View {
                     .workoutTip(.dailyCheckIn, onStepChange: { step in
                         if step == 1 {
                             withAnimation {
-                                proxy.scrollTo("workoutSupplements", anchor: .top)
+                                proxy.scrollTo("dailyCheckIn", anchor: .top)
                             }
                         }
                     })
@@ -481,6 +481,13 @@ struct WorkoutTabView: View {
                             persistWorkoutSchedule(updated)
                         }
                     )
+                    .workoutTip(.editSchedule, onStepChange: { step in
+                        if step == 2 {
+                            withAnimation {
+                                proxy.scrollTo("workoutSupplements", anchor: .top)
+                            }
+                        }
+                    })
                     
                     HStack {
                         Text("Daily Summary")
@@ -587,6 +594,13 @@ struct WorkoutTabView: View {
                                 .padding(.vertical, 8)
                                 .glassEffect(in: .rect(cornerRadius: 18.0))
                         }
+                        .workoutTip(.editSupplements, onStepChange: { step in
+                            if step == 4 {
+                                withAnimation {
+                                    proxy.scrollTo("weightsTracking", anchor: .top)
+                                }
+                            }
+                        })
                         .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity)
@@ -634,9 +648,9 @@ struct WorkoutTabView: View {
                         }
                     )
                     .workoutTip(.workoutSupplements, onStepChange: { step in
-                        if step == 1 {
+                        if step == 3 {
                             withAnimation {
-                                proxy.scrollTo("weightsTracking", anchor: .top)
+                                proxy.scrollTo("workoutSupplements", anchor: .top)
                             }
                         }
                     })
@@ -684,6 +698,13 @@ struct WorkoutTabView: View {
                                 .padding(.vertical, 8)
                                 .glassEffect(in: .rect(cornerRadius: 18.0))
                         }
+                        .workoutTip(.editTracking, onStepChange: { step in
+                            if step == 6 {
+                                withAnimation {
+                                    proxy.scrollTo("weeklyProgress", anchor: .top)
+                                }
+                            }
+                        })
                         .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity)
@@ -694,15 +715,17 @@ struct WorkoutTabView: View {
                     // Weights tracking section
                     WeightsTrackingSection(
                         bodyParts: $bodyParts,
-                        focusBinding: $isWeightsInputFocused
-                    )
-                    .workoutTip(.weightsTracking, onStepChange: { step in
-                        if step == 1 {
-                            withAnimation {
-                                proxy.scrollTo("weeklyProgress", anchor: .top)
+                        focusBinding: $isWeightsInputFocused,
+                        onTipStepChange: { step in
+                            if step == 5 {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation {
+                                        proxy.scrollTo("weightsTracking", anchor: .top)
+                                    }
+                                }
                             }
                         }
-                    })
+                    )
 
                     // MARK: - Weekly Progress Section
                     VStack(spacing: 0) {
@@ -724,6 +747,7 @@ struct WorkoutTabView: View {
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
+                            .workoutTip(.weeklyProgress)
                             .buttonStyle(.plain)
                             .contentShape(Rectangle())
                             .padding(4)
@@ -742,7 +766,6 @@ struct WorkoutTabView: View {
                                                 previewImageEntry: $previewImageEntry)
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
-                            .workoutTip(.weeklyProgress, onStepChange: { _ in })
                             .id("weeklyProgress")
                             .opacity(isPro ? 1 : 0.5)
                             .blur(radius: isPro ? 0 : 4)
@@ -2864,6 +2887,7 @@ private struct WeightsGroupEditorSheet: View {
 private struct WeightsTrackingSection: View {
     @Binding var bodyParts: [BodyPartWeights]
     var focusBinding: FocusState<UUID?>.Binding
+    var onTipStepChange: ((Int) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -3021,18 +3045,34 @@ private struct WeightsTrackingSection: View {
                         }
 
                         // Add Exercise button at the bottom
-                        Button {
-                            addExercise(to: part.id)
-                        } label: {
-                            Label("Add Exercise", systemImage: "plus.circle")
-                                .font(.callout)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
+                        if part.id == bodyParts.first?.id {
+                            Button {
+                                addExercise(to: part.id)
+                            } label: {
+                                Label("Add Exercise", systemImage: "plus.circle")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .workoutTip(.weightsTracking, onStepChange: onTipStepChange)
+                        } else {
+                            Button {
+                                addExercise(to: part.id)
+                            } label: {
+                                Label("Add Exercise", systemImage: "plus.circle")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .buttonStyle(.plain)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.top, 4)
                     .padding(.bottom, 8)

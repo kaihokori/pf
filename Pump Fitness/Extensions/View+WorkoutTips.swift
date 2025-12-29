@@ -3,8 +3,11 @@ import TipKit
 
 enum WorkoutTipType {
     case dailyCheckIn
+    case editSchedule
     case workoutSupplements
+    case editSupplements
     case weightsTracking
+    case editTracking
     case weeklyProgress
 }
 
@@ -34,25 +37,46 @@ extension View {
                     onStepChange?(1)
                 }
             }
-        case .workoutSupplements:
-            self.popoverTip(WorkoutTips.WorkoutSupplementsTip()) { action in
+        case .editSchedule:
+            self.popoverTip(WorkoutTips.EditScheduleTip()) { action in
                 if action.id == "next" {
                     WorkoutTips.currentStep = 2
                     onStepChange?(2)
                 }
             }
-        case .weightsTracking:
-            self.popoverTip(WorkoutTips.WeightsTrackingTip()) { action in
+        case .workoutSupplements:
+            self.popoverTip(WorkoutTips.WorkoutSupplementsTip()) { action in
                 if action.id == "next" {
                     WorkoutTips.currentStep = 3
                     onStepChange?(3)
                 }
             }
+        case .editSupplements:
+            self.popoverTip(WorkoutTips.EditSupplementsTip()) { action in
+                if action.id == "next" {
+                    WorkoutTips.currentStep = 4
+                    onStepChange?(4)
+                }
+            }
+        case .weightsTracking:
+            self.popoverTip(WorkoutTips.WeightsTrackingTip()) { action in
+                if action.id == "next" {
+                    WorkoutTips.currentStep = 5
+                    onStepChange?(5)
+                }
+            }
+        case .editTracking:
+            self.popoverTip(WorkoutTips.EditTrackingTip()) { action in
+                if action.id == "next" {
+                    WorkoutTips.currentStep = 6
+                    onStepChange?(6)
+                }
+            }
         case .weeklyProgress:
             self.popoverTip(WorkoutTips.WeeklyProgressTip()) { action in
                 if action.id == "finish" {
-                    WorkoutTips.currentStep = 4
-                    onStepChange?(4)
+                    WorkoutTips.currentStep = 7
+                    onStepChange?(7)
                 }
             }
         }

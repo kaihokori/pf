@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import TipKit
 
 private func currentCurrencySymbol() -> String {
     if let symbol = Locale.current.currencySymbol, !symbol.isEmpty {
@@ -201,18 +202,34 @@ struct ExpenseTrackerSection: View {
                             Spacer()
                             Text(formattedCurrency(dayEntries.reduce(0) { $0 + $1.amount }))
                                 .font(.subheadline.weight(.semibold))
-                            Button {
-                                addSheetDate = day
-                                showingAddSheet = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            
+                            if day == weekDisplayDates.first {
+                                Button {
+                                    addSheetDate = day
+                                    showingAddSheet = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Button {
+                                    addSheetDate = day
+                                    showingAddSheet = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                         .padding(.vertical, 8)
                     ) {

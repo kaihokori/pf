@@ -83,6 +83,7 @@ struct RootView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @StateObject private var authViewModel = AuthViewModel()
+    @StateObject private var weatherModel = WeatherViewModel()
     @Query private var accounts: [Account]
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
     @State private var isCheckingOnboarding: Bool = false
@@ -2381,7 +2382,8 @@ private extension RootView {
                                     sportConfigs: $sportsConfigs,
                                     sportActivities: $sportActivities,
                                     selectedDate: $selectedDate,
-                                    isPro: isPro
+                                    isPro: isPro,
+                                    weatherModel: weatherModel
                                 )
                                 .onAppear { handleTabAppear(.sports) }
                             }

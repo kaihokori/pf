@@ -3,9 +3,12 @@ import TipKit
 
 enum RoutineTipType {
     case dailyTasks
+    case editTasks
     case goals
+    case editGoals
     case habits
     case expenseTracker
+    case editCategories
 }
 
 extension View {
@@ -34,25 +37,46 @@ extension View {
                     onStepChange?(1)
                 }
             }
-        case .goals:
-            self.popoverTip(RoutineTips.GoalsTip()) { action in
+        case .editTasks:
+            self.popoverTip(RoutineTips.EditTasksTip()) { action in
                 if action.id == "next" {
                     RoutineTips.currentStep = 2
                     onStepChange?(2)
                 }
             }
-        case .habits:
-            self.popoverTip(RoutineTips.HabitsTip()) { action in
+        case .goals:
+            self.popoverTip(RoutineTips.GoalsTip()) { action in
                 if action.id == "next" {
                     RoutineTips.currentStep = 3
                     onStepChange?(3)
                 }
             }
-        case .expenseTracker:
-            self.popoverTip(RoutineTips.ExpenseTrackerTip()) { action in
-                if action.id == "finish" {
+        case .editGoals:
+            self.popoverTip(RoutineTips.EditGoalsTip()) { action in
+                if action.id == "next" {
                     RoutineTips.currentStep = 4
                     onStepChange?(4)
+                }
+            }
+        case .habits:
+            self.popoverTip(RoutineTips.HabitsTip()) { action in
+                if action.id == "next" {
+                    RoutineTips.currentStep = 5
+                    onStepChange?(5)
+                }
+            }
+        case .expenseTracker:
+            self.popoverTip(RoutineTips.ExpenseTrackerTip()) { action in
+                if action.id == "next" {
+                    RoutineTips.currentStep = 6
+                    onStepChange?(6)
+                }
+            }
+        case .editCategories:
+            self.popoverTip(RoutineTips.EditCategoriesTip()) { action in
+                if action.id == "finish" {
+                    RoutineTips.currentStep = 7
+                    onStepChange?(7)
                 }
             }
         }

@@ -226,8 +226,8 @@ struct TravelTips {
     static var currentStep: Int = 0
 
     struct MapTip: Tip {
-        var title: Text { Text("Travel Map") }
-        var message: Text? { Text("View your itinerary events on the map.") }
+        var title: Text { Text("Maps") }
+        var message: Text? { Text("Tap any location in the map or tap the Add button to plan your itinerary.") }
         var image: Image? { Image(systemName: "map.fill") }
         
         var rules: [Rule] {
@@ -240,8 +240,8 @@ struct TravelTips {
     }
 
     struct ItineraryTrackingTip: Tip {
-        var title: Text { Text("Itinerary Tracking") }
-        var message: Text? { Text("Manage your travel plans and events.") }
+        var title: Text { Text("Itinerary") }
+        var message: Text? { Text("Tap events to check details and get directions.") }
         var image: Image? { Image(systemName: "list.bullet.clipboard.fill") }
         
         var rules: [Rule] {

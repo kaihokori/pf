@@ -468,6 +468,15 @@ struct RoutineTabView: View {
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
+                            .routineTip(.editTasks, onStepChange: { step in
+                                if step == 2 {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        withAnimation {
+                                            proxy.scrollTo("goals", anchor: .top)
+                                        }
+                                    }
+                                }
+                            })
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -486,13 +495,7 @@ struct RoutineTabView: View {
                             },
                             day: $currentDay
                         )
-                        .routineTip(.dailyTasks, onStepChange: { step in
-                            if step == 1 {
-                                withAnimation {
-                                    proxy.scrollTo("goals", anchor: .top)
-                                }
-                            }
-                        })
+                        .routineTip(.dailyTasks)
                         .padding(.bottom, -10)
                         
                         HStack {
@@ -539,6 +542,15 @@ struct RoutineTabView: View {
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
+                            .routineTip(.editGoals, onStepChange: { step in
+                                if step == 4 {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        withAnimation {
+                                            proxy.scrollTo("habits", anchor: .top)
+                                        }
+                                    }
+                                }
+                            })
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -547,13 +559,7 @@ struct RoutineTabView: View {
                         .id("goals")
 
                         GoalsSection(accentColorOverride: accentOverride, goals: $goals)
-                            .routineTip(.goals, onStepChange: { step in
-                                if step == 2 {
-                                    withAnimation {
-                                        proxy.scrollTo("habits", anchor: .top)
-                                    }
-                                }
-                            })
+                            .routineTip(.goals)
 
                         HStack {
                             Text("Habits")
@@ -589,11 +595,11 @@ struct RoutineTabView: View {
                             }
                         )
                         .routineTip(.habits, onStepChange: { step in
-                            if step == 3 {
-                                withAnimation {
-                                    // Scroll to Grocery List instead of Expense Tracker directly
-                                    // This provides roughly 200pt offset above the Expense Tracker section
-                                    proxy.scrollTo("groceryList", anchor: .top)
+                            if step == 5 {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation {
+                                        proxy.scrollTo("expenseTracker", anchor: .top)
+                                    }
                                 }
                             }
                         })
@@ -709,6 +715,7 @@ struct RoutineTabView: View {
                                     .font(.title3)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.primary)
+                                    .routineTip(.expenseTracker)
 
                                 Spacer()
 
@@ -722,6 +729,7 @@ struct RoutineTabView: View {
                                         .padding(.vertical, 8)
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
                                 }
+                                .routineTip(.editCategories)
                                 .buttonStyle(.plain)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -742,7 +750,6 @@ struct RoutineTabView: View {
                                     onDeleteExpenseEntry(id)
                                 }
                             )
-                            .routineTip(.expenseTracker)
                         }
                         .opacity(isPro ? 1 : 0.5)
                         .blur(radius: isPro ? 0 : 4)

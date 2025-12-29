@@ -21,8 +21,8 @@ struct NutritionTips {
     }
 
     struct ThemeSelectorTip: Tip {
-        var title: Text { Text("Customize Theme") }
-        var message: Text? { Text("Tap here to change the app's color theme.") }
+        var title: Text { Text("Customise Theme") }
+        var message: Text? { Text("Tap here to change the app's colour theme.") }
         var image: Image? { Image(systemName: "paintpalette") }
         
         var rules: [Rule] {
@@ -47,10 +47,10 @@ struct NutritionTips {
             Action(id: "next", title: "Next")
         }
     }
-    
+
     struct LogIntakeTip: Tip {
-        var title: Text { Text("Log Intake") }
-        var message: Text? { Text("Tap here to log your meals and track your calories.") }
+        var title: Text { Text("Log Your Intake") }
+        var message: Text? { Text("Track meals with barcode scanning and food lookup") }
         var image: Image? { Image(systemName: "plus.circle") }
         
         var rules: [Rule] {
@@ -62,10 +62,24 @@ struct NutritionTips {
         }
     }
     
-    struct MacroTip: Tip {
-        var title: Text { Text("Track Macros") }
-        var message: Text? { Text("Monitor your macronutrient intake here.") }
-        var image: Image? { Image(systemName: "chart.pie") }
+    struct EditCalorieGoalTip: Tip {
+        var title: Text { Text("Edit Calorie Goal") }
+        var message: Text? { Text("Tap Edit to change Goal.") }
+        var image: Image? { Image(systemName: "pencil") }
+        
+        var rules: [Rule] {
+            #Rule(NutritionTips.$currentStep) { $0 == 3 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct ConsumedCaloriesTip: Tip {
+        var title: Text { Text("Consumed Calories") }
+        var message: Text? { Text("Tap your consumed calories to adjust manually.") }
+        var image: Image? { Image(systemName: "flame") }
         
         var rules: [Rule] {
             #Rule(NutritionTips.$currentStep) { $0 == 4 }
@@ -76,13 +90,55 @@ struct NutritionTips {
         }
     }
     
-    struct SupplementTip: Tip {
-        var title: Text { Text("Supplements") }
-        var message: Text? { Text("Keep track of your daily supplements here.") }
-        var image: Image? { Image(systemName: "pills") }
+    struct TrackMacrosTip: Tip {
+        var title: Text { Text("Track Macros") }
+        var message: Text? { Text("Tap each macro to manually adjust your intake.") }
+        var image: Image? { Image(systemName: "chart.pie") }
         
         var rules: [Rule] {
             #Rule(NutritionTips.$currentStep) { $0 == 5 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct EditMacrosTip: Tip {
+        var title: Text { Text("Edit Macros") }
+        var message: Text? { Text("Tap Edit to add or remove macros and adjust colours") }
+        var image: Image? { Image(systemName: "slider.horizontal.3") }
+        
+        var rules: [Rule] {
+            #Rule(NutritionTips.$currentStep) { $0 == 6 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+    
+    struct SupplementsTip: Tip {
+        var title: Text { Text("Supplements") }
+        var message: Text? { Text("Tap each circle to checklist of your supplements.") }
+        var image: Image? { Image(systemName: "pills") }
+        
+        var rules: [Rule] {
+            #Rule(NutritionTips.$currentStep) { $0 == 7 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct EditSupplementsTip: Tip {
+        var title: Text { Text("Edit Supplements") }
+        var message: Text? { Text("Tap Edit to add or remove supplements.") }
+        var image: Image? { Image(systemName: "pencil") }
+        
+        var rules: [Rule] {
+            #Rule(NutritionTips.$currentStep) { $0 == 8 }
         }
         
         var actions: [Action] {

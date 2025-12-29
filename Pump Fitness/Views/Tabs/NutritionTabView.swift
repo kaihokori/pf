@@ -191,6 +191,7 @@ struct NutritionTabView: View {
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
+                            .nutritionTip(.editCalorieGoal)
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -205,6 +206,7 @@ struct NutritionTabView: View {
                             onEditGoal: { showCalorieGoalSheet = true },
                             onAdjustConsumed: { showConsumedSheet = true }
                         )
+                        .nutritionTip(.consumedCalories)
                         .padding(.top, 14)
 
                         Button {
@@ -218,6 +220,7 @@ struct NutritionTabView: View {
                               .contentShape(Rectangle())
                         }
                         .nutritionTip(.logIntake)
+                        
                         .padding(.horizontal, 18)
                         .padding(.top, 18)
                         .buttonStyle(.plain)
@@ -240,6 +243,13 @@ struct NutritionTabView: View {
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
+                            .nutritionTip(.editMacros, onStepChange: { step in
+                                if step == 7 {
+                                    withAnimation {
+                                        proxy.scrollTo("supplements", anchor: .top)
+                                    }
+                                }
+                            })
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,13 +264,7 @@ struct NutritionTabView: View {
                                 selectedMacroForLog = metric
                             }
                         )
-                        .nutritionTip(.macroTracking, onStepChange: { step in
-                            if step == 5 {
-                                withAnimation {
-                                    proxy.scrollTo("supplements", anchor: .top)
-                                }
-                            }
-                        })
+                        .nutritionTip(.trackMacros)
                         
                         HStack {
                             Text("Meal Tracking")
@@ -324,6 +328,7 @@ struct NutritionTabView: View {
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
                             }
+                            .nutritionTip(.editSupplements)
                             .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity)
@@ -370,7 +375,7 @@ struct NutritionTabView: View {
                                 }
                             }
                         )
-                        .nutritionTip(.supplementTracking)
+                        .nutritionTip(.supplements)
                         .onAppear {
                             fetchDayTakenSupplements()
                         }

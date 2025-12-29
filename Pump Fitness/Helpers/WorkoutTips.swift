@@ -8,7 +8,7 @@ struct WorkoutTips {
 
     struct DailyCheckInTip: Tip {
         var title: Text { Text("Daily Check-In") }
-        var message: Text? { Text("Log your daily workout status here.") }
+        var message: Text? { Text("Tap Check-In when you workout. Tap Rest when you skip a day.") }
         var image: Image? { Image(systemName: "checkmark.circle") }
         
         var rules: [Rule] {
@@ -20,10 +20,10 @@ struct WorkoutTips {
         }
     }
 
-    struct WorkoutSupplementsTip: Tip {
-        var title: Text { Text("Workout Supplements") }
-        var message: Text? { Text("Track supplements specific to your workouts.") }
-        var image: Image? { Image(systemName: "pills.fill") }
+    struct EditScheduleTip: Tip {
+        var title: Text { Text("Edit Schedule") }
+        var message: Text? { Text("Tap Edit to adjust your schedule and colours") }
+        var image: Image? { Image(systemName: "pencil") }
         
         var rules: [Rule] {
             #Rule(WorkoutTips.$currentStep) { $0 == 1 }
@@ -34,10 +34,10 @@ struct WorkoutTips {
         }
     }
 
-    struct WeightsTrackingTip: Tip {
-        var title: Text { Text("Weights Tracking") }
-        var message: Text? { Text("Log your weight lifting progress.") }
-        var image: Image? { Image(systemName: "dumbbell.fill") }
+    struct WorkoutSupplementsTip: Tip {
+        var title: Text { Text("Workout Supplements") }
+        var message: Text? { Text("Tap supplement to mark them as consumed.") }
+        var image: Image? { Image(systemName: "pills.fill") }
         
         var rules: [Rule] {
             #Rule(WorkoutTips.$currentStep) { $0 == 2 }
@@ -47,14 +47,56 @@ struct WorkoutTips {
             Action(id: "next", title: "Next")
         }
     }
-    
-    struct WeeklyProgressTip: Tip {
-        var title: Text { Text("Weekly Progress") }
-        var message: Text? { Text("Review your weekly achievements and photos.") }
-        var image: Image? { Image(systemName: "chart.bar.fill") }
+
+    struct EditSupplementsTip: Tip {
+        var title: Text { Text("Edit Supplements") }
+        var message: Text? { Text("Tap Edit to add or remove supplements.") }
+        var image: Image? { Image(systemName: "pencil") }
         
         var rules: [Rule] {
             #Rule(WorkoutTips.$currentStep) { $0 == 3 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct WeightsTrackingTip: Tip {
+        var title: Text { Text("Weights Tracking") }
+        var message: Text? { Text("Tap add exercises to add machine/exercises that relate the body parts you train.") }
+        var image: Image? { Image(systemName: "dumbbell.fill") }
+        
+        var rules: [Rule] {
+            #Rule(WorkoutTips.$currentStep) { $0 == 4 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct EditTrackingTip: Tip {
+        var title: Text { Text("Edit Tracking") }
+        var message: Text? { Text("Tap Edit to adjust body parts to track.") }
+        var image: Image? { Image(systemName: "pencil") }
+        
+        var rules: [Rule] {
+            #Rule(WorkoutTips.$currentStep) { $0 == 5 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+    
+    struct WeeklyProgressTip: Tip {
+        var title: Text { Text("Weekly Progress") }
+        var message: Text? { Text("Tap Add to add you progress for this week. You can adjust this anytime.") }
+        var image: Image? { Image(systemName: "chart.bar.fill") }
+        
+        var rules: [Rule] {
+            #Rule(WorkoutTips.$currentStep) { $0 == 6 }
         }
         
         var actions: [Action] {

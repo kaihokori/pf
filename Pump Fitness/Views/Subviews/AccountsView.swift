@@ -399,20 +399,18 @@ struct AccountsView: View {
             .alert("Delete your Trackerio account?", isPresented: $showDeleteConfirmation) {
             Button("Delete Account", role: .destructive) {
                 Task {
-                    let success = await viewModel.deleteFirebaseAccount()
-                    if success {
-                        dismiss()
-                        // Wait for view to disappear to avoid accessing deleted objects
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        await viewModel.deleteLocalData(in: modelContext)
-                    } else if viewModel.requiresRecentLoginEncountered {
-                        // If deletion failed due to requiring recent auth, sign the user out automatically
+                    let result = await viewModel.deleteFirebaseAccount()
+                    dismiss()
+                    // Wait for view to disappear to avoid accessing deleted objects
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    await viewModel.deleteLocalData(in: modelContext)
+
+                    if result.requiresRecentLogin && !result.authUserDeleted {
                         await viewModel.signOut(in: modelContext)
-                        dismiss()
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        await viewModel.deleteLocalData(in: modelContext)
-                    } else {
-                        // Other failures are already logged by the view model
+                    }
+
+                    if !result.remoteAccountDeleted {
+                        print("Warning: failed to delete remote account document; local data has been cleared.")
                     }
                 }
             }
@@ -1425,6 +1423,12 @@ private struct AppearanceSection: View {
     }
 }
 
+struct AccountDeletionResult {
+    let remoteAccountDeleted: Bool
+    let authUserDeleted: Bool
+    let requiresRecentLogin: Bool
+}
+
 final class AccountsViewModel: ObservableObject {
     private static let weekStartDefaultsKey = "weekStartPreference"
     private static let defaultWeekStart: WeekStartOption = .monday
@@ -1492,6 +1496,32 @@ final class AccountsViewModel: ObservableObject {
 
     deinit {
         defaultsObserver?.cancel()
+    }
+
+    private func clearUserDefaultsState() {
+        if let bundle = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: bundle)
+        }
+
+        let keysToRemove = [
+            ThemeManager.defaultsKey,
+            Self.weekStartDefaultsKey,
+            "currentUserName",
+            "fasting.durationMinutes",
+            "fasting.startTimestamp",
+            "alerts.dailyTasksEnabled",
+            "alerts.dailyTasksSilenceCompleted",
+            "alerts.habitsEnabled",
+            "alerts.timeTrackingEnabled",
+            "alerts.dailyCheckInEnabled",
+            "alerts.activityTimersEnabled",
+            "alerts.fastingEnabled",
+            "alerts.mealsEnabled",
+            "alerts.weeklyProgressEnabled"
+        ]
+
+        keysToRemove.forEach { defaults.removeObject(forKey: $0) }
+        defaults.synchronize()
     }
 
     var hasUploadedAvatar: Bool {
@@ -1794,137 +1824,110 @@ final class AccountsViewModel: ObservableObject {
     @MainActor
     func signOut(in context: ModelContext? = nil) async {
         await performDestructiveAction {
-            // Sign out from Firebase Auth
             do {
                 try Auth.auth().signOut()
             } catch {
                 print("Error signing out: \(error)")
             }
-            // Clear account from UserDefaults
-            let keysToRemove = [
-                ThemeManager.defaultsKey,
-                Self.weekStartDefaultsKey
-            ]
-            for key in keysToRemove {
-                self.defaults.removeObject(forKey: key)
-            }
-            
-            // Clear all UserDefaults for this app (remove all persisted settings)
-            if let bundle = Bundle.main.bundleIdentifier {
-                self.defaults.removePersistentDomain(forName: bundle)
-                self.defaults.synchronize()
-            } else {
-                let keysToRemove = [ThemeManager.defaultsKey, Self.weekStartDefaultsKey, "currentUserName", "fasting.durationMinutes", "fasting.startTimestamp"]
-                for key in keysToRemove { self.defaults.removeObject(forKey: key) }
-            }
 
-            // Clear SwiftData local store for Account and Day models using a fresh context
-            if let ctx = context {
-                do {
-                    let deleteContext = ModelContext(ctx.container)
-                    deleteContext.autosaveEnabled = false
+            self.clearUserDefaultsState()
+            self.clearSwiftData(in: context)
+        }
+    }
+    
+    private func clearSwiftData(in context: ModelContext?) {
+        guard let ctx = context else {
+            print("No ModelContext provided; skipping local SwiftData cleanup.")
+            return
+        }
 
-                    let dayReq = FetchDescriptor<Day>()
-                    let days = try deleteContext.fetch(dayReq)
-                    for d in days { deleteContext.delete(d) }
+        do {
+            let deleteContext = ModelContext(ctx.container)
+            deleteContext.autosaveEnabled = false
 
-                    let acctReq = FetchDescriptor<Account>()
-                    let accts = try deleteContext.fetch(acctReq)
-                    for a in accts { deleteContext.delete(a) }
+            let dayReq = FetchDescriptor<Day>()
+            let days = try deleteContext.fetch(dayReq)
+            for d in days { deleteContext.delete(d) }
 
-                    try deleteContext.save()
+            let acctReq = FetchDescriptor<Account>()
+            let accts = try deleteContext.fetch(acctReq)
+            for a in accts { deleteContext.delete(a) }
 
-                } catch {
-                    print("Failed to clear local SwiftData models: \(error)")
-                }
-            } else {
-                print("No ModelContext provided; skipping local SwiftData cleanup.")
-            }
+            try deleteContext.save()
+        } catch {
+            print("Failed to clear local SwiftData models: \(error)")
+        }
+    }
+
+    private func deleteDocuments(in collection: CollectionReference, batchSize: Int = 100) async throws {
+        let snapshot = try await collection.limit(to: batchSize).getDocuments()
+        guard !snapshot.isEmpty else { return }
+
+        let batch = collection.firestore.batch()
+        snapshot.documents.forEach { batch.deleteDocument($0.reference) }
+        try await batch.commit()
+
+        if snapshot.count >= batchSize {
+            try await deleteDocuments(in: collection, batchSize: batchSize)
         }
     }
 
     @MainActor
-    func deleteFirebaseAccount() async -> Bool {
-        guard !isPerformingDestructiveAction else { return false }
+    func deleteFirebaseAccount() async -> AccountDeletionResult {
+        guard !isPerformingDestructiveAction else {
+            return AccountDeletionResult(remoteAccountDeleted: false, authUserDeleted: false, requiresRecentLogin: false)
+        }
         isPerformingDestructiveAction = true
         defer { isPerformingDestructiveAction = false }
 
         guard let user = Auth.auth().currentUser else {
             print("No authenticated user; cannot delete account from Firestore.")
-            return false
+            return AccountDeletionResult(remoteAccountDeleted: false, authUserDeleted: false, requiresRecentLogin: false)
         }
+
         let uid = user.uid
         let db = Firestore.firestore()
+        var remoteAccountDeleted = true
 
-        // Delete known subcollections (days) under the user's account doc
         do {
-            let daysColl = db.collection("accounts").document(uid).collection("days")
-            let daysSnapshot = try await daysColl.getDocuments()
-            for doc in daysSnapshot.documents {
-                do {
-                    try await doc.reference.delete()
-                } catch {
-                    print("Failed to delete day doc \(doc.documentID): \(error)")
-                }
-            }
+            let daysCollection = db.collection("accounts").document(uid).collection("days")
+            try await deleteDocuments(in: daysCollection)
         } catch {
-            print("Failed to list/delete days subcollection: \(error)")
+            remoteAccountDeleted = false
+            print("Failed to delete days subcollection: \(error)")
         }
 
-        // Delete the main account document
         do {
             try await db.collection("accounts").document(uid).delete()
         } catch {
+            remoteAccountDeleted = false
             print("Failed to delete account doc: \(error)")
         }
 
-        // Attempt to delete Firebase Auth account (may require recent reauth)
+        do {
+            try await db.collection("logs").document(uid).delete()
+        } catch {
+            print("Failed to delete logs doc: \(error)")
+        }
+
         do {
             try await user.delete()
-            return true
+            return AccountDeletionResult(remoteAccountDeleted: remoteAccountDeleted, authUserDeleted: true, requiresRecentLogin: false)
         } catch {
             let nsError = error as NSError
-            if nsError.domain == AuthErrorDomain && nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                // Indicate to the UI that recent-login was required so it can sign the user out automatically
+            let requiresRecent = nsError.domain == AuthErrorDomain && nsError.code == AuthErrorCode.requiresRecentLogin.rawValue
+            if requiresRecent {
                 self.requiresRecentLoginEncountered = true
             }
             print("Failed to delete Firebase Auth user: \(error)")
-            return false
+            return AccountDeletionResult(remoteAccountDeleted: remoteAccountDeleted, authUserDeleted: false, requiresRecentLogin: requiresRecent)
         }
     }
 
     @MainActor
     func deleteLocalData(in context: ModelContext?) async {
-        // Clear all UserDefaults for this app (remove all persisted settings)
-        if let bundle = Bundle.main.bundleIdentifier {
-            self.defaults.removePersistentDomain(forName: bundle)
-            self.defaults.synchronize()
-        } else {
-            let keysToRemove = [ThemeManager.defaultsKey, Self.weekStartDefaultsKey, "currentUserName", "fasting.durationMinutes", "fasting.startTimestamp"]
-            for key in keysToRemove { self.defaults.removeObject(forKey: key) }
-        }
-
-        // Clear SwiftData local store for Account and Day models using a fresh context
-        if let ctx = context {
-            do {
-                let deleteContext = ModelContext(ctx.container)
-                deleteContext.autosaveEnabled = false
-
-                let dayReq = FetchDescriptor<Day>()
-                let days = try deleteContext.fetch(dayReq)
-                for d in days { deleteContext.delete(d) }
-
-                let acctReq = FetchDescriptor<Account>()
-                let accts = try deleteContext.fetch(acctReq)
-                for a in accts { deleteContext.delete(a) }
-
-                try deleteContext.save()
-            } catch {
-                print("Failed to clear local SwiftData models: \(error)")
-            }
-        } else {
-            print("No ModelContext provided; skipping local SwiftData cleanup.")
-        }
+        clearUserDefaultsState()
+        clearSwiftData(in: context)
     }
 
     @MainActor

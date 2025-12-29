@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 struct TravelTabView: View {
     @Binding var account: Account
@@ -53,6 +54,7 @@ struct TravelTabView: View {
                     MapSection(events: $itineraryEvents)
                         .padding(.horizontal, 18)
                         .padding(.bottom, 24)
+                        .travelTip(.map, isEnabled: isPro)
 
                     ItineraryTrackingSection(
                         events: itineraryEvents,
@@ -66,6 +68,7 @@ struct TravelTabView: View {
                         }
                     )
                         .padding(.horizontal, 18)
+                        .travelTip(.itineraryTracking, isEnabled: isPro)
                     }
                     .opacity(isPro ? 1 : 0.5)
                     .blur(radius: isPro ? 0 : 4)
@@ -212,5 +215,83 @@ private extension TravelTabView {
 
     private func deleteEvent(_ event: ItineraryEvent) {
         itineraryEvents.removeAll { $0.id == event.id }
+    }
+}
+
+// MARK: - Travel Tips
+
+@available(iOS 17.0, *)
+struct TravelTips {
+    @Parameter
+    static var currentStep: Int = 0
+
+    struct MapTip: Tip {
+        var title: Text { Text("Travel Map") }
+        var message: Text? { Text("View your itinerary events on the map.") }
+        var image: Image? { Image(systemName: "map.fill") }
+        
+        var rules: [Rule] {
+            #Rule(TravelTips.$currentStep) { $0 == 0 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct ItineraryTrackingTip: Tip {
+        var title: Text { Text("Itinerary Tracking") }
+        var message: Text? { Text("Manage your travel plans and events.") }
+        var image: Image? { Image(systemName: "list.bullet.clipboard.fill") }
+        
+        var rules: [Rule] {
+            #Rule(TravelTips.$currentStep) { $0 == 1 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "finish", title: "Finish")
+        }
+    }
+}
+
+enum TravelTipType {
+    case map
+    case itineraryTracking
+}
+
+extension View {
+    @ViewBuilder
+    func travelTip(_ type: TravelTipType, isEnabled: Bool = true, onStepChange: ((Int) -> Void)? = nil) -> some View {
+        if #available(iOS 17.0, *), isEnabled {
+            self.background {
+                Color.clear
+                    .applyTravelTip(type, onStepChange: onStepChange)
+            }
+        } else {
+            self
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+extension View {
+    @ViewBuilder
+    func applyTravelTip(_ type: TravelTipType, onStepChange: ((Int) -> Void)? = nil) -> some View {
+        switch type {
+        case .map:
+            self.popoverTip(TravelTips.MapTip()) { action in
+                if action.id == "next" {
+                    TravelTips.currentStep = 1
+                    onStepChange?(1)
+                }
+            }
+        case .itineraryTracking:
+            self.popoverTip(TravelTips.ItineraryTrackingTip()) { action in
+                if action.id == "finish" {
+                    TravelTips.currentStep = 2
+                    onStepChange?(2)
+                }
+            }
+        }
     }
 }

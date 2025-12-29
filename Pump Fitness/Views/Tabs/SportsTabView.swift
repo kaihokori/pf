@@ -12,6 +12,7 @@ import MapKit
 import WeatherKit
 import Charts
 import SwiftData
+import TipKit
 
 struct SportsTabView: View {
     @Binding var account: Account
@@ -50,8 +51,6 @@ struct SportsTabView: View {
     @State private var hasLoadedSoloDay = false
     @State private var currentDay: Day? = nil
     @State private var soloMetricValuesStore: [String: String] = [:]
-    // Track expanded state for each sport
-    @State private var expandedSports: [Bool] = []
 
     private var sportsEmptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -989,6 +988,7 @@ struct SportsTabView: View {
                                 onScoreChange: handleTeamScoreChange
                             )
                                 .padding(.horizontal, 18)
+                                .sportsTip(.teamPlay, isEnabled: isPro)
 
                             HStack {
                                 Text("Solo Play Tracking")
@@ -1023,6 +1023,7 @@ struct SportsTabView: View {
                                onValueChange: handleSoloMetricValueChange
                            )
                                .padding(.horizontal, 18)
+                               .sportsTip(.soloPlay, isEnabled: isPro)
 
                             HStack {
                                 Text("Sports Tracking")
@@ -1052,6 +1053,7 @@ struct SportsTabView: View {
                             if sports.isEmpty {
                                 sportsEmptyState
                                     .padding(.horizontal, 18)
+                                    .sportsTip(.sportsTracking, isEnabled: isPro)
                             } else {
                                 VStack(alignment: .leading, spacing: 0) {
                                     ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
@@ -1080,114 +1082,101 @@ struct SportsTabView: View {
                                             }
                                             .buttonStyle(.plain)
 
-                                            Image(systemName: (idx < expandedSports.count && expandedSports[idx]) ? "chevron.up" : "chevron.down")
-                                                .font(.callout.weight(.semibold))
-                                                .accessibilityHidden(true)
-                                        }
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                if idx < expandedSports.count {
-                                                    expandedSports[idx].toggle()
-                                                }
-                                            }
                                         }
 
-                                        if idx < expandedSports.count && expandedSports[idx] {
-                                            ForEach(sport.metrics) { metric in
-                                                SportMetricGraph(
-                                                    metric: metric,
-                                                    activities: sport.activities,
-                                                    historyDays: historyDays,
-                                                    anchorDate: selectedDate,
-                                                    accentOverride: themeManager.selectedTheme == .multiColour ? nil : displayColor
-                                                )
-                                                .frame(height: 140)
-                                                .padding(.bottom, 8)
-                                            }
+                                        ForEach(sport.metrics) { metric in
+                                            SportMetricGraph(
+                                                metric: metric,
+                                                activities: sport.activities,
+                                                historyDays: historyDays,
+                                                anchorDate: selectedDate,
+                                                accentOverride: themeManager.selectedTheme == .multiColour ? nil : displayColor
+                                            )
+                                            .frame(height: 140)
+                                            .padding(.bottom, 8)
+                                        }
 
-                                            let weekDates = sportWeekDates(anchor: selectedDate)
-                                            let sportRecords = sportActivities.filter { $0.sportName.lowercased() == sport.name.lowercased() }
+                                        let weekDates = sportWeekDates(anchor: selectedDate)
+                                        let sportRecords = sportActivities.filter { $0.sportName.lowercased() == sport.name.lowercased() }
 
-                                            // Only include days that actually have records
-                                            let daysWithRecords = weekDates.filter { d in
-                                                sportRecords.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: d) })
-                                            }
+                                        // Only include days that actually have records
+                                        let daysWithRecords = weekDates.filter { d in
+                                            sportRecords.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: d) })
+                                        }
 
-                                            VStack(spacing: 0) {
-                                                ForEach(daysWithRecords, id: \.self) { day in
-                                                    let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+                                        VStack(spacing: 0) {
+                                            ForEach(daysWithRecords, id: \.self) { day in
+                                                let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
 
-                                                    Section(header:
-                                                        HStack {
-                                                            VStack(alignment: .leading, spacing: 2) {
-                                                                Text(DateFormatter.sportWeekdayFull.string(from: day))
-                                                                    .font(.subheadline.weight(.semibold))
-                                                                Text(DateFormatter.sportLongDate.string(from: day))
-                                                                    .font(.caption2)
-                                                                    .foregroundStyle(.secondary)
+                                                Section(header:
+                                                    HStack {
+                                                        VStack(alignment: .leading, spacing: 2) {
+                                                            Text(DateFormatter.sportWeekdayFull.string(from: day))
+                                                                .font(.subheadline.weight(.semibold))
+                                                            Text(DateFormatter.sportLongDate.string(from: day))
+                                                                .font(.caption2)
+                                                                .foregroundStyle(.secondary)
+                                                        }
+                                                        Spacer()
+                                                    }
+                                                    .padding(.vertical, 8)
+                                                ) {
+                                                    ForEach(dayRecords, id: \.id) { record in
+                                                        HStack(alignment: .top, spacing: 12) {
+                                                            VStack(alignment: .leading, spacing: 6) {
+                                                                ForEach(record.values, id: \.id) { val in
+                                                                    HStack(spacing: 6) {
+                                                                        Text(val.label)
+                                                                            .font(.caption.weight(.semibold))
+                                                                            .foregroundStyle(.secondary)
+                                                                        Text(formatMetricValue(val))
+                                                                            .font(.caption)
+                                                                    }
+                                                                }
                                                             }
+
                                                             Spacer()
+
+                                                            Menu {
+                                                                Button("Edit") {
+                                                                    editingSportRecord = record
+                                                                    dataEntrySportIndex = idx
+                                                                    dataEntryDefaultDate = record.date
+                                                                }
+                                                                Button("Delete", role: .destructive) {
+                                                                    sportActivities.removeAll { $0.id == record.id }
+                                                                    rebuildSports()
+                                                                }
+                                                            } label: {
+                                                                Image(systemName: "ellipsis.circle")
+                                                                    .font(.callout)
+                                                                    .foregroundStyle(.primary)
+                                                            }
+                                                            .menuStyle(.borderlessButton)
                                                         }
                                                         .padding(.vertical, 8)
-                                                    ) {
-                                                        ForEach(dayRecords, id: \.id) { record in
-                                                            HStack(alignment: .top, spacing: 12) {
-                                                                VStack(alignment: .leading, spacing: 6) {
-                                                                    ForEach(record.values, id: \.id) { val in
-                                                                        HStack(spacing: 6) {
-                                                                            Text(val.label)
-                                                                                .font(.caption.weight(.semibold))
-                                                                                .foregroundStyle(.secondary)
-                                                                            Text(formatMetricValue(val))
-                                                                                .font(.caption)
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                Spacer()
-
-                                                                Menu {
-                                                                    Button("Edit") {
-                                                                        editingSportRecord = record
-                                                                        dataEntrySportIndex = idx
-                                                                        dataEntryDefaultDate = record.date
-                                                                    }
-                                                                    Button("Delete", role: .destructive) {
-                                                                        sportActivities.removeAll { $0.id == record.id }
-                                                                        rebuildSports()
-                                                                    }
-                                                                } label: {
-                                                                    Image(systemName: "ellipsis.circle")
-                                                                        .font(.callout)
-                                                                        .foregroundStyle(.primary)
-                                                                }
-                                                                .menuStyle(.borderlessButton)
-                                                            }
-                                                            .padding(.vertical, 8)
-                                                            if record.id != dayRecords.last?.id {
-                                                                Divider()
-                                                            }
+                                                        if record.id != dayRecords.last?.id {
+                                                            Divider()
                                                         }
                                                     }
                                                 }
                                             }
-                                            .padding(.horizontal, 8)
-
-                                            Button {
-                                                dataEntrySportIndex = idx
-                                                editingSportRecord = nil
-                                                dataEntryDefaultDate = selectedDate
-                                            } label: {
-                                                Label("Submit Data", systemImage: "paperplane.fill")
-                                                    .font(.callout.weight(.semibold))
-                                                    .padding(.vertical, 18)
-                                                    .frame(maxWidth: .infinity, minHeight: 52)
-                                                    .glassEffect(in: .rect(cornerRadius: 16.0))
-                                            }
-                                            .padding(.horizontal, 8)
-                                            .buttonStyle(.plain)
                                         }
+                                        .padding(.horizontal, 8)
+
+                                        Button {
+                                            dataEntrySportIndex = idx
+                                            editingSportRecord = nil
+                                            dataEntryDefaultDate = selectedDate
+                                        } label: {
+                                            Label("Submit Data", systemImage: "paperplane.fill")
+                                                .font(.callout.weight(.semibold))
+                                                .padding(.vertical, 18)
+                                                .frame(maxWidth: .infinity, minHeight: 52)
+                                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .buttonStyle(.plain)
                                     }
                                     .padding(20)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1198,12 +1187,14 @@ struct SportsTabView: View {
                                 }
                                 }
                                 .padding(.top, -12)
+                                .sportsTip(.sportsTracking, isEnabled: isPro)
                             }
                         }
-                            }
-                            .opacity(isPro ? 1 : 0.5)
-                            .blur(radius: isPro ? 0 : 4)
-                            .disabled(!isPro)
+                      }
+                      .padding(.bottom, 24)
+                      .opacity(isPro ? 1 : 0.5)
+                      .blur(radius: isPro ? 0 : 4)
+                      .disabled(!isPro)
                     }
                     .overlay {
                         if !isPro {
@@ -1312,7 +1303,6 @@ struct SportsTabView: View {
             SportsEditorSheet(sports: $sports, presets: Self.sportPresets) { updated in
                 sports = updated
                 sportConfigs = configs(from: updated)
-                expandedSports = Array(repeating: false, count: updated.count)
             }
         }
         .sheet(
@@ -1616,8 +1606,6 @@ private extension SportsTabView {
 private extension SportsTabView {
     func rebuildSports() {
         let grouped = Dictionary(grouping: sportActivities) { $0.sportName.lowercased() }
-        // Preserve previous expanded state by sport name so adding/updating records doesn't collapse open rows
-        let previousExpansion: [String: Bool] = Dictionary(uniqueKeysWithValues: zip(sports.map { $0.name.lowercased() }, expandedSports))
         let baseTypes = sportsFromConfigs(sportConfigs, fallbackActivities: [])
 
         var built: [SportType] = baseTypes.map { base in
@@ -1641,7 +1629,6 @@ private extension SportsTabView {
         }
 
         sports = built
-        expandedSports = built.map { previousExpansion[$0.name.lowercased()] ?? false }
     }
 
     func metrics(from records: [SportActivityRecord], fallbackColor: Color) -> [SportMetric] {
@@ -3482,5 +3469,105 @@ private extension DateFormatter {
 private extension Calendar {
     func isDateInFuture(_ date: Date) -> Bool {
         compare(date, to: Date(), toGranularity: .day) == .orderedDescending
+    }
+}
+
+// MARK: - Sports Tips
+
+@available(iOS 17.0, *)
+struct SportsTips {
+    @Parameter
+    static var currentStep: Int = 0
+
+    struct TeamPlayTip: Tip {
+        var title: Text { Text("Team Play") }
+        var message: Text? { Text("Track team scores and metrics.") }
+        var image: Image? { Image(systemName: "person.3.fill") }
+        
+        var rules: [Rule] {
+            #Rule(SportsTips.$currentStep) { $0 == 0 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct SoloPlayTip: Tip {
+        var title: Text { Text("Solo Play") }
+        var message: Text? { Text("Track your individual performance.") }
+        var image: Image? { Image(systemName: "figure.run") }
+        
+        var rules: [Rule] {
+            #Rule(SportsTips.$currentStep) { $0 == 1 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
+    struct SportsTrackingTip: Tip {
+        var title: Text { Text("Sports Tracking") }
+        var message: Text? { Text("Log activities for specific sports.") }
+        var image: Image? { Image(systemName: "sportscourt.fill") }
+        
+        var rules: [Rule] {
+            #Rule(SportsTips.$currentStep) { $0 == 2 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "finish", title: "Finish")
+        }
+    }
+}
+
+enum SportsTipType {
+    case teamPlay
+    case soloPlay
+    case sportsTracking
+}
+
+extension View {
+    @ViewBuilder
+    func sportsTip(_ type: SportsTipType, isEnabled: Bool = true, onStepChange: ((Int) -> Void)? = nil) -> some View {
+        if #available(iOS 17.0, *), isEnabled {
+            self.background {
+                Color.clear
+                    .applySportsTip(type, onStepChange: onStepChange)
+            }
+        } else {
+            self
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+extension View {
+    @ViewBuilder
+    func applySportsTip(_ type: SportsTipType, onStepChange: ((Int) -> Void)? = nil) -> some View {
+        switch type {
+        case .teamPlay:
+            self.popoverTip(SportsTips.TeamPlayTip()) { action in
+                if action.id == "next" {
+                    SportsTips.currentStep = 1
+                    onStepChange?(1)
+                }
+            }
+        case .soloPlay:
+            self.popoverTip(SportsTips.SoloPlayTip()) { action in
+                if action.id == "next" {
+                    SportsTips.currentStep = 2
+                    onStepChange?(2)
+                }
+            }
+        case .sportsTracking:
+            self.popoverTip(SportsTips.SportsTrackingTip()) { action in
+                if action.id == "finish" {
+                    SportsTips.currentStep = 3
+                    onStepChange?(3)
+                }
+            }
+        }
     }
 }

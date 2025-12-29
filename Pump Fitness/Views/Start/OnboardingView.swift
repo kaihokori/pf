@@ -54,6 +54,12 @@ struct OnboardingView: View {
                             Text(viewModel.currentStep.description)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+
+                            if let description2 = viewModel.currentStep.description2 {
+                                Text(description2)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -80,6 +86,8 @@ struct OnboardingView: View {
                                     HabitsStepView(viewModel: viewModel)
                                 case .workoutTracking:
                                     WorkoutTrackingStepView(viewModel: viewModel)
+                                case .weightsTracking:
+                                    WeightsTrackingStepView(viewModel: viewModel)
                                 case .expenses:
                                     ExpensesStepView(viewModel: viewModel)
                                 case .sports:
@@ -244,7 +252,6 @@ struct OnboardingView: View {
                         TrackedMacro(name: "Protein", target: Double(viewModel.proteinValue) ?? 0, unit: "g", colorHex: "#FF3B30"),
                         TrackedMacro(name: "Carbs", target: Double(viewModel.carbohydrateValue) ?? 0, unit: "g", colorHex: "#34C759"),
                         TrackedMacro(name: "Fats", target: Double(viewModel.fatValue) ?? 0, unit: "g", colorHex: "#FF9500"),
-                        TrackedMacro(name: "Sodium", target: Double(viewModel.sodiumValue) ?? 0, unit: "mg", colorHex: "#5856D6"),
                         TrackedMacro(name: "Water", target: Double(viewModel.waterIntakeValue) ?? 0, unit: "mL", colorHex: "#32ADE6")
                     ]
 
@@ -293,35 +300,14 @@ struct OnboardingView: View {
                 
                 // Map workout schedule (selected days now represent typical rest days)
                 let autoRestDayIndices = viewModel.selectedWorkoutDays.map { $0.id }.sorted()
-                let restDaySet = Set(autoRestDayIndices)
                 let sortedBodyParts = viewModel.trackedBodyParts.sorted()
-                let resolvedBodyParts = sortedBodyParts.isEmpty ? ["Full Body"] : sortedBodyParts
-                let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                var bodyPartIndex = 0
-
-                let workoutSchedule = Weekday.allCases.map { day in
-                    let isRestDay = restDaySet.contains(day.id)
-                    let sessions: [WorkoutSession]
-                    if isRestDay {
-                        sessions = []
-                    } else {
-                        let focus = resolvedBodyParts[bodyPartIndex % resolvedBodyParts.count]
-                        bodyPartIndex += 1
-                        sessions = [
-                            WorkoutSession(
-                                name: focus,
-                                colorHex: randomPaletteColor(),
-                                hour: 9,
-                                minute: 0
-                            )
-                        ]
-                    }
-                    return WorkoutScheduleItem(day: dayNames[day.id], sessions: sessions)
-                }
+                let resolvedBodyParts = sortedBodyParts.isEmpty ? [] : sortedBodyParts
+                let workoutSchedule = viewModel.alignedWorkoutSchedule(using: resolvedBodyParts)
                 
                 // Map weight groups (body parts)
                 let weightGroups = sortedBodyParts.map { part in
-                    WeightGroupDefinition(name: part, exercises: [WeightExerciseDefinition(name: part)])
+                    // Create the body group with a single empty exercise so the user can name sets later.
+                    WeightGroupDefinition(name: part, exercises: [WeightExerciseDefinition(name: "")])
                 }
                 
                 // Calculate calorie goal if not set
@@ -484,10 +470,6 @@ struct OnboardingView: View {
             if let error = validateMacroField(value: viewModel.fatValue, label: "Fat target", min: 0, max: 10000) {
                 return error
             }
-            
-            guard parsedNumber(from: viewModel.sodiumValue) != nil else {
-                return "Please enter a valid sodium target."
-            }
             guard parsedNumber(from: viewModel.waterIntakeValue) != nil else {
                 return "Please enter a valid water intake target."
             }
@@ -506,6 +488,8 @@ struct OnboardingView: View {
         case .habits:
             return "Please complete all fields."
         case .workoutTracking:
+            return "Please complete all fields."
+        case .weightsTracking:
             return "Please complete all fields."
         case .expenses:
             return "Please complete all fields."
@@ -757,7 +741,7 @@ private struct NutritionTrackingStepView: View {
 
                     // Tap for Explanation (opens Maintenance Calories Explainer)
                     Button(action: {
-                        showMacroExplainer = true
+                        showMaintenanceExplainer = true
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "info.circle")
@@ -929,7 +913,7 @@ private struct NutritionTrackingStepView: View {
             }
             
             // Quick Add - hide presets that are already tracked (defaults + custom)
-            let trackedNames = Set(viewModel.customMacros.map { $0.name.lowercased() } + ["Protein", "Carbs", "Fats", "Sodium", "Water"].map { $0.lowercased() })
+            let trackedNames = Set(viewModel.customMacros.map { $0.name.lowercased() } + ["Protein", "Carbs", "Fats", "Water"].map { $0.lowercased() })
             let availableMacroPresets = MacroPreset.allCases.filter { preset in
                 !trackedNames.contains(preset.displayName.lowercased())
             }
@@ -1204,7 +1188,10 @@ private struct WorkoutSupplementsStepView: View {
             // Quick Add
             SectionTitle("Quick Add")
             VStack(spacing: 8) {
-                ForEach(workoutPresets) { option in
+                let trackedNames = Set(viewModel.workoutSupplementsList.map { $0.name.lowercased() })
+                let availablePresets = workoutPresets.filter { !trackedNames.contains($0.name.lowercased()) }
+
+                ForEach(availablePresets) { option in
                     HStack {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(option.name)
@@ -1559,7 +1546,6 @@ private struct HabitsStepView: View {
 
 private struct WorkoutTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @State private var newBodyPart: String = ""
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes"]
@@ -1572,8 +1558,90 @@ private struct WorkoutTrackingStepView: View {
                 .foregroundStyle(.secondary)
             WorkoutsPerWeekView(selectedDays: viewModel.selectedWorkoutDays) { day in
                 viewModel.toggleDay(day)
+                viewModel.regenerateWorkoutSchedule()
             }
 
+            SectionTitle("Weekly Schedule")
+            Text("Mark rest days and add sessions with time.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 10) {
+                ForEach($viewModel.workoutSchedule) { $day in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(day.day)
+                                .fontWeight(.semibold)
+                            Spacer()
+                        }
+
+                        if let weekday = Weekday.from(label: day.day), viewModel.selectedWorkoutDays.contains(weekday) {
+                            // Rest day: no sessions shown.
+                        } else {
+                            ForEach($day.sessions) { $session in
+                                let timeBinding = Binding<Date>(
+                                    get: {
+                                        var comps = DateComponents()
+                                        comps.hour = session.hour
+                                        comps.minute = session.minute
+                                        return Calendar.current.date(from: comps) ?? Date()
+                                    },
+                                    set: { newDate in
+                                        let comps = Calendar.current.dateComponents([.hour, .minute], from: newDate)
+                                        session.hour = comps.hour ?? session.hour
+                                        session.minute = comps.minute ?? session.minute
+                                    }
+                                )
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 12) {
+                                        TextField("Session name", text: $session.name)
+                                            .textInputAutocapitalization(.words)
+                                        Spacer(minLength: 0)
+                                        Button(action: {
+                                            if let idx = day.sessions.firstIndex(of: session) {
+                                                day.sessions.remove(at: idx)
+                                            }
+                                        }) {
+                                            Image(systemName: "minus.circle.fill")
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+
+                                    DatePicker("Time", selection: timeBinding, displayedComponents: .hourAndMinute)
+                                        .datePickerStyle(.compact)
+                                }
+                                .padding(10)
+                                .surfaceCard(10)
+                            }
+
+                            Button(action: {
+                                day.sessions.append(WorkoutSession(name: ""))
+                            }) {
+                                Label("Add session", systemImage: "plus.circle.fill")
+                                    .font(.footnote.weight(.semibold))
+                            }
+                            .disabled(day.sessions.count >= 3)
+                            .padding(.top, 4)
+                        }
+                    }
+                    .padding(12)
+                    .surfaceCard(14)
+                }
+            }
+
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct WeightsTrackingStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @State private var newBodyPart: String = ""
+    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
             if !viewModel.trackedBodyParts.isEmpty {
                 SectionTitle("Tracked Body Parts")
                 VStack(spacing: 8) {
@@ -1584,6 +1652,7 @@ private struct WorkoutTrackingStepView: View {
                             Spacer()
                             Button(action: {
                                 viewModel.trackedBodyParts.remove(part)
+                                viewModel.regenerateWorkoutSchedule()
                             }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.secondary)
@@ -1593,6 +1662,14 @@ private struct WorkoutTrackingStepView: View {
                         .surfaceCard(12)
                     }
                 }
+            }
+
+            Button(action: { viewModel.autoFillBodyPartsFromSchedule() }) {
+                Label("Auto-fill from schedule", systemImage: "wand.and.stars")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .surfaceCard(16, fill: Color.accentColor.opacity(0.12))
             }
 
             // Quick Add
@@ -1607,6 +1684,7 @@ private struct WorkoutTrackingStepView: View {
                             Spacer()
                             Button(action: {
                                 viewModel.trackedBodyParts.insert(preset)
+                                viewModel.regenerateWorkoutSchedule()
                             }) {
                                 Image(systemName: "plus.circle.fill")
                                     .foregroundColor(.accentColor)
@@ -1639,12 +1717,14 @@ private struct WorkoutTrackingStepView: View {
         let trimmed = newBodyPart.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         viewModel.trackedBodyParts.insert(trimmed)
+        viewModel.regenerateWorkoutSchedule()
         newBodyPart = ""
     }
 }
 
 private struct ExpensesStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @FocusState private var focusedField: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -1656,8 +1736,12 @@ private struct ExpensesStepView: View {
                             .frame(width: 12, height: 12)
                         TextField("Category Name", text: $category.name)
                             .fontWeight(.medium)
+                            .focused($focusedField, equals: category.id)
                         Image(systemName: "pencil")
                             .foregroundStyle(.secondary)
+                            .onTapGesture {
+                                focusedField = category.id
+                            }
                     }
                     .padding()
                     .surfaceCard(12)
@@ -1760,6 +1844,7 @@ private struct TravelStepView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 6)
                 .padding(.horizontal, 8)
+                .padding(.top, -14)
 
             VStack(alignment: .center, spacing: 8) {
                 Text("Travel light; we'll remember the plans.")
@@ -2050,6 +2135,10 @@ final class OnboardingViewModel: ObservableObject {
     @Published var newHabitColor: Color = .blue
     
     @Published var trackedBodyParts: Set<String> = []
+    @Published var workoutSchedule: [WorkoutScheduleItem] = Weekday.allCases.enumerated().map { idx, day in
+        let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        return WorkoutScheduleItem(day: dayNames[idx], sessions: [])
+    }
     
     // Expenses, Sports, Travel
     @Published var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
@@ -2092,6 +2181,7 @@ final class OnboardingViewModel: ObservableObject {
                 .dailyTasks,
                 .expenses,
                 .workoutTracking,
+                .weightsTracking,
                 .workoutSupplements,
                 .sports,
                 .travel
@@ -2105,6 +2195,7 @@ final class OnboardingViewModel: ObservableObject {
                 .dailyTasks,
                 .expenses,
                 .workoutTracking,
+                .weightsTracking,
                 .workoutSupplements,
                 .sports,
                 .travel
@@ -2151,11 +2242,12 @@ final class OnboardingViewModel: ObservableObject {
             workoutSupplementsList = account.workoutSupplements
             sports = account.sports
             trackedBodyParts = Set(account.weightGroups.map { $0.name })
+            workoutSchedule = account.workoutSchedule.isEmpty ? blankWorkoutSchedule() : account.workoutSchedule
         }
     }
 
     private var defaultMacroNames: Set<String> {
-        ["Protein", "Carbs", "Fats", "Sodium", "Water"]
+        ["Protein", "Carbs", "Fats", "Water"]
     }
 
     private func macroFocusRawToSelection(_ raw: String?) {
@@ -2207,7 +2299,6 @@ final class OnboardingViewModel: ObservableObject {
              let macrosValid = Double(proteinValue) != nil
                 && Double(fatValue) != nil
                 && Double(carbohydrateValue) != nil
-                && Double(sodiumValue) != nil
                 && Double(waterIntakeValue) != nil
             let macroFocusValid = selectedMacroFocus != nil
             return macrosValid && macroFocusValid
@@ -2223,6 +2314,8 @@ final class OnboardingViewModel: ObservableObject {
             return true
         case .workoutTracking:
             return true // Optional?
+        case .weightsTracking:
+            return true
         case .expenses:
             return true
         case .sports:
@@ -2290,6 +2383,55 @@ final class OnboardingViewModel: ObservableObject {
         } else {
             selectedWorkoutDays.insert(day)
         }
+    }
+
+    /// Rebuild the weekly workout schedule based on selected rest days and tracked body parts.
+    func regenerateWorkoutSchedule() {
+        workoutSchedule = alignedWorkoutSchedule(using: Array(trackedBodyParts).sorted())
+    }
+
+    func blankWorkoutSchedule() -> [WorkoutScheduleItem] {
+        let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        return Weekday.allCases.enumerated().map { idx, _ in
+            WorkoutScheduleItem(day: dayNames[idx], sessions: [])
+        }
+    }
+
+    /// Aligns the current schedule with the provided body parts and rest-day selections.
+    /// - Ensures rest days are empty and leaves non-rest days untouched unless missing.
+    func alignedWorkoutSchedule(using bodyParts: [String]) -> [WorkoutScheduleItem] {
+        let restDayIds = Set(selectedWorkoutDays.map { $0.id })
+        let dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        let existingByDay: [String: WorkoutScheduleItem] = Dictionary(uniqueKeysWithValues: workoutSchedule.map { ($0.day, $0) })
+
+        let updated = Weekday.allCases.enumerated().map { tuple -> WorkoutScheduleItem in
+            let (idx, day) = tuple
+            let label = dayNames[idx]
+
+            if restDayIds.contains(day.id) {
+                return WorkoutScheduleItem(day: label, sessions: [])
+            }
+
+            if let existing = existingByDay[label] {
+                return existing
+            }
+
+            // Create an empty training day; user can add sessions manually.
+            return WorkoutScheduleItem(day: label, sessions: [])
+        }
+
+        workoutSchedule = updated
+        return updated
+    }
+
+    /// Pulls unique session names from the schedule into tracked body parts.
+    func autoFillBodyPartsFromSchedule() {
+        let names = workoutSchedule
+            .flatMap { $0.sessions }
+            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        trackedBodyParts.formUnion(names)
+        regenerateWorkoutSchedule()
     }
 
     func markMacroFocusAsCustom() {
@@ -2586,6 +2728,7 @@ enum OnboardingStep: CaseIterable, Equatable {
     case goals
     case habits
     case workoutTracking
+    case weightsTracking
     case expenses
     case sports
     case travel
@@ -2600,6 +2743,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .goals: return "Routine"
         case .habits: return "Routine"
         case .workoutTracking: return "Workout"
+        case .weightsTracking: return "Weights"
         case .expenses: return "Routine"
         case .sports: return "Sports"
         case .travel: return "Travel"
@@ -2626,6 +2770,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .goals: return "target"
         case .habits: return "arrow.triangle.2.circlepath"
         case .workoutTracking: return "figure.strengthtraining.traditional"
+        case .weightsTracking: return "dumbbell.fill"
         case .expenses: return "dollarsign.circle"
         case .sports: return "sportscourt"
         case .travel: return "airplane"
@@ -2634,17 +2779,27 @@ enum OnboardingStep: CaseIterable, Equatable {
 
     var description: String {
         switch self {
-        case .accountSetup: return "Hey! Good to see you. Let's get to know you."
+        case .accountSetup: return "Hey! Good to see you."
         case .nutritionTracking: return "Let's set up nutrition for you or you could set up your own!"
         case .dailySupplements: return "What lifestyle supplements do you take daily?"
         case .workoutSupplements: return "Do you take any workout supplements?"
-        case .dailyTasks: return "We could set up daily tasks for you too! What’s your daily routine like?"
+        case .dailyTasks: return "We could set up daily tasks for you too!"
         case .goals: return "Are there any goals you want to keep track of?"
         case .habits: return "Are there any Habits you want to get into a routine with?"
-        case .workoutTracking: return "Let’s build that muscle! Could you share your workout routine?"
+        case .workoutTracking: return "Let’s build that muscle!"
+        case .weightsTracking: return "Choose which body parts you want to track for weights."
         case .expenses: return "Yeah we know! We could help you manage your expenses!"
         case .sports: return "What sports do you want to track your performance in?"
         case .travel: return "Keep track of plans before you voyage around the world"
+        }
+    }
+
+    var description2: String? {
+        switch self {
+          case .accountSetup: return "Let's get to know you."
+          case .dailyTasks: return "What’s your daily routine like?"
+          case .workoutTracking: return "Could you share your workout routine?"
+          default: return nil
         }
     }
 }

@@ -116,3 +116,21 @@ struct WorkoutScheduleItem: Identifiable, Codable, Hashable {
         ]
     }
 }
+
+extension Weekday {
+    /// Convenience initializer to map common three-letter labels back to Weekday indices.
+    static func from(label: String) -> Weekday? {
+        let key = label.prefix(3).lowercased()
+        let indexMap: [String: Int] = [
+            "mon": 0,
+            "tue": 1,
+            "wed": 2,
+            "thu": 3,
+            "fri": 4,
+            "sat": 5,
+            "sun": 6
+        ]
+        guard let idx = indexMap[key] else { return nil }
+        return Weekday.allCases.first(where: { $0.id == idx })
+    }
+}

@@ -162,14 +162,20 @@ struct RootView: View {
     }
 
     private func handleWelcomeCompletion() {
-        hasCompletedOnboarding = true
-        selectedTab = .nutrition
-        persistOnboardingCompletion()
+        func finalizeOnboardingTransition() {
+            hasCompletedOnboarding = true
+            selectedTab = .nutrition
+            persistOnboardingCompletion()
+            hydrateFromOnboardedAccount()
+        }
+
+        // Apply immediately so the main shell renders with onboarding data without requiring an app restart.
+        finalizeOnboardingTransition()
+
+        // Re-apply once the sign-in state is confirmed to keep remote persistence in sync when authenticated.
         DispatchQueue.main.async {
             if isSignedIn {
-                hasCompletedOnboarding = true
-                selectedTab = .nutrition
-                persistOnboardingCompletion()
+                finalizeOnboardingTransition()
             }
         }
     }
@@ -843,6 +849,12 @@ private extension RootView {
         do {
             let request = FetchDescriptor<Account>()
             let accounts = try modelContext.fetch(request)
+            // Prefer the account that matches the currently signed-in user to avoid
+            // persisting or hydrating from the seed/default account.
+            if let uid = Auth.auth().currentUser?.uid,
+               let match = accounts.first(where: { $0.id == uid }) {
+                return match
+            }
             return accounts.first
         } catch {
             print("Failed to fetch Account: \(error)")
@@ -882,6 +894,25 @@ private extension RootView {
         if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
             selectedMacroFocus = mf
         }
+    }
+
+    /// Rehydrate all tab-level state from the freshly saved onboarding Account so the UI reflects the user's choices immediately.
+    private func hydrateFromOnboardedAccount() {
+        initializeTrackedMacrosFromLocal()
+        initializeRestDaysFromLocal()
+        initializeDailyGoalsFromLocal()
+        initializeActivityTimersFromLocal()
+        initializeGoalsFromLocal()
+        initializeHabitsFromLocal()
+        initializeGroceryListFromLocal()
+        initializeExpenseCategoriesFromLocal()
+        initializeWeightTrackingFromLocal()
+        initializeItineraryEventsFromLocal()
+        initializeMealRemindersFromLocal()
+
+        // Reload the current day/week snapshots so daily tasks, habits, and macro targets use onboarding values without a relaunch.
+        loadDay(for: selectedDate)
+        loadWeekData(for: selectedDate)
     }
 
     /// Load cravings quickly from the local Account snapshot without touching Firestore.

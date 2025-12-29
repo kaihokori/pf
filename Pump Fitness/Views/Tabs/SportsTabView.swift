@@ -51,6 +51,7 @@ struct SportsTabView: View {
     @State private var hasLoadedSoloDay = false
     @State private var currentDay: Day? = nil
     @State private var soloMetricValuesStore: [String: String] = [:]
+    @State private var hasScrolledToTeamPlay = false
 
     private var sportsEmptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -524,7 +525,8 @@ struct SportsTabView: View {
                                 .environmentObject(account)
                                 .onAppear {
                                     if #available(iOS 17.0, *) {
-                                        if SportsTips.currentStep == 0 && isPro {
+                                        if !hasScrolledToTeamPlay && SportsTips.currentStep == 0 && isPro {
+                                            hasScrolledToTeamPlay = true
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                                 withAnimation {
                                                     proxy.scrollTo("teamPlay", anchor: .center)

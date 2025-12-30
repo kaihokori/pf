@@ -109,6 +109,7 @@ struct OnboardingView: View {
                         }
                         .onAppear {
                             proxy.scrollTo("onboarding-top", anchor: .top)
+                            enforceLimitsAndSave()
                         }
                     }
 
@@ -185,40 +186,241 @@ struct OnboardingView: View {
     @State private var showAlert = false
     @State private var alertMessage = ""
 
+    private func enforceLimitsAndSave() {
+        guard !subscriptionManager.hasProAccess else { return }
+        
+        let changed = viewModel.enforceLimits()
+        
+        if changed && isRetake {
+            saveAccountToStorage { success in
+                if !success {
+                    print("Failed to save enforced limits")
+                }
+            }
+        }
+    }
+
+    private func saveAccountToStorage(completion: @escaping (Bool) -> Void) {
+        // Build Account from collected onboarding fields and save to Firestore
+        let uid = Auth.auth().currentUser?.uid
+
+        let randomPaletteColor: () -> String = {
+            ColorPalette.randomHex()
+        }
+
+        func resolvedColor(_ hex: String?) -> String {
+            let trimmed = (hex ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? randomPaletteColor() : trimmed
+        }
+
+        // Map tracked macros
+        let trackedMacros: [TrackedMacro] = {
+            let base: [TrackedMacro] = [
+                TrackedMacro(name: "Protein", target: Double(viewModel.proteinValue) ?? 0, unit: "g", colorHex: "#FF3B30"),
+                TrackedMacro(name: "Carbs", target: Double(viewModel.carbohydrateValue) ?? 0, unit: "g", colorHex: "#34C759"),
+                TrackedMacro(name: "Fats", target: Double(viewModel.fatValue) ?? 0, unit: "g", colorHex: "#FF9500"),
+                TrackedMacro(name: "Water", target: Double(viewModel.waterIntakeValue) ?? 0, unit: "mL", colorHex: "#32ADE6")
+            ]
+
+            let custom = viewModel.customMacros.map { macro in
+                TrackedMacro(
+                    id: macro.id,
+                    name: macro.name,
+                    target: macro.target,
+                    unit: macro.unit,
+                    colorHex: resolvedColor(macro.colorHex)
+                )
+            }
+
+            return base + custom
+        }()
+        
+        // Map supplements
+        let nutritionSupplements = viewModel.dailySupplements
+        let workoutSupplements = viewModel.workoutSupplementsList
+        
+        // Map daily tasks
+        let dailyTasks = viewModel.dailyTasks.map { task in
+            DailyTaskDefinition(
+                id: task.id,
+                name: task.name,
+                time: task.time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "09:00" : task.time,
+                colorHex: resolvedColor(task.colorHex),
+                repeats: task.repeats
+            )
+        }
+        
+        // Map goals
+        var goals = viewModel.goals
+        if let selectedGoal = viewModel.selectedGoal {
+            let title = selectedGoal.displayName
+            if !goals.contains(where: { $0.title.caseInsensitiveCompare(title) == .orderedSame }) {
+                let defaultDue = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+                goals.append(GoalItem(title: title, note: "", dueDate: defaultDue))
+            }
+        }
+        
+        // Map habits
+        let habits = viewModel.habits.map { habit in
+            HabitDefinition(id: habit.id, name: habit.name, colorHex: resolvedColor(habit.colorHex))
+        }
+        
+        // Map workout schedule (selected days now represent typical rest days)
+        let autoRestDayIndices = viewModel.selectedWorkoutDays.map { $0.id }.sorted()
+        let sortedBodyParts = viewModel.trackedBodyParts.sorted()
+        let resolvedBodyParts = sortedBodyParts.isEmpty ? [] : sortedBodyParts
+        let workoutSchedule = viewModel.alignedWorkoutSchedule(using: resolvedBodyParts)
+        
+        // Map weight groups (body parts)
+        let weightGroups = sortedBodyParts.map { part in
+            // Create the body group with a single empty exercise so the user can name sets later.
+            WeightGroupDefinition(name: part, exercises: [WeightExerciseDefinition(name: "")])
+        }
+        
+        // Calculate calorie goal if not set
+        var calorieGoal = Int(viewModel.calorieValue) ?? 0
+        if calorieGoal == 0 {
+            let p = Double(viewModel.proteinValue) ?? 0
+            let c = Double(viewModel.carbohydrateValue) ?? 0
+            let f = Double(viewModel.fatValue) ?? 0
+            calorieGoal = Int((p * 4) + (c * 4) + (f * 9))
+        }
+        
+        // Fetch existing account or create new
+        var account: Account
+        if let uid = uid {
+            let descriptor = FetchDescriptor<Account>(predicate: #Predicate { $0.id == uid })
+            if let existing = try? modelContext.fetch(descriptor).first {
+                account = existing
+            } else {
+                account = Account(id: uid)
+                modelContext.insert(account)
+            }
+        } else {
+            // Fallback for unauthenticated (shouldn't happen in this flow usually)
+            account = Account()
+            modelContext.insert(account)
+        }
+        
+        // Update properties
+        account.name = viewModel.preferredName.trimmingCharacters(in: .whitespacesAndNewlines)
+        account.gender = viewModel.selectedGender?.rawValue
+        account.dateOfBirth = viewModel.birthDate
+        account.height = heightInCentimeters()
+        account.weight = weightInKilograms()
+        account.unitSystem = viewModel.unitSystem.rawValue
+        account.activityLevel = viewModel.selectedActivityLevel.rawValue
+        account.maintenanceCalories = Int(viewModel.maintenanceCaloriesValue) ?? 0
+        account.calorieGoal = calorieGoal
+        account.macroFocusRaw = viewModel.selectedMacroFocus?.rawValue
+        
+        account.startWeekOn = account.startWeekOn?.isEmpty == false ? account.startWeekOn : "monday"
+        account.autoRestDayIndices = autoRestDayIndices
+        account.workoutSchedule = workoutSchedule
+        account.trackedMacros = trackedMacros
+        account.goals = goals
+        account.habits = habits
+        account.workoutSupplements = workoutSupplements
+        account.nutritionSupplements = nutritionSupplements
+        account.dailyTasks = dailyTasks
+        
+        // New sections
+        account.expenseCategories = viewModel.expenseCategories.map { category in
+            ExpenseCategory(id: category.id, name: category.name, colorHex: resolvedColor(category.colorHex))
+        }
+        account.sports = viewModel.sports.map { sport in
+            SportConfig(id: sport.id, name: sport.name, colorHex: resolvedColor(sport.colorHex), metrics: sport.metrics)
+        }
+        account.itineraryEvents = viewModel.itineraryEvents
+        account.expenseCurrencySymbol = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Account.deviceCurrencySymbol : account.expenseCurrencySymbol
+        
+        // Only update weight groups if user selected some, otherwise keep defaults or existing
+        if !weightGroups.isEmpty {
+            account.weightGroups = weightGroups
+        } else if account.weightGroups.isEmpty {
+            account.weightGroups = WeightGroupDefinition.defaults
+        }
+
+        // Set trial end if not already recorded
+        if account.trialPeriodEnd == nil {
+            account.trialPeriodEnd = Calendar.current.date(byAdding: .day, value: 14, to: Date())
+        }
+
+        // Seed today's Day with calorie goals and macro focus so charts reflect onboarding choices immediately.
+        let weightUnitRaw = viewModel.unitSystem == .imperial ? "lbs" : "kg"
+        let today = Calendar.current.startOfDay(for: Date())
+        let day = Day.fetchOrCreate(for: today, in: modelContext, trackedMacros: trackedMacros)
+        day.calorieGoal = calorieGoal
+        day.maintenanceCalories = account.maintenanceCalories
+        day.macroFocusRaw = account.macroFocusRaw
+        day.weightUnitRaw = weightUnitRaw
+        day.ensureMacroConsumptions(for: trackedMacros)
+        if !dailyTasks.isEmpty {
+            day.dailyTaskCompletions = dailyTasks.map { DailyTaskCompletion(id: $0.id, isCompleted: false) }
+        }
+        if !habits.isEmpty {
+            day.habitCompletions = habits.map { HabitCompletion(id: UUID().uuidString, habitId: $0.id, isCompleted: false) }
+        }
+
+        // Save to SwiftData
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to save account to SwiftData: \(error)")
+        }
+
+        let accountService = AccountFirestoreService()
+        let dayService = DayFirestoreService()
+
+        accountService.saveAccount(account, forceOverwrite: true) { accountSuccess in
+            dayService.saveDay(day, forceWrite: true) { daySuccess in
+                DispatchQueue.main.async {
+                    completion(accountSuccess && daySuccess)
+                }
+            }
+        }
+    }
+
     private func handleContinue() {
         // If the user filled a "new" row but didn't tap +, add it automatically for the current step
         func flushPendingForCurrentStep() {
             switch viewModel.currentStep {
             case .nutritionTracking:
                 if !viewModel.newMacroName.trimmingCharacters(in: .whitespaces).isEmpty,
-                   Double(viewModel.newMacroAmount) != nil {
+                   viewModel.canAddCustomMacros {
                     viewModel.addCustomMacro()
                 }
             case .dailySupplements:
-                if !viewModel.newDailySupplementName.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !viewModel.newDailySupplementName.trimmingCharacters(in: .whitespaces).isEmpty,
+                   viewModel.canAddDailySupplements {
                     viewModel.addDailySupplement()
                 }
             case .workoutSupplements:
-                if !viewModel.newWorkoutSupplementName.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !viewModel.newWorkoutSupplementName.trimmingCharacters(in: .whitespaces).isEmpty,
+                   viewModel.canAddWorkoutSupplements {
                     viewModel.addWorkoutSupplement()
                 }
             case .dailyTasks:
-                if !viewModel.newTaskName.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !viewModel.newTaskName.trimmingCharacters(in: .whitespaces).isEmpty,
+                   viewModel.canAddDailyTasks {
                     viewModel.addDailyTask()
                 }
             case .goals:
-                if !viewModel.newGoalTitle.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !viewModel.newGoalTitle.trimmingCharacters(in: .whitespaces).isEmpty,
+                   viewModel.canAddGoals {
                     viewModel.addGoal()
                 }
             case .habits:
-                if !viewModel.newHabitName.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !viewModel.newHabitName.trimmingCharacters(in: .whitespaces).isEmpty,
+                   viewModel.canAddHabits {
                     viewModel.addHabit()
                 }
             case .workoutTracking:
                 // `newBodyPart` is local to the view; nothing to flush here
                 break
             case .sports:
-                if !viewModel.newSportName.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !viewModel.newSportName.trimmingCharacters(in: .whitespaces).isEmpty,
+                   viewModel.canAddSports {
                     viewModel.addSport()
                 }
             case .travel:
@@ -234,190 +436,15 @@ struct OnboardingView: View {
 
         if viewModel.canContinue {
             if viewModel.isLastStep {
-                // Build Account from collected onboarding fields and save to Firestore
-                let uid = Auth.auth().currentUser?.uid
-
-                let randomPaletteColor: () -> String = {
-                    ColorPalette.randomHex()
-                }
-
-                func resolvedColor(_ hex: String?) -> String {
-                    let trimmed = (hex ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                    return trimmed.isEmpty ? randomPaletteColor() : trimmed
-                }
-
-                // Map tracked macros
-                let trackedMacros: [TrackedMacro] = {
-                    let base: [TrackedMacro] = [
-                        TrackedMacro(name: "Protein", target: Double(viewModel.proteinValue) ?? 0, unit: "g", colorHex: "#FF3B30"),
-                        TrackedMacro(name: "Carbs", target: Double(viewModel.carbohydrateValue) ?? 0, unit: "g", colorHex: "#34C759"),
-                        TrackedMacro(name: "Fats", target: Double(viewModel.fatValue) ?? 0, unit: "g", colorHex: "#FF9500"),
-                        TrackedMacro(name: "Water", target: Double(viewModel.waterIntakeValue) ?? 0, unit: "mL", colorHex: "#32ADE6")
-                    ]
-
-                    let custom = viewModel.customMacros.map { macro in
-                        TrackedMacro(
-                            id: macro.id,
-                            name: macro.name,
-                            target: macro.target,
-                            unit: macro.unit,
-                            colorHex: resolvedColor(macro.colorHex)
-                        )
-                    }
-
-                    return base + custom
-                }()
-                
-                // Map supplements
-                let nutritionSupplements = viewModel.dailySupplements
-                let workoutSupplements = viewModel.workoutSupplementsList
-                
-                // Map daily tasks
-                let dailyTasks = viewModel.dailyTasks.map { task in
-                    DailyTaskDefinition(
-                        id: task.id,
-                        name: task.name,
-                        time: task.time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "09:00" : task.time,
-                        colorHex: resolvedColor(task.colorHex),
-                        repeats: task.repeats
-                    )
-                }
-                
-                // Map goals
-                var goals = viewModel.goals
-                if let selectedGoal = viewModel.selectedGoal {
-                    let title = selectedGoal.displayName
-                    if !goals.contains(where: { $0.title.caseInsensitiveCompare(title) == .orderedSame }) {
-                        let defaultDue = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
-                        goals.append(GoalItem(title: title, note: "", dueDate: defaultDue))
-                    }
-                }
-                
-                // Map habits
-                let habits = viewModel.habits.map { habit in
-                    HabitDefinition(id: habit.id, name: habit.name, colorHex: resolvedColor(habit.colorHex))
-                }
-                
-                // Map workout schedule (selected days now represent typical rest days)
-                let autoRestDayIndices = viewModel.selectedWorkoutDays.map { $0.id }.sorted()
-                let sortedBodyParts = viewModel.trackedBodyParts.sorted()
-                let resolvedBodyParts = sortedBodyParts.isEmpty ? [] : sortedBodyParts
-                let workoutSchedule = viewModel.alignedWorkoutSchedule(using: resolvedBodyParts)
-                
-                // Map weight groups (body parts)
-                let weightGroups = sortedBodyParts.map { part in
-                    // Create the body group with a single empty exercise so the user can name sets later.
-                    WeightGroupDefinition(name: part, exercises: [WeightExerciseDefinition(name: "")])
-                }
-                
-                // Calculate calorie goal if not set
-                var calorieGoal = Int(viewModel.calorieValue) ?? 0
-                if calorieGoal == 0 {
-                    let p = Double(viewModel.proteinValue) ?? 0
-                    let c = Double(viewModel.carbohydrateValue) ?? 0
-                    let f = Double(viewModel.fatValue) ?? 0
-                    calorieGoal = Int((p * 4) + (c * 4) + (f * 9))
-                }
-                
-                // Fetch existing account or create new
-                var account: Account
-                if let uid = uid {
-                    let descriptor = FetchDescriptor<Account>(predicate: #Predicate { $0.id == uid })
-                    if let existing = try? modelContext.fetch(descriptor).first {
-                        account = existing
+                saveAccountToStorage { success in
+                    if success {
+                        _ = subscriptionManager.activateOnboardingTrialIfEligible()
+                        hasCompletedOnboarding = true
+                        onComplete?()
+                        dismiss()
                     } else {
-                        account = Account(id: uid)
-                        modelContext.insert(account)
-                    }
-                } else {
-                    // Fallback for unauthenticated (shouldn't happen in this flow usually)
-                    account = Account()
-                    modelContext.insert(account)
-                }
-                
-                // Update properties
-                account.name = viewModel.preferredName.trimmingCharacters(in: .whitespacesAndNewlines)
-                account.gender = viewModel.selectedGender?.rawValue
-                account.dateOfBirth = viewModel.birthDate
-                account.height = heightInCentimeters()
-                account.weight = weightInKilograms()
-                account.unitSystem = viewModel.unitSystem.rawValue
-                account.activityLevel = viewModel.selectedActivityLevel.rawValue
-                account.maintenanceCalories = Int(viewModel.maintenanceCaloriesValue) ?? 0
-                account.calorieGoal = calorieGoal
-                account.macroFocusRaw = viewModel.selectedMacroFocus?.rawValue
-                
-                account.startWeekOn = account.startWeekOn?.isEmpty == false ? account.startWeekOn : "monday"
-                account.autoRestDayIndices = autoRestDayIndices
-                account.workoutSchedule = workoutSchedule
-                account.trackedMacros = trackedMacros
-                account.goals = goals
-                account.habits = habits
-                account.workoutSupplements = workoutSupplements
-                account.nutritionSupplements = nutritionSupplements
-                account.dailyTasks = dailyTasks
-                
-                // New sections
-                account.expenseCategories = viewModel.expenseCategories.map { category in
-                    ExpenseCategory(id: category.id, name: category.name, colorHex: resolvedColor(category.colorHex))
-                }
-                account.sports = viewModel.sports.map { sport in
-                    SportConfig(id: sport.id, name: sport.name, colorHex: resolvedColor(sport.colorHex), metrics: sport.metrics)
-                }
-                account.itineraryEvents = viewModel.itineraryEvents
-                account.expenseCurrencySymbol = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Account.deviceCurrencySymbol : account.expenseCurrencySymbol
-                
-                // Only update weight groups if user selected some, otherwise keep defaults or existing
-                if !weightGroups.isEmpty {
-                    account.weightGroups = weightGroups
-                } else if account.weightGroups.isEmpty {
-                    account.weightGroups = WeightGroupDefinition.defaults
-                }
-
-                // Set trial end if not already recorded
-                if account.trialPeriodEnd == nil {
-                    account.trialPeriodEnd = Calendar.current.date(byAdding: .day, value: 14, to: Date())
-                }
-
-                // Seed today's Day with calorie goals and macro focus so charts reflect onboarding choices immediately.
-                let weightUnitRaw = viewModel.unitSystem == .imperial ? "lbs" : "kg"
-                let today = Calendar.current.startOfDay(for: Date())
-                let day = Day.fetchOrCreate(for: today, in: modelContext, trackedMacros: trackedMacros)
-                day.calorieGoal = calorieGoal
-                day.maintenanceCalories = account.maintenanceCalories
-                day.macroFocusRaw = account.macroFocusRaw
-                day.weightUnitRaw = weightUnitRaw
-                day.ensureMacroConsumptions(for: trackedMacros)
-                if !dailyTasks.isEmpty {
-                    day.dailyTaskCompletions = dailyTasks.map { DailyTaskCompletion(id: $0.id, isCompleted: false) }
-                }
-                if !habits.isEmpty {
-                    day.habitCompletions = habits.map { HabitCompletion(id: UUID().uuidString, habitId: $0.id, isCompleted: false) }
-                }
-
-                // Save to SwiftData
-                do {
-                    try modelContext.save()
-                } catch {
-                    print("Failed to save account to SwiftData: \(error)")
-                }
-
-                let accountService = AccountFirestoreService()
-                let dayService = DayFirestoreService()
-
-                accountService.saveAccount(account, forceOverwrite: true) { accountSuccess in
-                    dayService.saveDay(day, forceWrite: true) { daySuccess in
-                        DispatchQueue.main.async {
-                            guard accountSuccess && daySuccess else {
-                                alertMessage = "Failed to save account setup. Please try again."
-                                showAlert = true
-                                return
-                            }
-                            _ = subscriptionManager.activateOnboardingTrialIfEligible()
-                            hasCompletedOnboarding = true
-                            onComplete?()
-                            dismiss()
-                        }
+                        alertMessage = "Failed to save account setup. Please try again."
+                        showAlert = true
                     }
                 }
             } else {
@@ -758,7 +785,7 @@ private struct NutritionTrackingStepView: View {
                 // Fibre field removed per request
 
                 // Protein
-                HStack(spacing: 12) {
+                HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Protein")
                             .fontWeight(.medium)
@@ -768,10 +795,9 @@ private struct NutritionTrackingStepView: View {
                                 set: { viewModel.updateMacroField(.protein, newValue: $0) }
                             ))
                             .keyboardType(.decimalPad)
-                            .frame(width: 30)
                             Text("g")
-                                .fixedSize()
                                 .foregroundStyle(.secondary)
+                            Spacer()
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -785,7 +811,7 @@ private struct NutritionTrackingStepView: View {
                 .surfaceCard(12)
 
                 // Fats
-                HStack(spacing: 12) {
+                HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Fats")
                             .fontWeight(.medium)
@@ -795,10 +821,9 @@ private struct NutritionTrackingStepView: View {
                                 set: { viewModel.updateMacroField(.fats, newValue: $0) }
                             ))
                             .keyboardType(.decimalPad)
-                            .frame(width: 30)
                             Text("g")
-                                .fixedSize()
                                 .foregroundStyle(.secondary)
+                            Spacer()
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -811,7 +836,7 @@ private struct NutritionTrackingStepView: View {
                 .surfaceCard(12)
 
                 // Carbohydrates
-                HStack(spacing: 12) {
+                HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Carbohydrates")
                             .fontWeight(.medium)
@@ -821,10 +846,9 @@ private struct NutritionTrackingStepView: View {
                                 set: { viewModel.updateMacroField(.carbohydrates, newValue: $0) }
                             ))
                             .keyboardType(.decimalPad)
-                            .frame(width: 30)
                             Text("g")
-                                .fixedSize()
                                 .foregroundStyle(.secondary)
+                            Spacer()
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -837,7 +861,7 @@ private struct NutritionTrackingStepView: View {
                 .surfaceCard(12)
 
                 // Water Intake
-                HStack(spacing: 12) {
+                HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Water Intake")
                             .fontWeight(.medium)
@@ -847,10 +871,9 @@ private struct NutritionTrackingStepView: View {
                                 set: { viewModel.updateMacroField(.water, newValue: $0) }
                             ))
                             .keyboardType(.decimalPad)
-                            .frame(width: 30)
                             Text("ml")
-                                .fixedSize()
                                 .foregroundStyle(.secondary)
+                            Spacer()
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -884,18 +907,38 @@ private struct NutritionTrackingStepView: View {
             if !viewModel.customMacros.isEmpty {
                 VStack(spacing: 8) {
                     ForEach($viewModel.customMacros) { $macro in
-                        HStack(spacing: 12) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(macro.name)
                                     .fontWeight(.medium)
-                                HStack(spacing: 4) {
-                                    TextField("Amount", value: $macro.target, format: .number)
+                                HStack(spacing: 6) {
+                                    let amountBinding = Binding<String>(
+                                        get: {
+                                            let value = macro.target
+                                            let formatted = value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
+                                            let unit = macro.unit.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            return unit.isEmpty ? formatted : "\(formatted) \(unit)"
+                                        },
+                                        set: { newText in
+                                            let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            guard !trimmed.isEmpty else { return }
+                                            let digitSet = CharacterSet(charactersIn: "0123456789.")
+                                            let digits = trimmed.unicodeScalars.filter { digitSet.contains($0) }
+                                            let suffixScalars = trimmed.unicodeScalars.filter { !digitSet.contains($0) }
+                                            let numberString = String(String.UnicodeScalarView(digits))
+                                            guard let amount = Double(numberString) else { return }
+                                            let newUnit = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                            macro.target = amount
+                                            if !newUnit.isEmpty {
+                                                macro.unit = newUnit
+                                            }
+                                        }
+                                    )
+
+                                    TextField("Amount", text: amountBinding)
                                         .keyboardType(.decimalPad)
-                                        .frame(width: 30, alignment: .leading)
+                                        .frame(width: 120, alignment: .leading)
                                         .multilineTextAlignment(.leading)
-                                    Text(macro.unit)
-                                        .fixedSize()
-                                        .foregroundStyle(.secondary)
                                 }
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -923,12 +966,19 @@ private struct NutritionTrackingStepView: View {
                 VStack(spacing: 8) {
                     ForEach(availableMacroPresets, id: \.self) { preset in
                         HStack {
-                            Text(preset.displayName)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(preset.displayName)
+                                    .fontWeight(.medium)
+                                Text(preset.allowedLabel)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             Spacer()
                             Button(action: { addPresetMacro(preset) }) {
                                 Image(systemName: "plus.circle.fill")
                                     .foregroundColor(.accentColor)
                             }
+                            .buttonStyle(.plain)
                             .disabled(!viewModel.canAddCustomMacros)
                         }
                         .padding()
@@ -937,18 +987,14 @@ private struct NutritionTrackingStepView: View {
                 }
             }
 
-            // Custom macros are shown inline with tracked macros so they match styling
-            
-
             // Input row for adding a new custom macro (keeps same style)
             HStack(spacing: 8) {
                 TextField("Name", text: $viewModel.newMacroName)
                     .frame(maxWidth: .infinity)
-                TextField("Amount", text: $viewModel.newMacroAmount)
-                    .keyboardType(.decimalPad)
-                    .frame(width: 80)
-                TextField("Unit", text: $viewModel.newMacroUnit)
-                    .fixedSize()
+                // Combined amount + unit field (e.g. "100 g" or "2500ml")
+                TextField("Amount (e.g. 100 g)", text: $viewModel.newMacroAmount)
+                    .keyboardType(.default)
+                    .frame(width: 170)
 
                 Button(action: { viewModel.addCustomMacro() }) {
                     Image(systemName: "plus.circle.fill")
@@ -1847,7 +1893,7 @@ private struct TravelStepView: View {
                 .padding(.top, -14)
 
             VStack(alignment: .center, spacing: 8) {
-                Text("Travel light; we'll remember the plans.")
+                Text("Plan Your adventures with ease")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
                 Text("You can add itineraries later from the Travel tab.")
@@ -2155,7 +2201,7 @@ final class OnboardingViewModel: ObservableObject {
     let isRetake: Bool
 
     // Limits for onboarding additions
-    let maxCustomMacros: Int = 8
+    let maxCustomMacros: Int = 4 // 4 base + 4 custom = 8 total
     let maxDailySupplements: Int = 8
     let maxDailyTasks: Int = 12
     let maxGoals: Int = 12
@@ -2327,6 +2373,41 @@ final class OnboardingViewModel: ObservableObject {
 
     var isValidBirthDate: Bool {
         PumpDateRange.birthdate.contains(birthDate)
+    }
+
+    func enforceLimits() -> Bool {
+        var changed = false
+        
+        if habits.count > maxHabits {
+            habits = Array(habits.prefix(maxHabits))
+            changed = true
+        }
+        if goals.count > maxGoals {
+            goals = Array(goals.prefix(maxGoals))
+            changed = true
+        }
+        if dailyTasks.count > maxDailyTasks {
+            dailyTasks = Array(dailyTasks.prefix(maxDailyTasks))
+            changed = true
+        }
+        if customMacros.count > maxCustomMacros {
+            customMacros = Array(customMacros.prefix(maxCustomMacros))
+            changed = true
+        }
+        if dailySupplements.count > maxDailySupplements {
+            dailySupplements = Array(dailySupplements.prefix(maxDailySupplements))
+            changed = true
+        }
+        if workoutSupplementsList.count > maxWorkoutSupplements {
+            workoutSupplementsList = Array(workoutSupplementsList.prefix(maxWorkoutSupplements))
+            changed = true
+        }
+        if sports.count > maxSports {
+            sports = Array(sports.prefix(maxSports))
+            changed = true
+        }
+        
+        return changed
     }
 
     func advance() -> Bool {
@@ -2566,13 +2647,23 @@ final class OnboardingViewModel: ObservableObject {
     }
     
     func addCustomMacro() {
-        guard !newMacroName.trimmingCharacters(in: .whitespaces).isEmpty,
-              let amount = Double(newMacroAmount) else { return }
-        
+        guard !newMacroName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+
+        // Parse combined amount+unit from newMacroAmount (e.g. "100 g", "2500ml")
+        let allowed = newMacroAmount
+        let digits = allowed.unicodeScalars.filter { CharacterSet(charactersIn: "0123456789.").contains($0) }
+        let suffixScalars = allowed.unicodeScalars.filter { !CharacterSet(charactersIn: "0123456789.").contains($0) }
+        let numberString = String(String.UnicodeScalarView(digits))
+        let suffix = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+        // If user doesn't enter an amount, default to 0 so a macro can still be created.
+        let amount = Double(numberString) ?? 0
+
+        let unitString = suffix.isEmpty ? "g" : suffix
+
         let macro = TrackedMacro(
             name: newMacroName,
             target: amount,
-            unit: newMacroUnit.isEmpty ? "g" : newMacroUnit,
+            unit: unitString,
             colorHex: "#8E8E93"
         )
         customMacros.append(macro)

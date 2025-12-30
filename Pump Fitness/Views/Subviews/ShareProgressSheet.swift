@@ -142,6 +142,7 @@ struct ShareProgressSheet: View {
     @MainActor
     private func renderCurrentCard() -> UIImage? {
         let width: CGFloat = 540
+        let height: CGFloat = width * 16.0 / 9.0
 
         // Render without an explicit background so exported image is transparent.
         let renderView = ZStack {
@@ -163,10 +164,10 @@ struct ShareProgressSheet: View {
                 isExporting: true
             )
         }
-        .frame(width: width)
-        .frame(maxHeight: 960)
+        .frame(width: width, height: height)
         .dynamicTypeSize(.medium)
         .environment(\.sizeCategory, .medium)
+        .environment(\.colorScheme, .light)
 
         let renderer = ImageRenderer(content: renderView)
         renderer.scale = 3.0
@@ -175,21 +176,7 @@ struct ShareProgressSheet: View {
     
     private func shareCurrentCard() {
         guard let image = renderCurrentCard() else { return }
-        guard let url = saveImageToTempPNG(image, prefix: "progress") else { return }
-        sharePayload = ShareProgressPayload(items: [url])
-    }
-
-    private func saveImageToTempPNG(_ image: UIImage, prefix: String = "share") -> URL? {
-        guard let data = image.pngData() else { return nil }
-        let tmp = FileManager.default.temporaryDirectory
-        let filename = "\(prefix)-\(UUID().uuidString).png"
-        let url = tmp.appendingPathComponent(filename)
-        do {
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
+        sharePayload = ShareProgressPayload(items: [image])
     }
 }
 
@@ -256,7 +243,7 @@ struct CustomizableShareCard: View {
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 16)
-            .background(accentColor.opacity(0.05))
+            .background(Color(UIColor.secondarySystemBackground))
             
             VStack(spacing: 24) {
                 if showCalories {
@@ -295,24 +282,15 @@ struct CustomizableShareCard: View {
         .dynamicTypeSize(.medium)
         .environment(\.sizeCategory, .medium)
         .background {
-            if isExporting {
-                Color.clear
-            } else {
-                GeometryReader { geo in
-                        // Gradient originates from the bottom and fades to transparent at the top
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
-                                Color(red: 0.83, green: 0.99, blue: 0.94).opacity(0.3),
-                                Color.clear
-                            ]),
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                        .frame(height: max(0, geo.size.height * 0.7))
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                }
-            }
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
+                    Color(red: 0.83, green: 0.99, blue: 0.94).opacity(0.3),
+                    Color.white
+                ]),
+                startPoint: .bottom,
+                endPoint: .top
+            )
         }
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
@@ -367,7 +345,7 @@ struct CaloriesSection: View {
                 }
             }
             .padding(16)
-            .background(color.opacity(0.05))
+            .background(Color(UIColor.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -553,7 +531,7 @@ struct SectionHeader: View {
             Text(title)
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.black)
             Spacer()
         }
     }

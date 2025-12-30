@@ -29,6 +29,28 @@ struct LogEntry {
 final class LogsFirestoreService {
     private let db = Firestore.firestore()
     private let collection = "logs"
+    private let captureCollection = "capture"
+
+    func isCaptureEnabled(userId: String) async -> Bool {
+        // Force a server check first so a missing cache doesn't suppress capture for eligible users.
+        do {
+            let serverSnapshot = try await db.collection(captureCollection)
+                .document(userId)
+                .getDocument(source: .server)
+            return serverSnapshot.exists
+        } catch {
+            print("LogsFirestoreService.isCaptureEnabled server fetch error: \(error.localizedDescription)")
+            do {
+                let cachedSnapshot = try await db.collection(captureCollection)
+                    .document(userId)
+                    .getDocument(source: .cache)
+                return cachedSnapshot.exists
+            } catch {
+                print("LogsFirestoreService.isCaptureEnabled cache fetch error: \(error.localizedDescription)")
+                return false
+            }
+        }
+    }
 
     @discardableResult
     func ensureLogDocument(userId: String, displayName: String?) async -> Bool {

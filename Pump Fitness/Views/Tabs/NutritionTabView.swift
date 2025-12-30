@@ -519,7 +519,7 @@ struct NutritionTabView: View {
                                                 Text("PRO")
                                                     .font(.subheadline)
                                                     .fontWeight(.semibold)
-                                                    .foregroundStyle(accent ?? Color.white)
+                                                    .foregroundStyle(Color.white)
                                                     .padding(.horizontal, 8)
                                                     .padding(.vertical, 4)
                                                     .background(
@@ -640,7 +640,7 @@ struct NutritionTabView: View {
                                                     Text("PRO")
                                                         .font(.subheadline)
                                                         .fontWeight(.semibold)
-                                                        .foregroundStyle(accent ?? Color.white)
+                                                        .foregroundStyle(Color.white)
                                                         .padding(.horizontal, 8)
                                                         .padding(.vertical, 4)
                                                         .background(
@@ -2052,15 +2052,15 @@ enum MacroPreset: String, CaseIterable, Identifiable {
 
     var allowedLabel: String {
         switch self {
-        case .protein: return "100g"
-        case .carbs: return "200g"
-        case .fats: return "70g"
-        case .fibre: return "30g"
-        case .water: return "2500mL"
-        case .sodium: return "2.3g"
-        case .potassium: return "4.7g"
-        case .sugar: return "50g"
-        case .cholesterol: return "300mg"
+        case .protein: return "100 g"
+        case .carbs: return "200 g"
+        case .fats: return "70 g"
+        case .fibre: return "30 g"
+        case .water: return "2500 mL"
+        case .sodium: return "2.3 g"
+        case .potassium: return "4.7 g"
+        case .sugar: return "50 g"
+        case .cholesterol: return "300 mg"
         }
     }
 

@@ -38,16 +38,18 @@ struct WelcomeView: View {
                 // Top Section
                 VStack {
                     Image("logo")
+                        .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 100, height: 100)
+                        .foregroundColor(.white)
+                        .frame(width: 80, height: 80)
                     Text("Trackerio")
-                        .font(.title)
+                        .font(.headline)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                         .padding(.top, -8)
                 }
-                .padding(.top, 80)
+                .padding(.top, 60)
                 
                 Spacer()
                 

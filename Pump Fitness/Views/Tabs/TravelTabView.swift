@@ -20,10 +20,10 @@ struct TravelTabView: View {
             backgroundView
             ScrollView {
                 VStack(spacing: 12) {
-                    HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
-                        .environmentObject(account)
-
                     VStack(spacing: 12) {
+                        HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
+                            .environmentObject(account)
+                        
                         HStack {
                             Text("Itinerary Tracking")
                             .font(.title3)
@@ -111,7 +111,7 @@ struct TravelTabView: View {
                                     Text("PRO")
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
-                                        .foregroundStyle(accent ?? Color.white)
+                                        .foregroundStyle(Color.white)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(

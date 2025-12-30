@@ -223,10 +223,10 @@ struct ProSubscriptionView: View {
                             }
                         }
                         
-                        Text("Debug Region: \(subscriptionManager.storefrontLocale.identifier) (Raw: \(subscriptionManager.storefrontCountryCode ?? "nil"))")
-                            .font(.caption)
-                            .foregroundStyle(.gray)
-                            .padding(.top, 8)
+                        // Text("Debug Region: \(subscriptionManager.storefrontLocale.identifier) (Raw: \(subscriptionManager.storefrontCountryCode ?? "nil"))")
+                        //     .font(.caption)
+                        //     .foregroundStyle(.gray)
+                        //     .padding(.top, 8)
                     }
                 }
                 .padding(.bottom, 100) // Extra bottom padding to avoid overlap with CTA
@@ -456,7 +456,9 @@ struct SubscriptionOptionCard: View {
         guard weeks > 0 else { return formattedPrice(for: product) }
         let perWeek = product.price / weeks
 
-        return perWeek.formatted(currencyFormatter(for: product)).replacingOccurrences(of: " ", with: "") + "/wk"
+        return perWeek.formatted(currencyFormatter(for: product))
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: "") + "/wk"
     }
 
     private func strippedProductName(_ name: String) -> String {
@@ -477,7 +479,9 @@ struct SubscriptionOptionCard: View {
     }
 
     private func formattedPrice(for product: Product) -> String {
-        product.price.formatted(currencyFormatter(for: product)).replacingOccurrences(of: " ", with: "")
+        product.price.formatted(currencyFormatter(for: product))
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: "")
     }
 }
 

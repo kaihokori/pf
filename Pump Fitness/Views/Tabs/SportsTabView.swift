@@ -955,7 +955,7 @@ struct SportsTabView: View {
                                         Text("PRO")
                                             .font(.subheadline)
                                             .fontWeight(.semibold)
-                                            .foregroundStyle(accent ?? Color.white)
+                                            .foregroundStyle(Color.white)
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 4)
                                             .background(

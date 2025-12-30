@@ -157,6 +157,7 @@ struct WorkoutShareSheet: View {
     @MainActor
     private func renderCurrentCard() -> UIImage? {
         let width: CGFloat = 540
+        let height: CGFloat = width * 16.0 / 9.0
 
         let renderView = WorkoutShareCard(
             accentColor: accentColor,
@@ -174,10 +175,10 @@ struct WorkoutShareSheet: View {
             showMeasurements: showMeasurements,
             isExporting: true
         )
-        .frame(width: width)
-        .frame(maxHeight: 960)
+        .frame(width: width, height: height)
         .dynamicTypeSize(.medium)
         .environment(\.sizeCategory, .medium)
+        .environment(\.colorScheme, .light)
 
         let renderer = ImageRenderer(content: renderView)
         renderer.scale = 3.0
@@ -227,7 +228,7 @@ private struct WorkoutShareCard: View {
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 16)
-            .background(accentColor.opacity(0.05))
+            .background(Color(UIColor.secondarySystemBackground))
 
             VStack(spacing: 18) {
                 if showSchedule && !schedule.isEmpty {
@@ -255,22 +256,14 @@ private struct WorkoutShareCard: View {
             .padding(20)
         }
         .background {
-            if isExporting {
-                Color.clear
-            } else {
-                GeometryReader { geo in
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
-                            Color.clear
-                        ]),
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                    .frame(height: max(0, geo.size.height * 0.4))
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                }
-            }
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
+                    Color.white
+                ]),
+                startPoint: .bottom,
+                endPoint: .top
+            )
         }
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
@@ -416,7 +409,12 @@ private struct WorkoutWeightsByGroupSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Weight Records", icon: "scalemass", color: color)
+            SectionHeader(title: {
+                if let group = weightGroups.first(where: { $0.id == selectedGroupId }) {
+                    return "Weight Records (\(group.name))"
+                }
+                return "Weight Records"
+            }(), icon: "scalemass", color: color)
 
             // Picker moved to the sheet level (below toggles) to avoid duplication
 

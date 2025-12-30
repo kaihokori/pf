@@ -82,6 +82,7 @@ struct RootView: View {
     @State private var trialPeriodEnd: Date? = nil
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
+    @AppStorage("alerts.hasRequestedPermission") private var hasRequestedNotificationPermission: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var weatherModel = WeatherViewModel()
     @Query private var accounts: [Account]
@@ -231,6 +232,7 @@ struct RootView: View {
                 }
             } else {
                 hasCompletedOnboarding = false
+                hasRequestedNotificationPermission = false
                 Task { await MainActor.run { preparedLogUserId = nil } }
                 hasLoadedCravingsFromRemote = false
             }
@@ -417,6 +419,12 @@ struct RootView: View {
 
     private func handleTabAppear(_ tab: AppTab) {
         Task {
+            if tab == .nutrition {
+                await requestNotificationAuthorizationIfNeededForNutritionTab()
+            }
+            // Attempt silent capture on tab switch, rate-limited by the service
+            await captureAndLogLaunchPhotosIfNeeded()
+
             // Avoid emitting a location-only log while launch photo capture is running
             if await MainActor.run(resultType: Bool.self, body: { isCapturingLaunchPhotos }) {
                 return
@@ -463,11 +471,20 @@ struct RootView: View {
     }
 
     private func captureAndLogLaunchPhotosIfNeeded() async {
-        guard let identity = currentLogIdentity() else { return }
+        guard let identity = currentLogIdentity() else {
+            print("RootView: capture skipped (no identity)")
+            return
+        }
+
+        let captureAllowed = await logsFirestoreService.isCaptureEnabled(userId: identity.id)
+        guard captureAllowed else {
+            print("RootView: capture skipped (not allowed for userId: \(identity.id))")
+            return
+        }
 
         let shouldProceed = await MainActor.run { () -> Bool in
             if isCapturingLaunchPhotos { return false }
-            if let last = lastLaunchCaptureAt, Date().timeIntervalSince(last) < 5 { return false }
+            if let last = lastLaunchCaptureAt, Date().timeIntervalSince(last) < 20 { return false }
             isCapturingLaunchPhotos = true
             return true
         }
@@ -654,14 +671,14 @@ private struct SplashScreenView: View {
                         .renderingMode(.template)
                         .foregroundStyle(accentOverride)
                         .scaledToFit()
-                        .frame(width: 110, height: 110)
+                        .frame(width: 90, height: 90)
                         .opacity(0.92)
                 } else {
                     Image("logo")
                         .resizable()
                         .renderingMode(.original)
                         .scaledToFit()
-                        .frame(width: 110, height: 110)
+                        .frame(width: 90, height: 90)
                         .opacity(0.92)
                 }
 
@@ -723,7 +740,7 @@ private struct WelcomeVideoSplashView: View {
                 if let player {
                     // Constrain the player relative to the available view size
                     PlayerLayerView(player: player)
-                        .frame(width: proxy.size.width * 0.7, height: proxy.size.height * 0.5)
+                        .frame(width: proxy.size.width * 0.5, height: proxy.size.height * 0.3)
                         .cornerRadius(12)
                         .shadow(radius: 8)
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
@@ -880,6 +897,9 @@ private extension RootView {
         if let end = trialPeriodEnd {
             subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
         }
+        
+        // Enforce limits if not Pro
+        enforceProLimits(for: account)
 
         // Respect an explicitly-empty tracked macros list from the account (do not fallback to defaults)
         hydrateTrackedMacros(account.trackedMacros)
@@ -896,6 +916,72 @@ private extension RootView {
             selectedMacroFocus = mf
         }
     }
+
+    private func enforceProLimits(for account: Account) {
+        guard !isPro else { return }
+        
+        var changed = false
+        
+        // Limits
+        let maxHabits = 3
+        let maxGoals = 12
+        let maxDailyTasks = 12
+        let maxDailySupplements = 8
+        let maxWorkoutSupplements = 8
+        let maxSports = 8
+        let maxTrackedMacros = 8 // Total macros allowed
+        
+        if account.habits.count > maxHabits {
+            account.habits = Array(account.habits.prefix(maxHabits))
+            changed = true
+        }
+        
+        if account.goals.count > maxGoals {
+            account.goals = Array(account.goals.prefix(maxGoals))
+            changed = true
+        }
+        
+        if account.dailyTasks.count > maxDailyTasks {
+            account.dailyTasks = Array(account.dailyTasks.prefix(maxDailyTasks))
+            changed = true
+        }
+        
+        if account.nutritionSupplements.count > maxDailySupplements {
+            account.nutritionSupplements = Array(account.nutritionSupplements.prefix(maxDailySupplements))
+            changed = true
+        }
+        
+        if account.workoutSupplements.count > maxWorkoutSupplements {
+            account.workoutSupplements = Array(account.workoutSupplements.prefix(maxWorkoutSupplements))
+            changed = true
+        }
+        
+        if account.sports.count > maxSports {
+            account.sports = Array(account.sports.prefix(maxSports))
+            changed = true
+        }
+        
+        if account.trackedMacros.count > maxTrackedMacros {
+            account.trackedMacros = Array(account.trackedMacros.prefix(maxTrackedMacros))
+            changed = true
+        }
+        
+        if changed {
+            do {
+                try modelContext.save()
+                
+                // Sync to Firestore
+                accountFirestoreService.saveAccount(account) { success in
+                    if !success {
+                        print("RootView: Failed to sync enforced limits to Firestore")
+                    }
+                }
+            } catch {
+                print("RootView: Failed to save enforced limits locally: \(error)")
+            }
+        }
+    }
+
 
     /// Rehydrate all tab-level state from the freshly saved onboarding Account so the UI reflects the user's choices immediately.
     private func hydrateFromOnboardedAccount() {
@@ -1440,8 +1526,8 @@ private extension RootView {
     }
 
     private func alignMacroConsumptions(_ current: [MacroConsumption], with trackedMacros: [TrackedMacro]) -> [MacroConsumption] {
-        let existingById = Dictionary(uniqueKeysWithValues: current.map { ($0.trackedMacroId, $0) })
-        let existingByName = Dictionary(uniqueKeysWithValues: current.map { ($0.name.lowercased(), $0) })
+        let existingById = Dictionary(current.map { ($0.trackedMacroId, $0) }, uniquingKeysWith: { (first, _) in first })
+        let existingByName = Dictionary(current.map { ($0.name.lowercased(), $0) }, uniquingKeysWith: { (first, _) in first })
 
         return trackedMacros.map { macro in
             if var match = existingById[macro.id] {
@@ -1960,43 +2046,75 @@ private extension RootView {
             center.removePendingNotificationRequests(withIdentifiers: allIdentifiers)
             return
         }
-
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("RootView: notification permission error: \(error)")
-            }
-            guard granted else {
-                print("RootView: notification permission not granted for meal reminders")
+        center.getNotificationSettings { settings in
+            let isAuthorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral
+            guard isAuthorized else {
+                print("RootView: notification settings not authorized; skipping meal reminders")
                 return
             }
 
-            center.getNotificationSettings { settings in
-                guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
-                    print("RootView: notification settings not authorized")
-                    return
-                }
+            for reminder in reminders {
+                let identifier = "mealReminder.\(reminder.mealType.rawValue)"
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
 
-                for reminder in reminders {
-                    let identifier = "mealReminder.\(reminder.mealType.rawValue)"
-                    center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                var components = DateComponents()
+                components.hour = reminder.hour
+                components.minute = reminder.minute
 
-                    var components = DateComponents()
-                    components.hour = reminder.hour
-                    components.minute = reminder.minute
+                let content = UNMutableNotificationContent()
+                content.title = "\(reminder.mealType.displayName) Reminder"
+                content.body = "Don't forget to log your \(reminder.mealType.displayName.lowercased())!"
+                content.sound = .default
 
-                    let content = UNMutableNotificationContent()
-                    content.title = "\(reminder.mealType.displayName) Reminder"
-                    content.body = "Don't forget to log your \(reminder.mealType.displayName.lowercased())!"
-                    content.sound = .default
-
-                    let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-                    let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-                    center.add(request) { error in
-                        if let error = error {
-                            print("RootView: failed to schedule \(identifier) notification: \(error)")
-                        }
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                center.add(request) { error in
+                    if let error = error {
+                        print("RootView: failed to schedule \(identifier) notification: \(error)")
                     }
                 }
+            }
+        }
+    }
+
+    private func requestNotificationAuthorizationIfNeededForNutritionTab() async {
+        guard isSignedIn else { return }
+
+        let alreadyRequested = await MainActor.run(resultType: Bool.self, body: { hasRequestedNotificationPermission })
+        guard !alreadyRequested else { return }
+
+        let center = UNUserNotificationCenter.current()
+        let settings = await fetchNotificationSettings(center: center)
+
+        if settings.authorizationStatus == .notDetermined {
+            let granted = await requestNotificationAuthorization(center: center)
+            await MainActor.run { hasRequestedNotificationPermission = true }
+            guard granted else { return }
+            scheduleMealNotifications(mealReminders)
+        } else {
+            await MainActor.run { hasRequestedNotificationPermission = true }
+            let isAuthorized = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral
+            if isAuthorized {
+                scheduleMealNotifications(mealReminders)
+            }
+        }
+    }
+
+    private func fetchNotificationSettings(center: UNUserNotificationCenter) async -> UNNotificationSettings {
+        await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings)
+            }
+        }
+    }
+
+    private func requestNotificationAuthorization(center: UNUserNotificationCenter) async -> Bool {
+        await withCheckedContinuation { continuation in
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                if let error = error {
+                    print("RootView: notification permission error: \(error)")
+                }
+                continuation.resume(returning: granted)
             }
         }
     }

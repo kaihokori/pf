@@ -7,6 +7,7 @@ struct MapSection: View {
     @Binding var events: [ItineraryEvent]
     @StateObject private var locationManager = TravelLocationManager()
     @State private var isShowingMap = false
+    @EnvironmentObject private var themeManager: ThemeManager
 
     private var annotatedEvents: [ItineraryEvent] {
         events.filter { $0.coordinate != nil }
@@ -48,6 +49,7 @@ struct MapSection: View {
                     if let coordinate = event.coordinate {
                         Annotation(event.name, coordinate: coordinate) {
                             MapEventAnnotationView(event: event)
+                                .environmentObject(themeManager)
                         }
                     }
                 }
@@ -100,6 +102,7 @@ struct MapSection: View {
                 locationManager: locationManager,
                 isPresented: $isShowingMap
             )
+            .environmentObject(themeManager)
         }
     }
 }
@@ -130,6 +133,9 @@ private struct MapEventAnnotationView: View {
 }
 
 private struct UserLocationAnnotationView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
             let accent: Color = environmentAccent
@@ -147,17 +153,15 @@ private struct UserLocationAnnotationView: View {
                 )
         }
     }
-    
-    @EnvironmentObject private var themeManager_for_userloc: ThemeManager
-    @Environment(\.colorScheme) private var colorScheme_for_userloc: ColorScheme
 
     private var environmentAccent: Color {
-        if themeManager_for_userloc.selectedTheme == .multiColour { return Color.accentColor }
-        return themeManager_for_userloc.selectedTheme.accent(for: colorScheme_for_userloc)
+        if themeManager.selectedTheme == .multiColour { return Color.accentColor }
+        return themeManager.selectedTheme.accent(for: colorScheme)
     }
 }
 
 private struct FullScreenMapView: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     @Binding var events: [ItineraryEvent]
     @ObservedObject var locationManager: TravelLocationManager
     @Binding var isPresented: Bool
@@ -175,6 +179,12 @@ private struct FullScreenMapView: View {
     @State private var editorSeedDate = Date()
     @State private var initialCamera: MapCameraPosition? = nil
     @State private var hasMovedFromInitial: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var themeAccent: Color {
+        if themeManager.selectedTheme == .multiColour { return Color.accentColor }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
 
         private func regionForEvents(_ events: [ItineraryEvent]) -> MKCoordinateRegion {
             let coords = events.compactMap { $0.coordinate }
@@ -237,6 +247,7 @@ private struct FullScreenMapView: View {
                                             selectedEvent = event
                                         } label: {
                                         MapEventAnnotationView(event: event)
+                                            .environmentObject(themeManager)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -246,6 +257,7 @@ private struct FullScreenMapView: View {
                         if let userCoordinate = locationManager.lastLocation?.coordinate {
                             Annotation("You", coordinate: userCoordinate) {
                                 UserLocationAnnotationView()
+                                    .environmentObject(themeManager)
                             }
                             .annotationTitles(.hidden)
                         }
@@ -313,7 +325,7 @@ private struct FullScreenMapView: View {
                         Button(action: { isPresented = false }) {
                             ZStack {
                                 Image(systemName: "chevron.backward")
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(themeAccent)
                                     .frame(width: 45, height: 45)
                                     .font(.system(size: 20))
                             }
@@ -342,7 +354,7 @@ private struct FullScreenMapView: View {
                         }) {
                             ZStack {
                                 Image(systemName: "location")
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(themeAccent)
                                     .frame(width: 45, height: 45)
                                     .font(.system(size: 18))
                             }
@@ -355,7 +367,7 @@ private struct FullScreenMapView: View {
                         } label: {
                             Text("Add")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(themeAccent)
                                 .frame(width: 45, height: 45)
                                 .background(.thickMaterial, in: .rect(cornerRadius: 10))
                         }
@@ -382,7 +394,7 @@ private struct FullScreenMapView: View {
                         }) {
                             Text("Jump to Events")
                                 .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(themeAccent)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
                                 .background(.thickMaterial, in: Capsule())
@@ -657,7 +669,7 @@ struct ItineraryEventEditorView: View {
 
     // Calendar picker state and helpers (used by the inline calendar selector)
     private let calendar = Calendar.current
-    private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
+    private let daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
     @State private var currentMonth: Date = Date()
     @Namespace private var calendarAnim
@@ -965,7 +977,10 @@ struct ItineraryEventEditorView: View {
                         .padding(.top, 16)
                         .padding(.bottom, 12)
                         let days = daysInMonth(currentMonth)
-                        let firstWeekday = calendar.component(.weekday, from: firstOfMonth(currentMonth)) - 1
+                        // Compute first weekday index with Monday as the first column.
+                        // Calendar.weekday: 1 = Sunday, 2 = Monday, ...
+                        // Map so Monday -> 0, Tuesday -> 1, ..., Sunday -> 6
+                        let firstWeekday = (calendar.component(.weekday, from: firstOfMonth(currentMonth)) + 5) % 7
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
                             ForEach(0..<(days + firstWeekday), id: \.self) { i in
                                 if i < firstWeekday {
@@ -1010,6 +1025,7 @@ struct ItineraryEventEditorView: View {
         @State private var results: [MKMapItem] = []
         @FocusState private var isQueryFocused: Bool
         @State private var hasSearched: Bool = false
+        @State private var isSearching: Bool = false
         var onSelect: (MKMapItem, String) -> Void
 
         var body: some View {
@@ -1030,19 +1046,31 @@ struct ItineraryEventEditorView: View {
                                 Task { await performSearch() }
                             }
 
-                        Button(action: {
-                            Task { await performSearch() }
-                        }) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.title2.weight(.semibold))
+                        if isSearching {
+                            ProgressView()
+                                .progressViewStyle(.circular)
                                 .frame(minWidth: 64, minHeight: 44)
                                 .padding(.vertical, 6)
                                 .background(
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                                         .fill(Color.secondary.opacity(0.08))
                                 )
+                        } else {
+                            Button(action: {
+                                Task { await performSearch() }
+                            }) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.title2.weight(.semibold))
+                                    .frame(minWidth: 64, minHeight: 44)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .fill(Color.secondary.opacity(0.08))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSearching)
                         }
-                        .buttonStyle(.plain)
                     }
                     .onAppear {
                         DispatchQueue.main.async { isQueryFocused = true }
@@ -1129,13 +1157,18 @@ struct ItineraryEventEditorView: View {
         }
 
         private func performSearch() async {
-            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
                 results = []
+                isSearching = false
                 return
             }
 
+            isSearching = true
+            defer { isSearching = false }
+
             let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = query
+            request.naturalLanguageQuery = trimmed
             // Leave region nil to search broadly; could be improved by passing a region
 
             let search = MKLocalSearch(request: request)

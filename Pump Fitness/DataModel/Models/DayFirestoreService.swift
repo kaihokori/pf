@@ -758,8 +758,8 @@ class DayFirestoreService {
     private func mergeSoloMetricValues(local: [SoloMetricValue], remote: [SoloMetricValue]) -> [SoloMetricValue] {
         if remote.isEmpty { return local }
 
-        var mergedByMetricId: [String: SoloMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricId, $0) })
-        let localByName: [String: SoloMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricName.lowercased(), $0) })
+        var mergedByMetricId: [String: SoloMetricValue] = Dictionary(local.map { ($0.metricId, $0) }, uniquingKeysWith: { (first, _) in first })
+        let localByName: [String: SoloMetricValue] = Dictionary(local.map { ($0.metricName.lowercased(), $0) }, uniquingKeysWith: { (first, _) in first })
 
         for remoteValue in remote {
             if var existing = mergedByMetricId[remoteValue.metricId] {
@@ -782,8 +782,8 @@ class DayFirestoreService {
     private func mergeTeamMetricValues(local: [TeamMetricValue], remote: [TeamMetricValue]) -> [TeamMetricValue] {
         if remote.isEmpty { return local }
 
-        var mergedByMetricId: [String: TeamMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricId, $0) })
-        let localByName: [String: TeamMetricValue] = Dictionary(uniqueKeysWithValues: local.map { ($0.metricName.lowercased(), $0) })
+        var mergedByMetricId: [String: TeamMetricValue] = Dictionary(local.map { ($0.metricId, $0) }, uniquingKeysWith: { (first, _) in first })
+        let localByName: [String: TeamMetricValue] = Dictionary(local.map { ($0.metricName.lowercased(), $0) }, uniquingKeysWith: { (first, _) in first })
 
         for remoteValue in remote {
             if var existing = mergedByMetricId[remoteValue.metricId] {

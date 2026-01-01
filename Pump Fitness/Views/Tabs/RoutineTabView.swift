@@ -44,7 +44,7 @@ private struct HabitsEditorView: View {
     private let freeHabits = 3
     private let proHabits = 8
     private var canAddMore: Bool {
-        if isPro { return working.count < proHabits }
+        if isPro { return true }
         return working.count < freeHabits
     }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -303,7 +303,6 @@ private struct HabitsEditorView: View {
     }
 }
 
-
 // MARK: - Sleep Summary Column
 
 private struct SleepDayColumn: View {
@@ -396,6 +395,7 @@ struct RoutineTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @Binding var goals: [GoalItem]
@@ -436,6 +436,7 @@ struct RoutineTabView: View {
     @State private var showRoutineShareSheet: Bool = false
     @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
     @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = true
+    @AppStorage("alerts.habitsTime") private var habitsTime: Double = 9 * 3600
 
     private let dayService = DayFirestoreService()
     private let accountService = AccountFirestoreService()
@@ -904,19 +905,19 @@ struct RoutineTabView: View {
                     .toolbar(.hidden, for: .tabBar)
             }
             .sheet(isPresented: $showDailyTasksEditor) {
-                DailyTasksEditorView(tasks: $dailyTaskItems, isPro: isPro, onSave: applyTaskEditorChanges)
+                DailyTasksEditorView(tasks: $dailyTaskItems, isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty, onSave: applyTaskEditorChanges)
             }
             .sheet(isPresented: $showActivityTimersEditor) {
-                ActivityTimersEditorView(timers: $activityTimers, isPro: isPro, onSave: applyActivityTimerChanges)
+                ActivityTimersEditorView(timers: $activityTimers, isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty, onSave: applyActivityTimerChanges)
             }
             .sheet(isPresented: $showGoalsEditor) {
-                GoalsEditorView(goals: $goals, isPro: isPro, onSave: applyGoalsEditorChanges)
+                GoalsEditorView(goals: $goals, isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty, onSave: applyGoalsEditorChanges)
             }
             .sheet(isPresented: $showGroceryListEditor) {
                 GroceryListEditorView(items: $groceryItems, onSave: applyGroceryListChanges)
             }
             .sheet(isPresented: $showHabitsEditor) {
-                HabitsEditorView(habits: $habitItems, isPro: isPro, onSave: applyHabitsEditorChanges)
+                HabitsEditorView(habits: $habitItems, isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty, onSave: applyHabitsEditorChanges)
             }
             .sheet(isPresented: $showExpenseCategoriesEditor) {
                 ExpenseCategoriesEditorView(categories: $expenseCategories, currencySymbol: $expenseCurrencySymbol, onSave: applyExpenseCategoryChanges)
@@ -959,6 +960,9 @@ struct RoutineTabView: View {
         }
         .onChange(of: goals) { _, newValue in
             onUpdateGoals(newValue)
+        }
+        .onChange(of: habitsTime) { _, _ in
+            refreshNotifications()
         }
         
     }
@@ -1319,7 +1323,7 @@ private struct ActivityTimersEditorView: View {
     private let freeTimersAllowed = 2
     private let proTimersAllowed = 6
     private var canAddMore: Bool {
-        if isPro { return working.count < proTimersAllowed }
+        if isPro { return true }
         return working.count < freeTimersAllowed
     }
     private var customDurationMinutes: Int? {
@@ -2175,6 +2179,7 @@ private struct ExpenseCategoriesEditorView: View {
     @State private var colorPickerTargetId: Int?
     @State private var workingCurrencySymbol: String = ""
     @State private var customCurrencyInput: String = ""
+    @FocusState private var focusedCategoryId: Int?
 
     // Predefined currency symbol options for the editor
     private let currencyOptions: [String] = ["$", "€", "£", "¥", "₹", "₩", "₱", "Rp"]
@@ -2213,16 +2218,21 @@ private struct ExpenseCategoriesEditorView: View {
                                         TextField("Name", text: $category.name)
                                             .font(.subheadline.weight(.semibold))
                                             .textInputAutocapitalization(.words)
+                                            .focused($focusedCategoryId, equals: category.id)
 
-                                        Image(systemName: "pencil")
-                                            .foregroundStyle(.secondary)
-                                            .font(.subheadline)
-                                        
                                         Spacer()
+                                        
+                                        Button {
+                                            focusedCategoryId = category.id
+                                        } label: {
+                                            Image(systemName: "pencil")
+                                                .foregroundStyle(.secondary)
+                                                .font(.subheadline)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
                                 }
-
-                                Spacer()
+                                
                             }
                             .padding()
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
@@ -2858,8 +2868,12 @@ private struct HabitTrackingSection: View {
                                 Image(systemName: (habit.weeklyProgress.indices.contains(currentDayIndex) && habit.weeklyProgress[currentDayIndex] == .tracked) ? "checkmark.circle.fill" : "checkmark.circle")
                                     .font(.title3)
                                     .foregroundStyle((habit.weeklyProgress.indices.contains(currentDayIndex) && habit.weeklyProgress[currentDayIndex] == .tracked) ? rowColor : Color(.systemGray3))
+                                    .padding(2) // small visual padding to enlarge tap target
+                                    .background(Color.clear)
+                                    .contentShape(Rectangle()) // make the full padded area tappable
                             }
                             .buttonStyle(HabitCompactButtonStyle(background: Color(.systemBackground)))
+                            .contentShape(Rectangle()) // ensure the whole button area is hit-testable
                         }
                         .padding(.top, 6)
                         .background(Color.clear)

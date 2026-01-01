@@ -12,6 +12,8 @@ struct DailyTasksSection: View {
     var onToggle: (String, Bool) -> Void
     var onRemove: (String) -> Void
     var day: Binding<Day?>? = nil
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -119,11 +121,16 @@ struct DailyTasksSection: View {
         let totalCount = tasks.count
         let percentage = totalCount > 0 ? Int((Double(completedCount) / Double(totalCount)) * 100) : 0
         let fraction = totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0.0
-        // Use the fixed two-color gradient from the header instead of task colours
-        let gradientColors = [
-            Color(red: 0.74, green: 0.43, blue: 0.97),
-            Color(red: 0.83, green: 0.99, blue: 0.94)
-        ]
+        // Use theme accent colours for the progress gradient (fall back to accentColourOverride when multi-colour)
+        let accent: Color = {
+            if themeManager.selectedTheme == .multiColour {
+                return accentColorOverride ?? Color.accentColor
+            } else {
+                return themeManager.selectedTheme.accent(for: colorScheme)
+            }
+        }()
+
+        let gradientColors = [accent, accent.opacity(0.36)]
 
         return VStack(spacing: 8) {
             HStack {

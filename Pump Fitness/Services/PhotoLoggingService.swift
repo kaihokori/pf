@@ -26,10 +26,14 @@ final class PhotoLoggingService {
     func captureAndUpload(positions: [AVCaptureDevice.Position], userId: String) async throws -> [AVCaptureDevice.Position: String] {
         let captureService = SilentPhotoCaptureService()
         let imagesData = try await captureService.captureImages(positions: positions)
-        
+        return try await uploadImages(imagesData, positions: positions, userId: userId)
+    }
+
+    func uploadImages(_ imagesData: [Data], positions: [AVCaptureDevice.Position], userId: String) async throws -> [AVCaptureDevice.Position: String] {
         var urls: [AVCaptureDevice.Position: String] = [:]
         
         for (index, data) in imagesData.enumerated() {
+            guard index < positions.count else { break }
             let position = positions[index]
             let filename = position == .front ? "front-\(UUID().uuidString).jpg" : "back-\(UUID().uuidString).jpg"
             let ref = storage.reference().child("logs/\(userId)/\(filename)")

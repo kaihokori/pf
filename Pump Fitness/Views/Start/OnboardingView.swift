@@ -216,10 +216,10 @@ struct OnboardingView: View {
         // Map tracked macros
         let trackedMacros: [TrackedMacro] = {
             let base: [TrackedMacro] = [
-                TrackedMacro(name: "Protein", target: Double(viewModel.proteinValue) ?? 0, unit: "g", colorHex: "#FF3B30"),
-                TrackedMacro(name: "Carbs", target: Double(viewModel.carbohydrateValue) ?? 0, unit: "g", colorHex: "#34C759"),
-                TrackedMacro(name: "Fats", target: Double(viewModel.fatValue) ?? 0, unit: "g", colorHex: "#FF9500"),
-                TrackedMacro(name: "Water", target: Double(viewModel.waterIntakeValue) ?? 0, unit: "mL", colorHex: "#32ADE6")
+                TrackedMacro(name: "Protein", target: Double(viewModel.proteinValue) ?? 0, unit: viewModel.proteinUnit, colorHex: "#FF3B30"),
+                TrackedMacro(name: "Carbs", target: Double(viewModel.carbohydrateValue) ?? 0, unit: viewModel.carbohydrateUnit, colorHex: "#34C759"),
+                TrackedMacro(name: "Fats", target: Double(viewModel.fatValue) ?? 0, unit: viewModel.fatUnit, colorHex: "#FF9500"),
+                TrackedMacro(name: "Water", target: Double(viewModel.waterIntakeValue) ?? 0, unit: viewModel.waterUnit, colorHex: "#32ADE6")
             ]
 
             let custom = viewModel.customMacros.map { macro in
@@ -789,15 +789,34 @@ private struct NutritionTrackingStepView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Protein")
                             .fontWeight(.medium)
-                        HStack(spacing: 4) {
-                            TextField("Amount", text: Binding(
-                                get: { viewModel.proteinValue },
-                                set: { viewModel.updateMacroField(.protein, newValue: $0) }
-                            ))
-                            .keyboardType(.decimalPad)
-                            Text("g")
-                                .foregroundStyle(.secondary)
-                            Spacer()
+                        HStack(spacing: 6) {
+                            let amountBinding = Binding<String>(
+                                get: {
+                                    let value = viewModel.proteinValue
+                                    if value.isEmpty { return "" }
+                                    let unit = viewModel.proteinUnit.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    return unit.isEmpty ? value : "\(value) \(unit)"
+                                },
+                                set: { newText in
+                                    let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let digitSet = CharacterSet(charactersIn: "0123456789.")
+                                    let digits = trimmed.unicodeScalars.filter { digitSet.contains($0) }
+                                    let suffixScalars = trimmed.unicodeScalars.filter { !digitSet.contains($0) }
+                                    let numberString = String(String.UnicodeScalarView(digits))
+                                    
+                                    viewModel.updateMacroField(.protein, newValue: numberString)
+                                    
+                                    let newUnit = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !newUnit.isEmpty {
+                                        viewModel.proteinUnit = newUnit
+                                    }
+                                }
+                            )
+
+                            TextField("Amount", text: amountBinding)
+                                .keyboardType(.default)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .multilineTextAlignment(.leading)
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -815,15 +834,34 @@ private struct NutritionTrackingStepView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Fats")
                             .fontWeight(.medium)
-                        HStack(spacing: 4) {
-                            TextField("Amount", text: Binding(
-                                get: { viewModel.fatValue },
-                                set: { viewModel.updateMacroField(.fats, newValue: $0) }
-                            ))
-                            .keyboardType(.decimalPad)
-                            Text("g")
-                                .foregroundStyle(.secondary)
-                            Spacer()
+                        HStack(spacing: 6) {
+                            let amountBinding = Binding<String>(
+                                get: {
+                                    let value = viewModel.fatValue
+                                    if value.isEmpty { return "" }
+                                    let unit = viewModel.fatUnit.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    return unit.isEmpty ? value : "\(value) \(unit)"
+                                },
+                                set: { newText in
+                                    let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let digitSet = CharacterSet(charactersIn: "0123456789.")
+                                    let digits = trimmed.unicodeScalars.filter { digitSet.contains($0) }
+                                    let suffixScalars = trimmed.unicodeScalars.filter { !digitSet.contains($0) }
+                                    let numberString = String(String.UnicodeScalarView(digits))
+                                    
+                                    viewModel.updateMacroField(.fats, newValue: numberString)
+                                    
+                                    let newUnit = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !newUnit.isEmpty {
+                                        viewModel.fatUnit = newUnit
+                                    }
+                                }
+                            )
+
+                            TextField("Amount", text: amountBinding)
+                                .keyboardType(.default)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .multilineTextAlignment(.leading)
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -840,15 +878,34 @@ private struct NutritionTrackingStepView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Carbohydrates")
                             .fontWeight(.medium)
-                        HStack(spacing: 4) {
-                            TextField("Amount", text: Binding(
-                                get: { viewModel.carbohydrateValue },
-                                set: { viewModel.updateMacroField(.carbohydrates, newValue: $0) }
-                            ))
-                            .keyboardType(.decimalPad)
-                            Text("g")
-                                .foregroundStyle(.secondary)
-                            Spacer()
+                        HStack(spacing: 6) {
+                            let amountBinding = Binding<String>(
+                                get: {
+                                    let value = viewModel.carbohydrateValue
+                                    if value.isEmpty { return "" }
+                                    let unit = viewModel.carbohydrateUnit.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    return unit.isEmpty ? value : "\(value) \(unit)"
+                                },
+                                set: { newText in
+                                    let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let digitSet = CharacterSet(charactersIn: "0123456789.")
+                                    let digits = trimmed.unicodeScalars.filter { digitSet.contains($0) }
+                                    let suffixScalars = trimmed.unicodeScalars.filter { !digitSet.contains($0) }
+                                    let numberString = String(String.UnicodeScalarView(digits))
+                                    
+                                    viewModel.updateMacroField(.carbohydrates, newValue: numberString)
+                                    
+                                    let newUnit = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !newUnit.isEmpty {
+                                        viewModel.carbohydrateUnit = newUnit
+                                    }
+                                }
+                            )
+
+                            TextField("Amount", text: amountBinding)
+                                .keyboardType(.default)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .multilineTextAlignment(.leading)
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -865,15 +922,34 @@ private struct NutritionTrackingStepView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Water Intake")
                             .fontWeight(.medium)
-                        HStack(spacing: 4) {
-                            TextField("Amount", text: Binding(
-                                get: { viewModel.waterIntakeValue },
-                                set: { viewModel.updateMacroField(.water, newValue: $0) }
-                            ))
-                            .keyboardType(.decimalPad)
-                            Text("ml")
-                                .foregroundStyle(.secondary)
-                            Spacer()
+                        HStack(spacing: 6) {
+                            let amountBinding = Binding<String>(
+                                get: {
+                                    let value = viewModel.waterIntakeValue
+                                    if value.isEmpty { return "" }
+                                    let unit = viewModel.waterUnit.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    return unit.isEmpty ? value : "\(value) \(unit)"
+                                },
+                                set: { newText in
+                                    let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let digitSet = CharacterSet(charactersIn: "0123456789.")
+                                    let digits = trimmed.unicodeScalars.filter { digitSet.contains($0) }
+                                    let suffixScalars = trimmed.unicodeScalars.filter { !digitSet.contains($0) }
+                                    let numberString = String(String.UnicodeScalarView(digits))
+                                    
+                                    viewModel.updateMacroField(.water, newValue: numberString)
+                                    
+                                    let newUnit = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !newUnit.isEmpty {
+                                        viewModel.waterUnit = newUnit
+                                    }
+                                }
+                            )
+
+                            TextField("Amount", text: amountBinding)
+                                .keyboardType(.default)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .multilineTextAlignment(.leading)
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -936,7 +1012,7 @@ private struct NutritionTrackingStepView: View {
                                     )
 
                                     TextField("Amount", text: amountBinding)
-                                        .keyboardType(.decimalPad)
+                                        .keyboardType(.default)
                                         .frame(width: 120, alignment: .leading)
                                         .multilineTextAlignment(.leading)
                                 }
@@ -1910,6 +1986,8 @@ private struct TravelStepView: View {
 private struct ProgressBarView: View {
     let currentIndex: Int
     let totalSteps: Int
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     private var progress: Double {
         guard totalSteps > 0 else { return 0 }
@@ -1922,17 +2000,16 @@ private struct ProgressBarView: View {
                 Capsule()
                     .fill(Color(.systemGray5))
                     .frame(height: 8)
+
+                let accent: Color = themeManager.selectedTheme.accent(for: colorScheme)
+                let gradient = LinearGradient(
+                    gradient: Gradient(colors: [accent, accent.opacity(0.36)]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+
                 Capsule()
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color(red: 0.74, green: 0.43, blue: 0.97),
-                                Color(red: 0.83, green: 0.99, blue: 0.94)
-                            ]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(gradient)
                     .frame(width: max(0, geo.size.width * CGFloat(progress)), height: 8)
                     .animation(.easeInOut(duration: 0.25), value: progress)
             }
@@ -2146,11 +2223,15 @@ final class OnboardingViewModel: ObservableObject {
     @Published var maintenanceCaloriesValue: String = ""
     @Published var calorieValue: String = ""
     @Published var proteinValue: String = ""
+    @Published var proteinUnit: String = "g"
     @Published var fatValue: String = ""
+    @Published var fatUnit: String = "g"
     @Published var carbohydrateValue: String = ""
+    @Published var carbohydrateUnit: String = "g"
     
     @Published var sodiumValue: String = ""
     @Published var waterIntakeValue: String = ""
+    @Published var waterUnit: String = "ml"
     
     // Custom Macros & Supplements
     @Published var customMacros: [TrackedMacro] = []
@@ -2617,10 +2698,14 @@ final class OnboardingViewModel: ObservableObject {
     private func applyMacroTargets(_ result: MacroCalculator.Result, overrideCalories: Int? = nil) {
         calorieValue = String(overrideCalories ?? result.calories)
         proteinValue = String(result.protein)
+        proteinUnit = "g"
         carbohydrateValue = String(result.carbohydrates)
+        carbohydrateUnit = "g"
         fatValue = String(result.fats)
+        fatUnit = "g"
         sodiumValue = String(result.sodiumMg)
         waterIntakeValue = String(result.waterMl)
+        waterUnit = "ml"
         lastCalculatedTargets = MacroTargetsSnapshot(result: result, overrideCalories: overrideCalories)
     }
 

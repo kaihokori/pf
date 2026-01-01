@@ -121,17 +121,6 @@ struct ProSubscriptionView: View {
                                         .fill(proBadgeGradient)
                                 )
                         }
-                        
-                        // 2. Hero Text
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Get unlimited tracking and access to all features with Trackerio Pro")
-                                .font(.title3)
-                                .fontWeight(.bold)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(.bottom)
-                        .padding(.horizontal, 10)
 
                         ZStack(alignment: .top) {
                             // 4. Features Summary (now a reusable component)
@@ -471,15 +460,11 @@ struct SubscriptionOptionCard: View {
     }
 
     private func currencyFormatter(for product: Product) -> Decimal.FormatStyle.Currency {
-        let currencyCode = subscriptionManager.storefrontCurrencyCode ?? product.priceFormatStyle.currencyCode
-        let locale = subscriptionManager.storefrontLocale
-        return .currency(code: currencyCode)
-            .presentation(.narrow)
-            .locale(locale)
+        return product.priceFormatStyle.presentation(.narrow)
     }
 
     private func formattedPrice(for product: Product) -> String {
-        product.price.formatted(currencyFormatter(for: product))
+        product.displayPrice
             .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "\u{00A0}", with: "")
     }

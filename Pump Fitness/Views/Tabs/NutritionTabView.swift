@@ -14,6 +14,7 @@ struct NutritionTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @State private var showAccountsView = false
@@ -299,7 +300,7 @@ struct NutritionTabView: View {
                         DailyMealLogSection(
                             accentColorOverride: accentOverride,
                             weeklyEntries: weeklyEntries,
-                            weekStartsOnMonday: false,
+                            weekStartsOnMonday: true,
                             trackedMacros: trackedMacros,
                             selectedDate: selectedDate,
                             currentConsumedCalories: consumedCalories,
@@ -728,7 +729,7 @@ struct NutritionTabView: View {
                 tint: accentOverride ?? .accentColor,
                 isMultiColourTheme: themeManager.selectedTheme == .multiColour,
                 macroFocus: selectedMacroFocus,
-                isPro: isPro,
+                isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty,
                 onDone: { showMacroEditorSheet = false }
             )
             .presentationDetents([.large])
@@ -776,7 +777,7 @@ struct NutritionTabView: View {
             SupplementEditorSheet(
                 supplements: supplementsBinding,
                 tint: accentOverride ?? .orange,
-                isPro: isPro,
+                isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty,
                 onDone: { showSupplementEditor = false }
             )
             .presentationDetents([.large, .medium])
@@ -2675,9 +2676,8 @@ private struct MealIntakeSheet: View {
                                 if filtered != newValue {
                                     portionSizeGrams = filtered
                                 }
-                                if portionSizeGrams.isEmpty {
-                                    portionSizeGrams = "0"
-                                }
+                                // Don't force a "0" while the user is actively editing —
+                                // allow an empty string so they can clear and type a new value.
                             }
                         }
                     }
@@ -2963,13 +2963,15 @@ private struct MacroLogEntrySheet: View {
 struct DailyMealLogSection: View {
     var accentColorOverride: Color?
     var weeklyEntries: [WeeklyProgressEntry] = []
-    var weekStartsOnMonday: Bool = false
+    var weekStartsOnMonday: Bool = true
     var trackedMacros: [TrackedMacro] = []
     var selectedDate: Date
     var currentConsumedCalories: Int
     var currentCalorieGoal: Int
     var currentMacroConsumptions: [MacroConsumption]
     var onDeleteMealEntry: (MealIntakeEntry) -> Void
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded = false
     @State private var showWeeklyMacros = false
     @State private var isLoadingMeals = false
@@ -3100,8 +3102,13 @@ struct DailyMealLogSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
+                            // Determine theme-aware tint: if the selected theme is multiColour, prefer the provided accent (or system accent),
+                            // otherwise use the theme's accent color and disable per-tracked-macro colours.
+                            let themeTint: Color = themeManager.selectedTheme == .multiColour ? (accentColorOverride ?? .accentColor) : themeManager.selectedTheme.accent(for: colorScheme)
+                            let useTrackedColors = themeManager.selectedTheme == .multiColour
+
                             ForEach(weeklyMacroSummaries(weekStartsOnMonday: weekStartsOnMonday, trackedMacros: trackedMacros, selectedDate: selectedDate, currentConsumedCalories: currentConsumedCalories, currentCalorieGoal: currentCalorieGoal, currentMacroConsumptions: currentMacroConsumptions)) { summary in
-                                DynamicMacroDayColumn(summary: summary, tint: tint, trackedMacros: trackedMacros)
+                                DynamicMacroDayColumn(summary: summary, tint: themeTint, trackedMacros: trackedMacros, useTrackedColors: useTrackedColors)
                             }
                         }
                         .padding(.vertical, 4)
@@ -3214,22 +3221,33 @@ struct DailyMealLogSection: View {
     private func weeklyMacroSummaries(weekStartsOnMonday: Bool, trackedMacros: [TrackedMacro], selectedDate: Date, currentConsumedCalories: Int, currentCalorieGoal: Int, currentMacroConsumptions: [MacroConsumption]) -> [WeeklyMacroSummary] {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        let today = Date()
-        let weekday = cal.component(.weekday, from: today) // 1 = Sunday
-        // Force weeks to run Monday through Sunday for the Weekly Intake view
-        let startIndex = 2
+
+        // Use local calendar to extract YMD from selectedDate, then construct UTC date.
+        let localCal = Calendar.current
+        let components = localCal.dateComponents([.year, .month, .day], from: selectedDate)
+
+        // Use the selectedDate as the reference for which week to show
+        let referenceDay = cal.date(from: components) ?? cal.startOfDay(for: selectedDate)
+        let weekday = cal.component(.weekday, from: referenceDay) // 1 = Sunday
+        // Allow weeks to start on Monday or Sunday based on the flag
+        let startIndex = weekStartsOnMonday ? 2 : 1
         let offsetToStart = (weekday - startIndex + 7) % 7
-        let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
+        let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: referenceDay) ?? referenceDay
 
         let weekDates: [Date] = (0..<7).compactMap { i in
             cal.date(byAdding: .day, value: i, to: startOfWeek)
         }
         // Normalize selectedDate to UTC start-of-day for comparison
-        let selDayStart = cal.startOfDay(for: selectedDate)
+        let selDayStart = referenceDay
+
+        // Normalize "today" to UTC start-of-day using local calendar
+        let todayComponents = localCal.dateComponents([.year, .month, .day], from: Date())
+        let todayUTC = cal.date(from: todayComponents) ?? cal.startOfDay(for: Date())
 
         return weekDates.map { date in
             let dayStart = cal.startOfDay(for: date)
-            let isFuture = dayStart > cal.startOfDay(for: today)
+            // Mark a day as future relative to the actual current day
+            let isFuture = dayStart > todayUTC
 
             // If this is the currently-selected date, prefer the in-memory
             // binding values so the UI updates immediately while the save
@@ -3472,6 +3490,7 @@ private struct DynamicMacroDayColumn: View {
     var summary: WeeklyMacroSummary
     var tint: Color
     var trackedMacros: [TrackedMacro] = []
+    var useTrackedColors: Bool = true
 
     private var dayLabel: String {
         let f = DateFormatter()
@@ -3496,7 +3515,7 @@ private struct DynamicMacroDayColumn: View {
 
             VStack(spacing: 10) {
                 let calorieMax = summary.calorieGoal > 0 ? Double(summary.calorieGoal) : 4000
-                MacroIndicatorRow(label: "Calories", color: .primary, value: Double(summary.calories), maxValue: calorieMax, unit: "cal")
+                MacroIndicatorRow(label: "Calories", color: tint, value: Double(summary.calories), maxValue: calorieMax, unit: "cal")
 
                 if summary.macros.isEmpty {
                     Text("No macros logged")
@@ -3506,7 +3525,7 @@ private struct DynamicMacroDayColumn: View {
                 } else {
                     ForEach(summary.macros, id: \.id) { macro in
                         let macroColor: Color = {
-                            if let tracked = trackedMacros.first(where: { $0.id == macro.trackedMacroId }) {
+                            if useTrackedColors, let tracked = trackedMacros.first(where: { $0.id == macro.trackedMacroId }) {
                                 return tracked.color
                             }
                             return tint

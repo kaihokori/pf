@@ -56,7 +56,7 @@ struct NotificationsHelper {
                     components.minute = reminder.minute
 
                     let content = UNMutableNotificationContent()
-                    content.title = "\(reminder.mealType.displayName) Reminder"
+                    content.title = "Meal Reminder"
                     content.body = "Don't forget to log your \(reminder.mealType.displayName.lowercased())!"
                     content.sound = .default
 
@@ -110,8 +110,8 @@ struct NotificationsHelper {
                         let minute = parts[1]
 
                         let content = UNMutableNotificationContent()
-                        content.title = def.name
-                        content.body = "Reminder: \(def.name)"
+                        content.title = "Daily Task Reminder"
+                        content.body = "Don't forget to complete your \(def.name) task!"
                         content.sound = .default
 
                         if def.repeats {
@@ -175,7 +175,7 @@ struct NotificationsHelper {
             guard granted else { return }
             
             let content = UNMutableNotificationContent()
-            content.title = "\(name) Complete"
+            content.title = "Activity Timer"
             content.body = "Your \(name) timer has finished!"
             content.sound = .default
             
@@ -216,6 +216,11 @@ struct NotificationsHelper {
                     let now = Date()
                     let todayWeekday = calendar.component(.weekday, from: now) // 1-7
                     
+                    let habitsTimeVal = UserDefaults.standard.object(forKey: "alerts.habitsTime") as? Double
+                    let habitsTime = habitsTimeVal ?? (9 * 3600)
+                    let hour = Int(habitsTime) / 3600
+                    let minute = (Int(habitsTime) % 3600) / 60
+
                     // Schedule for each day of the week
                     for weekday in 1...7 {
                         var remainingHabits = habits
@@ -233,13 +238,13 @@ struct NotificationsHelper {
                         let habitNames = remainingHabits.map { $0.name }.joined(separator: ", ")
                         
                         let content = UNMutableNotificationContent()
-                        content.title = "Daily Habits"
-                        content.body = "Don't forget: \(habitNames)"
+                        content.title = "Habits Reminder"
+                        content.body = "Don't forget to check your \(habitNames) habit off for today!"
                         content.sound = .default
                         
                         var components = DateComponents()
-                        components.hour = 9
-                        components.minute = 0
+                        components.hour = hour
+                        components.minute = minute
                         components.weekday = weekday
                         
                         let identifier = "habit.daily.wd\(weekday)"
@@ -313,6 +318,11 @@ struct NotificationsHelper {
                     let now = Date()
                     let todayWeekday = calendar.component(.weekday, from: now) // 1-7
                     
+                    let checkInTimeVal = UserDefaults.standard.object(forKey: "alerts.dailyCheckInTime") as? Double
+                    let checkInTime = checkInTimeVal ?? (18 * 3600)
+                    let hour = Int(checkInTime) / 3600
+                    let minute = (Int(checkInTime) % 3600) / 60
+
                     // Iterate 0-6 (Mon-Sun)
                     for index in 0..<7 {
                         // Skip if auto-rest day
@@ -333,13 +343,13 @@ struct NotificationsHelper {
                         }
                         
                         let content = UNMutableNotificationContent()
-                        content.title = "Daily Check-In"
-                        content.body = "Time to check in! How was your day?"
+                        content.title = "Daily Workout Check-In"
+                        content.body = "Time to workout today!"
                         content.sound = .default
                         
                         var components = DateComponents()
-                        components.hour = 18 // 6 PM
-                        components.minute = 0
+                        components.hour = hour
+                        components.minute = minute
                         components.weekday = weekday
                         
                         let identifier = "dailyCheckIn.wd\(weekday)"

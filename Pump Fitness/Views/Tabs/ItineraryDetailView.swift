@@ -10,6 +10,13 @@ struct ItineraryDetailView: View {
 
     @State private var cameraPosition: MapCameraPosition
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var themeAccent: Color {
+        if themeManager.selectedTheme == .multiColour { return Color.accentColor }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
 
     private let mapHeight: CGFloat = 350
 
@@ -58,6 +65,7 @@ struct ItineraryDetailView: View {
                     if let coordinate = event.coordinate {
                         Annotation(event.name, coordinate: coordinate) {
                             MapEventBadge(category: event.category)
+                                .environmentObject(themeManager)
                         }
                     }
                 }
@@ -238,7 +246,7 @@ struct ItineraryDetailView: View {
             dismiss()
         } label: {
             Image(systemName: "chevron.left")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(themeAccent)
                 .frame(width: 44, height: 44)
                 .background(.thickMaterial, in: .rect(cornerRadius: 10))
         }
@@ -344,15 +352,22 @@ private extension ItineraryDetailView {
 
 struct MapEventBadge: View {
     let category: ItineraryCategory
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     init(category: ItineraryCategory) {
         self.category = category
     }
 
+    private var displayColor: Color {
+        if themeManager.selectedTheme == .multiColour { return category.color }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
-                .fill(category.color)
+                .fill(displayColor)
                 .frame(width: 35, height: 35)
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.white, lineWidth: 2)

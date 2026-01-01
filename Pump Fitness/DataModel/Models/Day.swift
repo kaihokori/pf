@@ -491,9 +491,13 @@ class Day {
         expenses: [ExpenseEntry] = []
     ) {
         self.id = id
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        self.date = cal.startOfDay(for: date)
+        // Use local calendar to extract YMD, then construct UTC date.
+        let localCal = Calendar.current
+        let components = localCal.dateComponents([.year, .month, .day], from: date)
+        
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        self.date = utcCal.date(from: components) ?? utcCal.startOfDay(for: date)
         self.caloriesConsumed = caloriesConsumed
         self.calorieGoal = calorieGoal
         self.maintenanceCalories = maintenanceCalories

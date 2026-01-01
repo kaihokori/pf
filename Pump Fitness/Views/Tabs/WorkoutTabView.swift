@@ -299,6 +299,7 @@ struct WorkoutTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @State private var showCalendar = false
     @Binding var selectedDate: Date
     @Binding var caloriesBurnGoal: Int
@@ -341,6 +342,8 @@ struct WorkoutTabView: View {
     @State private var healthKitAuthorized: Bool = false
     @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
     @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = true
+    @AppStorage("alerts.weeklyProgressTime") private var weeklyProgressTime: Double = 9 * 3600
+    @AppStorage("alerts.dailyCheckInTime") private var dailyCheckInTime: Double = 18 * 3600
     @State private var showingAdjustSheet: Bool = false
     @State private var adjustTarget: String? = nil
     // raw HealthKit readings (kept separate from any manual adjustments)
@@ -680,7 +683,7 @@ struct WorkoutTabView: View {
                         ExerciseSupplementEditorSheet(
                             supplements: supplementsBinding,
                             tint: .purple,
-                            isPro: isPro,
+                            isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty,
                             onDone: { showSupplementEditor = false }
                         )
                     }
@@ -1055,6 +1058,12 @@ struct WorkoutTabView: View {
         .onChange(of: dailyCheckInAlertsEnabled) { _, _ in
             refreshCheckInNotifications()
         }
+        .onChange(of: weeklyProgressTime) { _, _ in
+            scheduleProgressReminder()
+        }
+        .onChange(of: dailyCheckInTime) { _, _ in
+            refreshCheckInNotifications()
+        }
         
         .fullScreenCover(item: $previewImageEntry) { entry in
             ZStack {
@@ -1132,8 +1141,11 @@ struct WorkoutTabView: View {
         if components.weekday == nil {
             components.weekday = Calendar.current.component(.weekday, from: Date())
         }
-        components.hour = 9
-        components.minute = 0
+        
+        let progressTimeVal = UserDefaults.standard.object(forKey: "alerts.weeklyProgressTime") as? Double
+        let progressTime = progressTimeVal ?? (9 * 3600)
+        components.hour = Int(progressTime) / 3600
+        components.minute = (Int(progressTime) % 3600) / 60
 
         let requestId = "weekly-progress-photo-reminder"
         let center = UNUserNotificationCenter.current()
@@ -1150,8 +1162,8 @@ struct WorkoutTabView: View {
             center.removePendingNotificationRequests(withIdentifiers: [requestId])
 
             let content = UNMutableNotificationContent()
-            content.title = "Weekly Progress Photo"
-            content.body = "Time to capture this week's progress photo at 9 AM."
+            content.title = "Weekly Progress Reminder"
+            content.body = "Time to record your weekly progress."
             content.sound = .default
 
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
@@ -2645,7 +2657,10 @@ private struct WeightsGroupEditorSheet: View {
     private let presets: [String] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"]
     private let maxTracked = 12
 
-    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddMore: Bool {
+        if subscriptionManager.hasProAccess && !subscriptionManager.purchasedProductIDs.isEmpty { return true }
+        return working.count < maxTracked
+    }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -2746,7 +2761,7 @@ private struct WeightsGroupEditorSheet: View {
                         }
                     }
 
-                    if !subscriptionManager.hasProAccess {
+                    if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
                         Button(action: { showProSubscription = true }) {
                             HStack(alignment: .center) {
                                 Image(systemName: "sparkles")
@@ -2797,9 +2812,11 @@ private struct WeightsGroupEditorSheet: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("You can track up to \(maxTracked) groups.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                                Text("You can track up to \(maxTracked) groups.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }

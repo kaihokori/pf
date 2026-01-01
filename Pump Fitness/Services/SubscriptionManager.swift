@@ -52,13 +52,16 @@ class SubscriptionManager: ObservableObject {
     ]
 
     private var updates: Task<Void, Never>? = nil
+    private var storefrontUpdates: Task<Void, Never>? = nil
 
     init() {
         updates = newTransactionListenerTask()
+        storefrontUpdates = newStorefrontListenerTask()
     }
 
     deinit {
         updates?.cancel()
+        storefrontUpdates?.cancel()
     }
 
     func loadProducts() async {
@@ -69,11 +72,17 @@ class SubscriptionManager: ObservableObject {
             let products = try await Product.products(for: productIDs)
             // Sort by price to keep order consistent (or use another logic)
             self.products = products.sorted(by: { $0.price < $1.price })
+            
+            // Update currency code from products if storefront update didn't get it
+            if storefrontCurrencyCode == nil, let firstProduct = self.products.first {
+                storefrontCurrencyCode = firstProduct.priceFormatStyle.currencyCode
+            }
+            
             // Debug: log loaded products
             if !self.products.isEmpty {
                 print("Loaded products from StoreKit:")
                 for p in self.products {
-                    print("- id:\(p.id) name:\(p.displayName) price:\(p.displayPrice)")
+                    print("- id:\(p.id) name:\(p.displayName) price:\(p.displayPrice) currency:\(p.priceFormatStyle.currencyCode)")
                 }
             } else {
                 print("No products returned from StoreKit for ids: \(productIDs)")
@@ -177,6 +186,15 @@ class SubscriptionManager: ObservableObject {
                     await transaction.finish()
                     await self.updatePurchasedProducts()
                 }
+            }
+        }
+    }
+
+    private func newStorefrontListenerTask() -> Task<Void, Never> {
+        Task.detached {
+            for await _ in Storefront.updates {
+                await self.updateStorefront()
+                await self.loadProducts()
             }
         }
     }

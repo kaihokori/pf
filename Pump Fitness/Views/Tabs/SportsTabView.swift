@@ -21,6 +21,7 @@ struct SportsTabView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @AppStorage("timetracking.config") private var storedTimeTrackingConfigJSON: String = ""
     private let accountService = AccountFirestoreService()
     private let dayService = DayFirestoreService()
@@ -524,16 +525,7 @@ struct SportsTabView: View {
                                 )
                                 .environmentObject(account)
                                 .onAppear {
-                                    if #available(iOS 17.0, *) {
-                                        if !hasScrolledToTeamPlay && SportsTips.currentStep == 0 && isPro {
-                                            hasScrolledToTeamPlay = true
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                                withAnimation {
-                                                    proxy.scrollTo("teamPlay", anchor: .center)
-                                                }
-                                            }
-                                        }
-                                    }
+                                    // Removed auto-scroll logic as Weather tip is now first and at the top
                                 }
 
                             VStack(spacing: 0) {
@@ -597,6 +589,16 @@ struct SportsTabView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
                                     .padding(.horizontal, 18)
                                     .frame(height: 500)
+                                    .padding(.top, 10)
+                                    .sportsTip(.weather, isEnabled: isPro, onStepChange: { step in
+                                        if step == 1 {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                withAnimation {
+                                                    proxy.scrollTo("teamPlay", anchor: .center)
+                                                }
+                                            }
+                                        }
+                                    })
                             }
 
                             HStack {
@@ -638,7 +640,7 @@ struct SportsTabView: View {
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.primary)
                                     .sportsTip(.teamAndSoloPlay, isEnabled: isPro, onStepChange: { step in
-                                        if step == 1 {
+                                        if step == 2 {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                                 withAnimation {
                                                     proxy.scrollTo("editPlays", anchor: .center)
@@ -661,7 +663,7 @@ struct SportsTabView: View {
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .sportsTip(.editPlays, isEnabled: isPro, onStepChange: { step in
-                                    if step == 2 {
+                                    if step == 3 {
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                             withAnimation {
                                                 proxy.scrollTo("editSports", anchor: .center)
@@ -742,7 +744,7 @@ struct SportsTabView: View {
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .sportsTip(.editSports, isEnabled: isPro, onStepChange: { step in
-                                    if step == 3 {
+                                    if step == 4 {
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                             withAnimation {
                                                 proxy.scrollTo("sportsTracking", anchor: .center)
@@ -1576,7 +1578,10 @@ private struct SoloPlayMetricsEditorSheet: View {
     private let presets: [String] = ["Distance", "Laps", "Speed", "Rounds"]
     private let maxTracked = 6
 
-    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddMore: Bool {
+        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive { return true }
+        return working.count < maxTracked
+    }
     private var canAddCustom: Bool {
         canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -1670,6 +1675,36 @@ private struct SoloPlayMetricsEditorSheet: View {
                                 }
                             }
                         }
+                    }
+
+                    if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more metric slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -1907,7 +1942,10 @@ fileprivate struct TeamPlaySection: View {
                         Image(systemName: "minus")
                             .font(.headline.weight(.bold))
                             .frame(width: 44, height: 44)
+                            .padding(6)
+                            .background(Color.clear)
                             .glassEffect(in: .capsule)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .frame(width: 52, height: 52)
@@ -1919,7 +1957,10 @@ fileprivate struct TeamPlaySection: View {
                         Image(systemName: "plus")
                             .font(.headline.weight(.bold))
                             .frame(width: 44, height: 44)
+                            .padding(6)
+                            .background(Color.clear)
                             .glassEffect(in: .capsule)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .frame(width: 52, height: 52)
@@ -1947,7 +1988,10 @@ private struct TeamPlayMetricsEditorSheet: View {
     private let presets: [String] = ["Attempts Made", "Attempts Missed", "Assists"]
     private let maxTracked = 6
 
-    private var canAddMore: Bool { working.count < maxTracked }
+    private var canAddMore: Bool {
+        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive { return true }
+        return working.count < maxTracked
+    }
     private var canAddCustom: Bool {
         canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -2050,6 +2094,36 @@ private struct TeamPlayMetricsEditorSheet: View {
                         }
                     }
 
+                    if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock more metric slots + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Custom Metric")
                             .font(.subheadline.weight(.semibold))
@@ -2071,9 +2145,11 @@ private struct TeamPlayMetricsEditorSheet: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            Text("You can track up to \(maxTracked) metrics.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                                Text("You can track up to \(maxTracked) metrics.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -2632,7 +2708,7 @@ private struct SportDataEntrySheet: View {
     @State private var showYearPicker: Bool = false
 
     private let calendar = Calendar.current
-    private let daysOfWeek = ["S", "M", "T", "W", "T", "F", "S"]
+    private let daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
     private var existingActivity: SportsTabView.SportActivity?
     private var existingRecordId: String? { existingActivity?.recordId }
@@ -2802,7 +2878,10 @@ private struct SportDataEntrySheet: View {
             .padding(.bottom, 8)
 
             let days = daysInMonth(currentMonth)
-            let firstWeekday = calendar.component(.weekday, from: firstOfMonth(currentMonth)) - 1
+            // Compute first weekday index with Monday as the first column.
+            // Calendar.weekday: 1 = Sunday, 2 = Monday, ...
+            // Map so Monday -> 0, Tuesday -> 1, ..., Sunday -> 6
+            let firstWeekday = (calendar.component(.weekday, from: firstOfMonth(currentMonth)) + 5) % 7
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
                 ForEach(0..<(days + firstWeekday), id: \.self) { i in
@@ -3204,13 +3283,27 @@ struct SportsTips {
     @Parameter
     static var currentStep: Int = 0
 
+    struct WeatherTip: Tip {
+        var title: Text { Text("Weather") }
+        var message: Text? { Text("Check the weather forecast to plan your outdoor activities.") }
+        var image: Image? { Image(systemName: "cloud.sun.fill") }
+        
+        var rules: [Rule] {
+            #Rule(SportsTips.$currentStep) { $0 == 0 }
+        }
+        
+        var actions: [Action] {
+            Action(id: "next", title: "Next")
+        }
+    }
+
     struct TeamAndSoloPlayTip: Tip {
         var title: Text { Text("Team and Solo Play") }
         var message: Text? { Text("Manually note your sessions.") }
         var image: Image? { Image(systemName: "figure.run") }
         
         var rules: [Rule] {
-            #Rule(SportsTips.$currentStep) { $0 == 0 }
+            #Rule(SportsTips.$currentStep) { $0 == 1 }
         }
         
         var actions: [Action] {
@@ -3224,7 +3317,7 @@ struct SportsTips {
         var image: Image? { Image(systemName: "pencil") }
         
         var rules: [Rule] {
-            #Rule(SportsTips.$currentStep) { $0 == 1 }
+            #Rule(SportsTips.$currentStep) { $0 == 2 }
         }
         
         var actions: [Action] {
@@ -3238,7 +3331,7 @@ struct SportsTips {
         var image: Image? { Image(systemName: "pencil") }
         
         var rules: [Rule] {
-            #Rule(SportsTips.$currentStep) { $0 == 2 }
+            #Rule(SportsTips.$currentStep) { $0 == 3 }
         }
         
         var actions: [Action] {
@@ -3252,7 +3345,7 @@ struct SportsTips {
         var image: Image? { Image(systemName: "sportscourt.fill") }
         
         var rules: [Rule] {
-            #Rule(SportsTips.$currentStep) { $0 == 3 }
+            #Rule(SportsTips.$currentStep) { $0 == 4 }
         }
         
         var actions: [Action] {
@@ -3266,6 +3359,7 @@ enum SportsTipType {
     case editPlays
     case editSports
     case sportsTracking
+    case weather
 }
 
 extension View {
@@ -3275,6 +3369,7 @@ extension View {
             self.background {
                 Color.clear
                     .applySportsTip(type, onStepChange: onStepChange)
+                    .allowsHitTesting(false)
             }
         } else {
             self
@@ -3287,32 +3382,39 @@ extension View {
     @ViewBuilder
     func applySportsTip(_ type: SportsTipType, onStepChange: ((Int) -> Void)? = nil) -> some View {
         switch type {
-        case .teamAndSoloPlay:
-            self.popoverTip(SportsTips.TeamAndSoloPlayTip()) { action in
+        case .weather:
+            self.popoverTip(SportsTips.WeatherTip()) { action in
                 if action.id == "next" {
                     SportsTips.currentStep = 1
                     onStepChange?(1)
                 }
             }
-        case .editPlays:
-            self.popoverTip(SportsTips.EditPlaysTip()) { action in
+        case .teamAndSoloPlay:
+            self.popoverTip(SportsTips.TeamAndSoloPlayTip()) { action in
                 if action.id == "next" {
                     SportsTips.currentStep = 2
                     onStepChange?(2)
                 }
             }
-        case .editSports:
-            self.popoverTip(SportsTips.EditSportsTip()) { action in
+        case .editPlays:
+            self.popoverTip(SportsTips.EditPlaysTip()) { action in
                 if action.id == "next" {
                     SportsTips.currentStep = 3
                     onStepChange?(3)
                 }
             }
+        case .editSports:
+            self.popoverTip(SportsTips.EditSportsTip()) { action in
+                if action.id == "next" {
+                    SportsTips.currentStep = 4
+                    onStepChange?(4)
+                }
+            }
         case .sportsTracking:
             self.popoverTip(SportsTips.SportsTrackingTip()) { action in
                 if action.id == "finish" {
-                    SportsTips.currentStep = 4
-                    onStepChange?(4)
+                    SportsTips.currentStep = 5
+                    onStepChange?(5)
                 }
             }
         }

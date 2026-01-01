@@ -230,6 +230,7 @@ struct AccountsView: View {
                             PermissionsSection(
                                 notificationsAction: openNotificationSettings,
                                 healthSyncAction: openHealthSyncSettings,
+                                legalAction: openLegal
                             )
                         }
                         
@@ -571,6 +572,27 @@ struct AccountsView: View {
         @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = true
         @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
         @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
+        
+        @AppStorage("alerts.habitsTime") private var habitsTime: Double = 9 * 3600
+        @AppStorage("alerts.dailyCheckInTime") private var dailyCheckInTime: Double = 18 * 3600
+        @AppStorage("alerts.weeklyProgressTime") private var weeklyProgressTime: Double = 9 * 3600
+
+        private func binding(for time: Binding<Double>) -> Binding<Date> {
+            Binding(
+                get: {
+                    let calendar = Calendar.current
+                    let startOfDay = calendar.startOfDay(for: Date())
+                    return startOfDay.addingTimeInterval(time.wrappedValue)
+                },
+                set: { newDate in
+                    let calendar = Calendar.current
+                    let components = calendar.dateComponents([.hour, .minute], from: newDate)
+                    let seconds = (Double(components.hour ?? 0) * 3600) + (Double(components.minute ?? 0) * 60)
+                    time.wrappedValue = seconds
+                }
+            )
+        }
+
         var body: some View {
             NavigationStack {
                 VStack(alignment: .leading, spacing: 16) {
@@ -601,16 +623,22 @@ struct AccountsView: View {
                         }
                         .toggleStyle(.switch)
 
-                        Toggle(isOn: $habitsAlertsEnabled) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Habits")
                                     .font(.subheadline.weight(.semibold))
-                                Text("Receive a daily reminder at 9 AM with your remaining habits.")
+                                Text("Receive a daily reminder with your remaining habits.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            Spacer()
+                            if habitsAlertsEnabled {
+                                DatePicker("", selection: binding(for: $habitsTime), displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                            }
+                            Toggle("", isOn: $habitsAlertsEnabled)
+                                .labelsHidden()
                         }
-                        .toggleStyle(.switch)
 
                         Toggle(isOn: $timeTrackingAlertsEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -623,16 +651,22 @@ struct AccountsView: View {
                         }
                         .toggleStyle(.switch)
 
-                        Toggle(isOn: $dailyCheckInAlertsEnabled) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Daily Check-In")
                                     .font(.subheadline.weight(.semibold))
-                                Text("Receive a reminder at 6 PM to check in on your workout days.")
+                                Text("Receive a reminder to check in on your workout days.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            Spacer()
+                            if dailyCheckInAlertsEnabled {
+                                DatePicker("", selection: binding(for: $dailyCheckInTime), displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                            }
+                            Toggle("", isOn: $dailyCheckInAlertsEnabled)
+                                .labelsHidden()
                         }
-                        .toggleStyle(.switch)
 
                         Toggle(isOn: $fastingAlertsEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -656,7 +690,7 @@ struct AccountsView: View {
                         }
                         .toggleStyle(.switch)
 
-                        Toggle(isOn: $weeklyProgressAlertsEnabled) {
+                        HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Weekly Progress")
                                     .font(.subheadline.weight(.semibold))
@@ -664,8 +698,14 @@ struct AccountsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            Spacer()
+                            if weeklyProgressAlertsEnabled {
+                                DatePicker("", selection: binding(for: $weeklyProgressTime), displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                            }
+                            Toggle("", isOn: $weeklyProgressAlertsEnabled)
+                                .labelsHidden()
                         }
-                        .toggleStyle(.switch)
                     }
                     Spacer()
                 }
@@ -875,6 +915,7 @@ private struct AccountSection: View {
 private struct PermissionsSection: View {
     var notificationsAction: () -> Void
     var healthSyncAction: () -> Void
+    var legalAction: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -890,6 +931,13 @@ private struct PermissionsSection: View {
                 icon: "heart",
                 role: nil,
                 action: healthSyncAction
+            )
+
+            accountActionRow(
+                title: "Terms, Conditions & Privacy",
+                icon: "doc.text",
+                role: nil,
+                action: legalAction
             )
         }
     }
@@ -943,13 +991,6 @@ private struct ExtrasSection: View {
                 icon: "bell.circle",
                 role: nil,
                 action: alertsAction
-            )
-
-            accountActionRow(
-                title: "Terms, Conditions & Privacy",
-                icon: "doc.text",
-                role: nil,
-                action: legalAction
             )
         }
     }

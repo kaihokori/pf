@@ -13,6 +13,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @State private var isKeyboardVisible = false
+    @State private var isSaving = false
 
     init(initialName: String? = nil, existingAccount: Account? = nil, isRetake: Bool = false, onComplete: (() -> Void)? = nil) {
         self.initialName = initialName
@@ -150,13 +151,22 @@ struct OnboardingView: View {
                             .transition(.move(edge: .leading).combined(with: .opacity))
                         }
                         Button(action: handleContinue) {
-                            Text(viewModel.buttonTitle)
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .surfaceCard(16, fill: Color.accentColor, shadowOpacity: 0.12)
+                            if isSaving && isRetake {
+                                ProgressView()
+                                    .tint(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .surfaceCard(16, fill: Color.accentColor, shadowOpacity: 0.12)
+                            } else {
+                                Text(viewModel.buttonTitle)
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .surfaceCard(16, fill: Color.accentColor, shadowOpacity: 0.12)
+                            }
                         }
+                        .disabled(isSaving && isRetake)
                     }
                     .animation(.easeInOut(duration: 0.3), value: viewModel.isFirstStep)
                     .alert(isPresented: $showAlert) {
@@ -436,7 +446,13 @@ struct OnboardingView: View {
 
         if viewModel.canContinue {
             if viewModel.isLastStep {
+                if isRetake {
+                    isSaving = true
+                }
                 saveAccountToStorage { success in
+                    if isRetake {
+                        isSaving = false
+                    }
                     if success {
                         _ = subscriptionManager.activateOnboardingTrialIfEligible()
                         hasCompletedOnboarding = true
@@ -2002,8 +2018,19 @@ private struct ProgressBarView: View {
                     .frame(height: 8)
 
                 let accent: Color = themeManager.selectedTheme.accent(for: colorScheme)
+                let gradientColors: [Color] = {
+                    if themeManager.selectedTheme == .multiColour {
+                        return [
+                            Color(red: 0.8274509804, green: 0.9882352941, blue: 0.9411764706),
+                            Color(red: 0.7450980392, green: 0.8196078431, blue: 0.9843137255),
+                            Color(red: 0.737254902, green: 0.5215686275, blue: 0.9725490196),
+                            Color(red: 0.7450980392, green: 0.4352941176, blue: 0.968627451)
+                        ]
+                    }
+                    return [accent, accent.opacity(0.36)]
+                }()
                 let gradient = LinearGradient(
-                    gradient: Gradient(colors: [accent, accent.opacity(0.36)]),
+                    gradient: Gradient(colors: gradientColors),
                     startPoint: .leading,
                     endPoint: .trailing
                 )

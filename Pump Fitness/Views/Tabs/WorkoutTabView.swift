@@ -1520,6 +1520,7 @@ private extension WorkoutTabView {
         // value isn't silently replaced by defaults.
         let resolvedGroups = weightGroups
         let entriesByExercise = Dictionary(uniqueKeysWithValues: weightEntries.map { ($0.exerciseId, $0) })
+        let editingStates = Dictionary(uniqueKeysWithValues: bodyParts.map { ($0.id, $0.isEditing) })
 
         bodyParts = resolvedGroups.map { group in
             let exercises = group.exercises.map { def -> WeightExercise in
@@ -1537,7 +1538,8 @@ private extension WorkoutTabView {
                     placeholderReps: placeholder?.reps ?? ""
                 )
             }
-            return BodyPartWeights(id: group.id, name: group.name, exercises: exercises)
+            let isEditing = editingStates[group.id] ?? false
+            return BodyPartWeights(id: group.id, name: group.name, exercises: exercises, isEditing: isEditing)
         }
 
         // Leave `bodyParts` empty if there are no stored groups so we don't
@@ -3410,7 +3412,7 @@ private struct WeeklyProgressAddSheet: View {
                                 get: { date },
                                 set: { date = $0 }
                             ),
-                            range: PumpDateRange.birthdate
+                            range: Date.distantPast...Date(),
                         )
                         .surfaceCard(12)
                     }

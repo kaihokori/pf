@@ -635,6 +635,18 @@ struct RootView: View {
                     }
                     fetched.itineraryEvents = resolvedItineraryEvents
 
+                    var resolvedDailyTasks = fetched.dailyTasks
+                    if resolvedDailyTasks.isEmpty, let localAccount = fetchAccount(), !localAccount.dailyTasks.isEmpty {
+                        resolvedDailyTasks = localAccount.dailyTasks
+                    }
+                    fetched.dailyTasks = resolvedDailyTasks
+
+                    var resolvedSports = fetched.sports
+                    if resolvedSports.isEmpty, let localAccount = fetchAccount(), !localAccount.sports.isEmpty {
+                        resolvedSports = localAccount.sports
+                    }
+                    fetched.sports = resolvedSports
+
                     // Cravings precedence: Firestore → in-memory (if already loaded this run) → local cache.
                     // Keep existing in-memory cravings; ignore remote for now to avoid overwrites.
                     fetched.cravings = cravings
@@ -2162,7 +2174,14 @@ private extension RootView {
                     local.id = fetchedId
                 }
                 // Debug: show counts before applying fetched values
-                local.profileImage = fetched.profileImage
+                // Only overwrite the local image if we fetched a new one, or if the avatar setting changed (e.g. reverted to a color).
+                // If the fetch failed to download the image (nil) but the avatar string is still a URL, preserve the local cache.
+                if let newImage = fetched.profileImage {
+                    local.profileImage = newImage
+                } else if let avatar = fetched.profileAvatar, !avatar.hasPrefix("http") {
+                    // Avatar is not a URL (e.g. it's a color index), so clear the image data.
+                    local.profileImage = nil
+                }
                 local.profileAvatar = fetched.profileAvatar
                 local.name = fetched.name
                 local.gender = fetched.gender
@@ -2204,6 +2223,7 @@ private extension RootView {
                 }
                 local.startWeekOn = fetched.startWeekOn
                 local.autoRestDayIndices = fetched.autoRestDayIndices
+                local.workoutSchedule = fetched.workoutSchedule
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings
                 local.groceryItems = fetched.groceryItems
@@ -2218,6 +2238,10 @@ private extension RootView {
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 local.itineraryEvents = fetched.itineraryEvents
+                local.dailyTasks = fetched.dailyTasks
+                local.sports = fetched.sports
+                local.soloMetrics = fetched.soloMetrics
+                local.teamMetrics = fetched.teamMetrics
                     local.caloriesBurnGoal = fetched.caloriesBurnGoal
                     local.stepsGoal = fetched.stepsGoal
                     local.distanceGoal = fetched.distanceGoal

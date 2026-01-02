@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import Photos
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ShareProgressSheet: View {
     var caloriesConsumed: Int
@@ -74,24 +75,30 @@ struct ShareProgressSheet: View {
                         .padding(.horizontal, 20)
 
                         // Card Preview
-                        CustomizableShareCard(
-                            caloriesConsumed: caloriesConsumed,
-                            calorieGoal: calorieGoal,
-                            maintenanceCalories: maintenanceCalories,
-                            macros: macros,
-                            supplements: supplements,
-                            takenSupplements: takenSupplements,
-                            mealEntries: mealEntries,
-                            cravings: cravings,
-                            showCalories: showCalories,
-                            showMacros: showMacros,
-                            showSupplements: showSupplements,
-                            showMeals: showMeals,
-                            showCravings: showCravings,
-                            accentColor: accentColor
-                        )
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.white)
+                            CustomizableShareCard(
+                                caloriesConsumed: caloriesConsumed,
+                                calorieGoal: calorieGoal,
+                                maintenanceCalories: maintenanceCalories,
+                                macros: macros,
+                                supplements: supplements,
+                                takenSupplements: takenSupplements,
+                                mealEntries: mealEntries,
+                                cravings: cravings,
+                                showCalories: showCalories,
+                                showMacros: showMacros,
+                                showSupplements: showSupplements,
+                                showMeals: showMeals,
+                                showCravings: showCravings,
+                                accentColor: accentColor
+                            )
+                        }
                         .dynamicTypeSize(.medium)
                         .environment(\.sizeCategory, .medium)
+                        .environment(\.colorScheme, .light)
+                        .frame(maxWidth: 480)
                         .padding(.horizontal, 20)
                         .shadow(color: Color.black.opacity(0.1), radius: 15, x: 0, y: 8)
                     }
@@ -141,11 +148,11 @@ struct ShareProgressSheet: View {
     
     @MainActor
     private func renderCurrentCard() -> UIImage? {
-        let width: CGFloat = 540
-        let height: CGFloat = width * 16.0 / 9.0
+        let width: CGFloat = 350
 
-        // Render without an explicit background so exported image is transparent.
         let renderView = ZStack {
+            Rectangle()
+                .fill(Color.white)
             CustomizableShareCard(
                 caloriesConsumed: caloriesConsumed,
                 calorieGoal: calorieGoal,
@@ -164,19 +171,22 @@ struct ShareProgressSheet: View {
                 isExporting: true
             )
         }
-        .frame(width: width, height: height)
+        .frame(width: width)
+        .fixedSize(horizontal: false, vertical: true)
         .dynamicTypeSize(.medium)
         .environment(\.sizeCategory, .medium)
         .environment(\.colorScheme, .light)
 
         let renderer = ImageRenderer(content: renderView)
         renderer.scale = 3.0
+        renderer.isOpaque = false
         return renderer.uiImage
     }
     
     private func shareCurrentCard() {
         guard let image = renderCurrentCard() else { return }
-        sharePayload = ShareProgressPayload(items: [image])
+        let itemSource = ShareImageItemSource(image: image)
+        sharePayload = ShareProgressPayload(items: [itemSource])
     }
 }
 
@@ -256,7 +266,7 @@ struct CustomizableShareCard: View {
                 }
                 
                 if showMacros {
-                    MacrosSection(macros: macros, color: .blue)
+                    MacrosSection(macros: macros, color: .green)
                 }
                 
                 if showMeals && !mealEntries.isEmpty {
@@ -282,19 +292,11 @@ struct CustomizableShareCard: View {
         .dynamicTypeSize(.medium)
         .environment(\.sizeCategory, .medium)
         .background {
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
-                    Color(red: 0.83, green: 0.99, blue: 0.94).opacity(0.3),
-                    Color.white
-                ]),
-                startPoint: .bottom,
-                endPoint: .top
-            )
+            GradientBackground(theme: .other)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .cornerRadius(isExporting ? 0 : 24)
         .overlay(
-            RoundedRectangle(cornerRadius: 24)
+            RoundedRectangle(cornerRadius: isExporting ? 0 : 24)
                 .strokeBorder(accentColor.opacity(0.1), lineWidth: 1)
         )
     }
@@ -544,9 +546,9 @@ struct PumpBranding: View {
                 .resizable()
                 .renderingMode(.original)
                 .aspectRatio(contentMode: .fit)
-                .frame(height: 28)
+                .frame(height: 30)
             Text("Trackerio")
-                .font(.subheadline)
+                .font(.headline)
                 .fontWeight(.semibold)
         }
         .foregroundStyle(.secondary.opacity(0.7))
@@ -564,6 +566,27 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+/// Ensures exported images are advertised as PNGs so the share sheet shows photo targets (e.g., Photos, Instagram, Messenger).
+final class ShareImageItemSource: NSObject, UIActivityItemSource {
+    private let image: UIImage
+
+    init(image: UIImage) {
+        self.image = image
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        image
+    }
+
+    func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? {
+        image
+    }
+
+    func activityViewController(_ activityViewController: UIActivityViewController, dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?) -> String {
+        UTType.png.identifier
+    }
 }
 
 fileprivate struct ShareProgressPayload: Identifiable {

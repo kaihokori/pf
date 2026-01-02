@@ -130,7 +130,17 @@ struct DailyTasksSection: View {
             }
         }()
 
-        let gradientColors = [accent, accent.opacity(0.36)]
+        let gradientColors: [Color] = {
+            if themeManager.selectedTheme == .multiColour {
+                return [
+                    Color(red: 0.8274509804, green: 0.9882352941, blue: 0.9411764706),
+                    Color(red: 0.7450980392, green: 0.8196078431, blue: 0.9843137255),
+                    Color(red: 0.737254902, green: 0.5215686275, blue: 0.9725490196),
+                    Color(red: 0.7450980392, green: 0.4352941176, blue: 0.968627451)
+                ]
+            }
+            return [accent, accent.opacity(0.36)]
+        }()
 
         return VStack(spacing: 8) {
             HStack {

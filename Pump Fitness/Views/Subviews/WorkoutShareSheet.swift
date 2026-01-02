@@ -93,24 +93,30 @@ struct WorkoutShareSheet: View {
                             .padding(.horizontal, 20)
                         }
 
-                        WorkoutShareCard(
-                            accentColor: accentColor,
-                            checkInText: dailyCheckIn,
-                            schedule: schedule,
-                            supplements: supplements,
-                            takenIDs: takenSupplements,
-                            weightGroups: weightGroups,
-                            weightEntries: weightEntries,
-                            selectedWeightGroupId: $selectedWeightGroupId,
-                            measurements: measurements,
-                            showSchedule: showSchedule,
-                            showSupplements: showSupplements,
-                            showWeights: showWeights,
-                            showMeasurements: showMeasurements,
-                            isExporting: false
-                        )
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.white)
+                            WorkoutShareCard(
+                                accentColor: accentColor,
+                                checkInText: dailyCheckIn,
+                                schedule: schedule,
+                                supplements: supplements,
+                                takenIDs: takenSupplements,
+                                weightGroups: weightGroups,
+                                weightEntries: weightEntries,
+                                selectedWeightGroupId: $selectedWeightGroupId,
+                                measurements: measurements,
+                                showSchedule: showSchedule,
+                                showSupplements: showSupplements,
+                                showWeights: showWeights,
+                                showMeasurements: showMeasurements,
+                                isExporting: false
+                            )
+                        }
                         .dynamicTypeSize(.medium)
                         .environment(\.sizeCategory, .medium)
+                        .environment(\.colorScheme, .light)
+                        .frame(maxWidth: 480)
                         .padding(.horizontal, 20)
                         .shadow(color: Color.black.opacity(0.1), radius: 12, x: 0, y: 8)
                         .padding(.bottom, 60)
@@ -156,38 +162,44 @@ struct WorkoutShareSheet: View {
 
     @MainActor
     private func renderCurrentCard() -> UIImage? {
-        let width: CGFloat = 540
-        let height: CGFloat = width * 16.0 / 9.0
+        let width: CGFloat = 350
 
-        let renderView = WorkoutShareCard(
-            accentColor: accentColor,
-            checkInText: dailyCheckIn,
-            schedule: schedule,
-            supplements: supplements,
-            takenIDs: takenSupplements,
-            weightGroups: weightGroups,
-            weightEntries: weightEntries,
-            selectedWeightGroupId: .constant(selectedWeightGroupId),
-            measurements: measurements,
-            showSchedule: showSchedule,
-            showSupplements: showSupplements,
-            showWeights: showWeights,
-            showMeasurements: showMeasurements,
-            isExporting: true
-        )
-        .frame(width: width, height: height)
+        let renderView = ZStack {
+            Rectangle()
+                .fill(Color.white)
+            WorkoutShareCard(
+                accentColor: accentColor,
+                checkInText: dailyCheckIn,
+                schedule: schedule,
+                supplements: supplements,
+                takenIDs: takenSupplements,
+                weightGroups: weightGroups,
+                weightEntries: weightEntries,
+                selectedWeightGroupId: .constant(selectedWeightGroupId),
+                measurements: measurements,
+                showSchedule: showSchedule,
+                showSupplements: showSupplements,
+                showWeights: showWeights,
+                showMeasurements: showMeasurements,
+                isExporting: true
+            )
+        }
+        .frame(width: width)
+        .fixedSize(horizontal: false, vertical: true)
         .dynamicTypeSize(.medium)
         .environment(\.sizeCategory, .medium)
         .environment(\.colorScheme, .light)
 
         let renderer = ImageRenderer(content: renderView)
         renderer.scale = 3.0
+        renderer.isOpaque = false
         return renderer.uiImage
     }
 
     private func shareCurrentCard() {
         guard let image = renderCurrentCard() else { return }
-        sharePayload = WorkoutSharePayload(items: [image])
+        let itemSource = ShareImageItemSource(image: image)
+        sharePayload = WorkoutSharePayload(items: [itemSource])
     }
 }
 
@@ -256,18 +268,11 @@ private struct WorkoutShareCard: View {
             .padding(20)
         }
         .background {
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.74, green: 0.43, blue: 0.97).opacity(0.3),
-                    Color.white
-                ]),
-                startPoint: .bottom,
-                endPoint: .top
-            )
+            GradientBackground(theme: .other)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24))
+        .cornerRadius(isExporting ? 0 : 24)
         .overlay(
-            RoundedRectangle(cornerRadius: 24)
+            RoundedRectangle(cornerRadius: isExporting ? 0 : 24)
                 .strokeBorder(accentColor.opacity(0.1), lineWidth: 1)
         )
     }

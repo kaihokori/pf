@@ -36,6 +36,7 @@ struct AccountsView: View {
     @State private var showHealthKitStatusAlert = false
     @State private var healthKitStatusMessage = ""
     @State private var showAlertsSheet = false
+    @State private var showReportSheet = false
     @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
     @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = true
     @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = true
@@ -237,75 +238,76 @@ struct AccountsView: View {
                         SectionCard(title: "Account") {
                             AccountSection(
                                 manageSubscriptionAction: openSubscriptionPortal,
+                                reportProblemAction: { showReportSheet = true },
                                 signOutAction: { showSignOutConfirmation = true },
                                 deleteAccountAction: { showDeleteConfirmation = true }
                             )
 
-                            #if DEBUG
-                            Toggle(isOn: Binding(get: {
-                                subscriptionManager.isDebugForcingNoSubscription
-                            }, set: { newVal in
-                                subscriptionManager.isDebugForcingNoSubscription = newVal
-                            })) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Force No Subscription (Debug)")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                    Text("Treat this device as unsubscribed for testing")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .toggleStyle(.switch)
-                            .padding(.top, 6)
+                            // #if DEBUG
+                            // Toggle(isOn: Binding(get: {
+                            //     subscriptionManager.isDebugForcingNoSubscription
+                            // }, set: { newVal in
+                            //     subscriptionManager.isDebugForcingNoSubscription = newVal
+                            // })) {
+                            //     VStack(alignment: .leading, spacing: 2) {
+                            //         Text("Force No Subscription (Debug)")
+                            //             .font(.subheadline).fontWeight(.semibold)
+                            //         Text("Treat this device as unsubscribed for testing")
+                            //             .font(.caption)
+                            //             .foregroundStyle(.secondary)
+                            //     }
+                            // }
+                            // .toggleStyle(.switch)
+                            // .padding(.top, 6)
 
-                            Button {
-                                subscriptionManager.resetTrialState()
-                                account.trialPeriodEnd = nil
-                                do {
-                                    try modelContext.save()
-                                } catch {
-                                    print("AccountsView: failed to clear trial locally: \(error)")
-                                }
+                            // Button {
+                            //     subscriptionManager.resetTrialState()
+                            //     account.trialPeriodEnd = nil
+                            //     do {
+                            //         try modelContext.save()
+                            //     } catch {
+                            //         print("AccountsView: failed to clear trial locally: \(error)")
+                            //     }
 
-                                Task {
-                                    let success = await viewModel.saveAccountToFirestore(account)
-                                    if !success {
-                                        print("AccountsView: failed to clear trial in Firestore")
-                                    }
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Clear Trial Timer (Debug)")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                    Text("Remove trial flags so StoreKit behaves like a fresh install.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
+                            //     Task {
+                            //         let success = await viewModel.saveAccountToFirestore(account)
+                            //         if !success {
+                            //             print("AccountsView: failed to clear trial in Firestore")
+                            //         }
+                            //     }
+                            // } label: {
+                            //     VStack(alignment: .leading, spacing: 2) {
+                            //         Text("Clear Trial Timer (Debug)")
+                            //             .font(.subheadline).fontWeight(.semibold)
+                            //         Text("Remove trial flags so StoreKit behaves like a fresh install.")
+                            //             .font(.caption)
+                            //             .foregroundStyle(.secondary)
+                            //     }
+                            //     .frame(maxWidth: .infinity, alignment: .leading)
+                            // }
+                            // .buttonStyle(.bordered)
+                            // .tint(.red)
 
-                            Button {
-                                if #available(iOS 17.0, *) {
-                                    try? Tips.resetDatastore()
-                                    NutritionTips.currentStep = 0
-                                    WorkoutTips.currentStep = 0
-                                    RoutineTips.currentStep = 0
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Reset TipKit Memory (Debug)")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                    Text("Reset all tips to appear again.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.blue)
-                            #endif
+                            // Button {
+                            //     if #available(iOS 17.0, *) {
+                            //         try? Tips.resetDatastore()
+                            //         NutritionTips.currentStep = 0
+                            //         WorkoutTips.currentStep = 0
+                            //         RoutineTips.currentStep = 0
+                            //     }
+                            // } label: {
+                            //     VStack(alignment: .leading, spacing: 2) {
+                            //         Text("Reset TipKit Memory (Debug)")
+                            //             .font(.subheadline).fontWeight(.semibold)
+                            //         Text("Reset all tips to appear again.")
+                            //             .font(.caption)
+                            //             .foregroundStyle(.secondary)
+                            //     }
+                            //     .frame(maxWidth: .infinity, alignment: .leading)
+                            // }
+                            // .buttonStyle(.bordered)
+                            // .tint(.blue)
+                            // #endif
                         }
                         
                     }
@@ -350,6 +352,8 @@ struct AccountsView: View {
                                     account.unitSystem = viewModel.profile.unitSystem.rawValue
                                     account.startWeekOn = viewModel.profile.weekStart.rawValue
                                     account.activityLevel = viewModel.profile.activityLevel.rawValue
+                                    account.profileImage = viewModel.profile.avatarImageData
+                                    account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
 
                                     themeManager.setTheme(viewModel.profile.appTheme)
                                     
@@ -517,6 +521,13 @@ struct AccountsView: View {
                 }
                 showCameraPicker = false
             }
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportProblemSheet(
+                initialName: viewModel.draft.name,
+                initialEmail: Auth.auth().currentUser?.email ?? "",
+                accentColor: currentAccent
+            )
         }
         .alert("Camera unavailable", isPresented: $showCameraUnavailableAlert) {
             Button("OK", role: .cancel) {}
@@ -803,6 +814,184 @@ struct AccountsView: View {
     }
 }
 
+private struct ReportProblemSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var email: String
+    @State private var message: String = ""
+    @State private var isSubmitting: Bool = false
+    @State private var submissionError: String? = nil
+    @State private var showSuccessAlert: Bool = false
+    @FocusState private var focusedField: ReportField?
+    var accentColor: Color
+
+    init(initialName: String, initialEmail: String, accentColor: Color) {
+        _name = State(initialValue: initialName)
+        _email = State(initialValue: initialEmail)
+        self.accentColor = accentColor
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Tell us what went wrong so we can help.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+
+                        VStack(spacing: 14) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Name")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                TextField("", text: $name, prompt: Text("Enter your name").foregroundColor(.primary.opacity(0.7)))
+                                    .textInputAutocapitalization(.words)
+                                    .focused($focusedField, equals: .name)
+                                    .padding()
+                                    .background(Color.gray.opacity(0.12))
+                                    .cornerRadius(10)
+                                    .surfaceCard(10)
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Email")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                TextField("", text: $email, prompt: Text("Enter your email").foregroundColor(.primary.opacity(0.7)))
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.none)
+                                    .focused($focusedField, equals: .email)
+                                    .padding()
+                                    .background(Color.gray.opacity(0.12))
+                                    .cornerRadius(10)
+                                    .surfaceCard(10)
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Message")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                ZStack(alignment: .topLeading) {
+                                    TextEditor(text: $message)
+                                        .frame(minHeight: 120)
+                                        .scrollContentBackground(.hidden)
+                                        .focused($focusedField, equals: .message)
+                                        .padding(10)
+                                        .background(Color.gray.opacity(0.12))
+                                        .cornerRadius(10)
+                                        .surfaceCard(10)
+                                    if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text("Describe the issue")
+                                            .foregroundStyle(.primary.opacity(0.6))
+                                            .padding(.horizontal, 18)
+                                            .padding(.vertical, 16)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+
+                        Button(action: submitReport) {
+                            Label(isSubmitting ? "Submitting..." : "Submit", systemImage: "paperplane.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(accentColor.opacity(0.9))
+                                .foregroundStyle(.white)
+                                .cornerRadius(12)
+                        }
+                        .disabled(isSubmitting || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        if let submissionError {
+                            Text(submissionError)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .padding(20)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 24)
+            }
+            .navigationTitle("Report a Problem")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(action: dismissKeyboard) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                            .foregroundStyle(.primary)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+            }
+            .alert("Report submitted", isPresented: $showSuccessAlert) {
+                Button("OK") { dismiss() }
+            } message: {
+                Text("Thanks for letting us know. We'll review it shortly.")
+            }
+        }
+    }
+
+    private func dismissKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func submitReport() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedEmail.isEmpty, !trimmedMessage.isEmpty else { return }
+
+        submissionError = nil
+        isSubmitting = true
+
+        var data: [String: Any] = [
+            "name": trimmedName,
+            "email": trimmedEmail.lowercased(),
+            "message": trimmedMessage,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+
+        if let uid = Auth.auth().currentUser?.uid {
+            data["userId"] = uid
+        }
+
+        Firestore.firestore().collection("reports").addDocument(data: data) { error in
+            DispatchQueue.main.async {
+                isSubmitting = false
+                if let error {
+                    submissionError = "Failed to submit. Please try again."
+                    print("ReportProblemSheet: failed to submit report: \(error)")
+                } else {
+                    showSuccessAlert = true
+                    name = ""
+                    email = ""
+                    message = ""
+                }
+            }
+        }
+    }
+}
+
+private enum ReportField: Hashable {
+    case name, email, message
+}
+
 private struct SectionCard<Content: View>: View {
     var title: String
     @ViewBuilder var content: () -> Content
@@ -861,11 +1050,19 @@ private func accountActionRow(
 
 private struct AccountSection: View {
     var manageSubscriptionAction: () -> Void
+    var reportProblemAction: () -> Void
     var signOutAction: () -> Void
     var deleteAccountAction: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
+            accountActionRow(
+                title: "Report a Problem",
+                icon: "exclamationmark.bubble",
+                role: nil,
+                action: reportProblemAction
+            )
+
             accountActionRow(
                 title: "Sign Out",
                 icon: "arrow.right.square",

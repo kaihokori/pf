@@ -15,8 +15,10 @@ struct HeaderComponent: View {
             if themeManager.selectedTheme == .multiColour {
                 return LinearGradient(
                     gradient: Gradient(colors: [
-                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                      Color(red: 0.8274509804, green: 0.9882352941, blue: 0.9411764706),
+                      Color(red: 0.7450980392, green: 0.8196078431, blue: 0.9843137255),
+                      Color(red: 0.737254902, green: 0.5215686275, blue: 0.9725490196),
+                      Color(red: 0.7450980392, green: 0.4352941176, blue: 0.968627451)
                     ]),
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing

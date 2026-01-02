@@ -74,6 +74,28 @@ struct ProSubscriptionView: View {
         guard percent > 0 else { return nil }
         return "Save \(percent)%"
     }
+
+    private var expirationMessage: String? {
+        let now = Date()
+        if let expirationDate = subscriptionManager.latestSubscriptionExpiration, expirationDate > now {
+            let formatter = DateComponentsFormatter()
+            formatter.allowedUnits = [.year, .month, .day, .hour]
+            formatter.unitsStyle = .full
+            formatter.maximumUnitCount = 1
+            if let timeString = formatter.string(from: now, to: expirationDate) {
+                return "Your Trackerio Pro will end in \(timeString)"
+            }
+        } else if subscriptionManager.isTrialActive, let trialEnd = subscriptionManager.trialEndDate, trialEnd > now {
+            let formatter = DateComponentsFormatter()
+            formatter.allowedUnits = [.day, .hour]
+            formatter.unitsStyle = .full
+            formatter.maximumUnitCount = 1
+            if let timeString = formatter.string(from: now, to: trialEnd) {
+                return "Your Trackerio Pro will end in \(timeString)"
+            }
+        }
+        return nil
+    }
     
     var body: some View {
         NavigationStack {
@@ -209,6 +231,13 @@ struct ProSubscriptionView: View {
                                         }
                                     }
                                 }
+                            }
+
+                            if let message = expirationMessage {
+                                Text(message)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 8)
                             }
                         }
                         

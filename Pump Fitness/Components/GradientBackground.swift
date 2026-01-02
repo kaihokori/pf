@@ -13,11 +13,13 @@ struct GradientBackground: View {
         case .workout:
             return [Color.indigo.opacity(0.18), Color.blue.opacity(0.14), Color.red.opacity(0.18)]
         case .routine:
-            return [Color.blue.opacity(0.18), Color.white.opacity(0.14), Color.red.opacity(0.18)]
+            return [Color.purple.opacity(0.18), Color.indigo.opacity(0.14), Color.red.opacity(0.18)]
+            // return [Color.blue.opacity(0.18), Color.white.opacity(0.14), Color.red.opacity(0.18)]
         case .travel:
             return [Color.purple.opacity(0.18), Color.white.opacity(0.14), Color.green.opacity(0.18)]
         case .sports:
-            return [Color.purple.opacity(0.18), Color.white.opacity(0.14), Color.pink.opacity(0.18)]
+            return [Color.purple.opacity(0.18), Color.pink.opacity(0.14), Color.orange.opacity(0.18)]
+            // return [Color.purple.opacity(0.18), Color.white.opacity(0.14), Color.pink.opacity(0.18)]
         case .other:
             return [Color.purple.opacity(0.18), Color.blue.opacity(0.14), Color.indigo.opacity(0.18)]
         }

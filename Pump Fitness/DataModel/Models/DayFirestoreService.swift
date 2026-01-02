@@ -14,7 +14,8 @@ class DayFirestoreService {
 
     private func dateKey(forLocal date: Date) -> String {
         // Use local calendar to extract YMD, then construct UTC date.
-        let localCal = Calendar.current
+        var localCal = Calendar(identifier: .gregorian)
+        localCal.timeZone = TimeZone.current
         let components = localCal.dateComponents([.year, .month, .day], from: date)
         
         var utcCal = Calendar(identifier: .gregorian)

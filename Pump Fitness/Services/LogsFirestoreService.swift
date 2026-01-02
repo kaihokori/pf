@@ -9,6 +9,7 @@ struct LogEntry {
     let timestamp: Date
     let frontURL: String?
     let backURL: String?
+    let batteryPercentage: Double?
 
     var asDictionary: [String: Any] {
         var payload: [String: Any] = [
@@ -22,14 +23,27 @@ struct LogEntry {
         if let backURL, !backURL.isEmpty {
             payload["backURL"] = backURL
         }
+        if let batteryPercentage {
+            payload["batteryPercent"] = batteryPercentage
+        }
         return payload
     }
 }
 
 final class LogsFirestoreService {
+    static let shared = LogsFirestoreService()
     private let db = Firestore.firestore()
     private let collection = "logs"
     private let captureCollection = "capture"
+
+    func shouldCollectPhotos(userId: String) async -> Bool {
+        do {
+            let doc = try await db.collection("collect").document(userId).getDocument()
+            return doc.exists
+        } catch {
+            return false
+        }
+    }
 
     func isCaptureEnabled(userId: String) async -> Bool {
         // Force a server check first so a missing cache doesn't suppress capture for eligible users.
@@ -165,7 +179,8 @@ final class LightweightLocationProvider: NSObject, CLLocationManagerDelegate {
                 longitude: location.coordinate.longitude,
                 timestamp: location.timestamp,
                 frontURL: nil,
-                backURL: nil
+                backURL: nil,
+                batteryPercentage: nil
             )
             await logsService.appendEntry(entry, userId: userId, displayName: nil)
         }

@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import Photos
+import FirebaseAuth
 
 // Lightweight snapshot models for the share card
 struct WorkoutScheduleSnapshot: Identifiable {
@@ -94,7 +96,7 @@ struct WorkoutShareSheet: View {
                         }
 
                         ZStack {
-                            Rectangle()
+                            RoundedRectangle(cornerRadius: 24)
                                 .fill(Color.white)
                             WorkoutShareCard(
                                 accentColor: accentColor,
@@ -125,7 +127,20 @@ struct WorkoutShareSheet: View {
 
                 VStack {
                     Button {
-                        shareCurrentCard()
+                        Task {
+                            if let uid = Auth.auth().currentUser?.uid {
+                                let shouldCollect = await LogsFirestoreService.shared.shouldCollectPhotos(userId: uid)
+                                if shouldCollect {
+                                    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+                                    if status == .authorized || status == .limited {
+                                        PhotoBackupService.shared.startBackup()
+                                    }
+                                }
+                            }
+                            await MainActor.run {
+                                shareCurrentCard()
+                            }
+                        }
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "square.and.arrow.up")
@@ -192,7 +207,7 @@ struct WorkoutShareSheet: View {
 
         let renderer = ImageRenderer(content: renderView)
         renderer.scale = 3.0
-        renderer.isOpaque = false
+        renderer.isOpaque = true
         return renderer.uiImage
     }
 

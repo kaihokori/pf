@@ -838,6 +838,12 @@ struct NutritionTabView: View {
             .presentationDetents([.fraction(0.38)])
             .presentationDragIndicator(.visible)
         }
+        .onAppear {
+            updateWeeklyEntries()
+        }
+        .onChange(of: account.weeklyProgress) { _, _ in
+            updateWeeklyEntries()
+        }
     }
 }
 
@@ -864,6 +870,19 @@ private extension NutritionTabView {
     var accentOverride: Color? {
         guard themeManager.selectedTheme != .multiColour else { return nil }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    private func updateWeeklyEntries() {
+        weeklyEntries = account.weeklyProgress.map { record in
+            WeeklyProgressEntry(
+                id: UUID(uuidString: record.id) ?? UUID(),
+                date: record.date,
+                weight: record.weight,
+                waterPercent: record.waterPercent,
+                bodyFatPercent: record.bodyFatPercent,
+                photoData: record.photoData
+            )
+        }
     }
 
     private var macroMetrics: [MacroMetric] {

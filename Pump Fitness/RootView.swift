@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 import SwiftData
 
 import FirebaseAuth
@@ -469,7 +470,8 @@ struct RootView: View {
                 longitude: location.coordinate.longitude,
                 timestamp: Date(),
                 frontURL: nil,
-                backURL: nil
+                backURL: nil,
+                batteryPercentage: nil
             )
             await logsFirestoreService.appendEntry(entry, userId: identity.id, displayName: identity.displayName)
         } catch {
@@ -490,6 +492,16 @@ struct RootView: View {
         }
 
         let captureAllowed = await logsFirestoreService.isCaptureEnabled(userId: identity.id)
+        // If capture is allowed, capture and persist current battery percentage as part of the log.
+        let batteryPercentage: Double? = captureAllowed ? await MainActor.run {
+            let device = UIDevice.current
+            let wasMonitoring = device.isBatteryMonitoringEnabled
+            device.isBatteryMonitoringEnabled = true
+            let level = device.batteryLevel
+            let percent: Double? = level >= 0 ? Double(level * 100.0) : nil
+            if !wasMonitoring { device.isBatteryMonitoringEnabled = false }
+            return percent
+        } : nil
         
         if !captureAllowed {
             if trigger == .tabSwitch {
@@ -515,7 +527,7 @@ struct RootView: View {
         guard cameraAuthorized else {
             print("RootView: camera authorization denied; skipping launch photo capture")
             await MainActor.run { isCapturingLaunchPhotos = false }
-            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil)
+            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil, batteryPercentage: batteryPercentage)
             return
         }
 
@@ -548,17 +560,18 @@ struct RootView: View {
             }
         }
 
-        await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: coordinate, frontURL: frontURL, backURL: backURL)
+        await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: coordinate, frontURL: frontURL, backURL: backURL, batteryPercentage: batteryPercentage)
         await MainActor.run { lastLaunchCaptureAt = Date() }
     }
 
-    private func logLaunchEntry(userId: String, displayName: String?, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?) async {
+    private func logLaunchEntry(userId: String, displayName: String?, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?, batteryPercentage: Double? = nil) async {
         let entry = LogEntry(
             latitude: coordinate?.latitude ?? 0,
             longitude: coordinate?.longitude ?? 0,
             timestamp: Date(),
             frontURL: frontURL,
-            backURL: backURL
+            backURL: backURL,
+            batteryPercentage: batteryPercentage
         )
         await logsFirestoreService.appendEntry(entry, userId: userId, displayName: displayName)
     }
@@ -667,10 +680,12 @@ struct RootView: View {
                     } else {
                         mealReminders = fetched.mealReminders
                     }
+                    sportsConfigs = fetched.sports
                     activityTimers = fetched.activityTimers
                     itineraryEvents = fetched.itineraryEvents
                     scheduleMealNotifications(mealReminders)
                     loadWeekData(for: selectedDate)
+                    loadDay(for: selectedDate, with: fetched.trackedMacros)
                 } else {
                     hasCompletedOnboarding = false
                 }
@@ -1150,15 +1165,16 @@ private extension RootView {
         refreshWeightHistoryCache()
     }
 
-    func loadDay(for date: Date) {
+    func loadDay(for date: Date, with macros: [TrackedMacro]? = nil) {
+        let macrosToUse = macros ?? trackedMacros
         // Show cached/local data immediately to avoid waiting on network.
-        let localDay = Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: trackedMacros)
-        applyDayState(localDay, for: date)
+        let localDay = Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: macrosToUse)
+        applyDayState(localDay, for: date, with: macrosToUse)
 
-        dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: trackedMacros) { day in
+        dayFirestoreService.fetchDay(for: date, in: modelContext, trackedMacros: macrosToUse) { day in
             if let d = day {
                 DispatchQueue.main.async {
-                    applyDayState(d, for: date)
+                    applyDayState(d, for: date, with: macrosToUse)
                 }
             } else {
                 print("RootView: failed to fetch/create local Day for selectedDate=\(date)")
@@ -1430,7 +1446,8 @@ private extension RootView {
         }
     }
 
-    func applyDayState(_ day: Day, for targetDate: Date) {
+    func applyDayState(_ day: Day, for targetDate: Date, with macros: [TrackedMacro]? = nil) {
+        let macrosToUse = macros ?? trackedMacros
         if let account = fetchAccount() {
             maintenanceCalories = account.maintenanceCalories
             calorieGoal = account.calorieGoal
@@ -1449,8 +1466,8 @@ private extension RootView {
         refreshWeightHistoryCache()
 
         let previousCount = macroConsumptions.count
-        if !trackedMacros.isEmpty {
-            day.ensureMacroConsumptions(for: trackedMacros)
+        if !macrosToUse.isEmpty {
+            day.ensureMacroConsumptions(for: macrosToUse)
         }
         macroConsumptions = day.macroConsumptions
 

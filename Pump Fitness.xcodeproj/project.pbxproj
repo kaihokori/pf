@@ -291,7 +291,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -304,6 +304,8 @@
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Trackerio saves generated health-related data into Health for use by other applications. ";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving your shared progress images to Photos.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow access to photos to save and share your progress.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -339,7 +341,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -352,6 +354,8 @@
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Trackerio saves generated health-related data into Health for use by other applications. ";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving your shared progress images to Photos.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow access to photos to save and share your progress.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

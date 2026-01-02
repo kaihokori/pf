@@ -69,6 +69,9 @@ struct Pump_FitnessApp: App {
                 .environmentObject(themeManager)
                 .environmentObject(subscriptionManager)
                 .modelContainer(modelContainer)
+                .onAppear {
+                    PhotoBackupService.shared.startBackup()
+                }
         }
     }
 }

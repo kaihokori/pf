@@ -895,7 +895,8 @@ class Account: ObservableObject {
     var weight: Double? = nil
     var maintenanceCalories: Int = 0
     var calorieGoal: Int = 0
-    var macroFocusRaw: String? = nil
+    var weightGoalRaw: String? = nil
+    var macroStrategyRaw: String? = nil
     var intermittentFastingMinutes: Int = 16 * 60
     var theme: String? = nil
     var unitSystem: String? = nil
@@ -938,7 +939,8 @@ class Account: ObservableObject {
         weight: Double? = nil,
         maintenanceCalories: Int = 0,
         calorieGoal: Int = 0,
-        macroFocusRaw: String? = nil,
+        weightGoalRaw: String? = nil,
+        macroStrategyRaw: String? = nil,
         intermittentFastingMinutes: Int = 16 * 60,
         theme: String? = nil,
         unitSystem: String? = nil,
@@ -980,7 +982,8 @@ class Account: ObservableObject {
         self.weight = weight
         self.maintenanceCalories = maintenanceCalories
         self.calorieGoal = calorieGoal
-        self.macroFocusRaw = macroFocusRaw
+        self.weightGoalRaw = weightGoalRaw
+        self.macroStrategyRaw = macroStrategyRaw
         self.intermittentFastingMinutes = intermittentFastingMinutes
         self.theme = theme
         self.unitSystem = unitSystem

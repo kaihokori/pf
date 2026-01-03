@@ -192,7 +192,7 @@ struct ProSubscriptionView: View {
                                 .padding()
                         } else {
                             VStack(alignment: .leading) {
-                                Text("Select a Plan")
+                                Text("Select a Plan (USD)")
                                   .font(.body)
                                   .foregroundStyle(.secondary)
                                   .multilineTextAlignment(.center)

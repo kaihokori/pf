@@ -52,13 +52,70 @@ struct MacroCalculator {
         }
     }
 
+    enum WeightGoalOption: String, CaseIterable, Identifiable {
+        case mildWeightLoss
+        case mildWeightGain
+        case weightLoss
+        case weightGain
+        case extremeWeightLoss
+        case extremeWeightGain
+        case maintainWeight
+        case custom
+        
+        var id: String { rawValue }
+        
+        var displayName: String {
+            switch self {
+            case .mildWeightLoss: return "Mild Weight Loss"
+            case .mildWeightGain: return "Mild Weight Gain"
+            case .weightLoss: return "Weight Loss"
+            case .weightGain: return "Weight Gain"
+            case .extremeWeightLoss: return "Extreme Weight Loss"
+            case .extremeWeightGain: return "Extreme Weight Gain"
+            case .maintainWeight: return "Maintain Weight"
+            case .custom: return "Custom"
+            }
+        }
+    }
+
+    enum MacroDistributionStrategy: String, CaseIterable, Identifiable {
+        case highProtein
+        case balanced
+        case lowFat
+        case lowCarb
+        case custom
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .highProtein: return "High Protein"
+            case .balanced: return "Balanced"
+            case .lowFat: return "Low Fat"
+            case .lowCarb: return "Low Carb"
+            case .custom: return "Custom"
+            }
+        }
+        
+        var description: String {
+            switch self {
+            case .highProtein: return "Protein 2.5g/kg (min 30%) • Fat 20% • Carbs Remainder"
+            case .balanced: return "Protein 25% • Fat 25% • Carbs Remainder"
+            case .lowFat: return "Protein 1.6g/kg • Fat 15% • Carbs Remainder"
+            case .lowCarb: return "Protein 2.0g/kg • Carbs 10% • Fat Remainder"
+            case .custom: return "Manually set your macro targets"
+            }
+        }
+    }
+
     struct Input {
         var gender: Gender
         var birthDate: Date
         var heightCm: Double
         var weightKg: Double
         var activityLevel: ActivityLevel
-        var macroFocus: MacroFocusOption
+        var weightGoal: WeightGoalOption
+        var macroStrategy: MacroDistributionStrategy
     }
 
     struct Result {
@@ -71,7 +128,7 @@ struct MacroCalculator {
         var waterMl: Int
     }
 
-    static func calculateTargets(for input: Input, referenceDate: Date = Date()) -> Result? {
+    static func calculateTargets(for input: Input, referenceDate: Date = Date(), overrideCalories: Int? = nil) -> Result? {
         guard let ageYears = age(inYearsAt: referenceDate, birthDate: input.birthDate), (0...120).contains(ageYears) else {
             return nil
         }
@@ -94,63 +151,98 @@ struct MacroCalculator {
 
         let tdee = rmr * input.activityLevel.multiplier
         
-        // Calculate Target Calories and Macros based on MacroFocus
+        // Calculate Target Calories based on Weight Goal
         var targetCalories: Double
+        
+        if let override = overrideCalories {
+            targetCalories = Double(override)
+        } else {
+            switch input.weightGoal {
+            case .maintainWeight:
+                targetCalories = tdee
+            case .mildWeightLoss:
+                targetCalories = tdee - 250
+            case .weightLoss:
+                targetCalories = tdee - 500
+            case .extremeWeightLoss:
+                targetCalories = tdee - 1000
+            case .mildWeightGain:
+                targetCalories = tdee + 250
+            case .weightGain:
+                targetCalories = tdee + 500
+            case .extremeWeightGain:
+                targetCalories = tdee + 1000
+            case .custom:
+                targetCalories = tdee
+            }
+        }
+        
+        // Ensure safe minimum
+        targetCalories = max(1200, targetCalories)
+        
         var proteinG: Double
         var fatsG: Double
         var carbsG: Double
         
-        switch input.macroFocus {
-        case .leanCutting:
-            // Calories: TDEE - 500
-            // Protein: 2.5 x BW
-            // Fats: 20%
-            // Carbs: Remainder
-            targetCalories = tdee - 500
-            proteinG = 2.5 * weight
-            fatsG = (targetCalories * 0.20) / 9.0
-            let remainingCalories = targetCalories - (proteinG * 4) - (fatsG * 9)
-            carbsG = max(0, remainingCalories / 4.0)
+        // Calculate Macros based on Strategy
+        switch input.macroStrategy {
+        case .highProtein:
+            // Protein = 2.5 x BW (or 30% of calories, whichever is higher)
+            // Fat = 20%
+            // Carbs = remaining calories
+            let proteinByWeight = 2.5 * weight
+            let proteinByCal = (targetCalories * 0.30) / 4.0
+            proteinG = max(proteinByWeight, proteinByCal)
             
-        case .lowCarb:
-            // Calories: TDEE - 500
-            // Protein: 2.1 x BW
-            // Carbs: 10%
-            // Fats: Remainder
-            targetCalories = tdee - 500
-            proteinG = 2.1 * weight
-            carbsG = (targetCalories * 0.10) / 4.0
-            let remainingCalories = targetCalories - (proteinG * 4) - (carbsG * 4)
-            fatsG = max(0, remainingCalories / 9.0)
+            let proteinCal = proteinG * 4.0
+            let fatCal = targetCalories * 0.20
+            fatsG = fatCal / 9.0
+            let remainingCal = targetCalories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
             
         case .balanced:
-            // Calories: TDEE
-            // Protein: 2.3 x BW
-            // Fats: 30%
-            // Carbs: Remainder (Target ~40%)
-            targetCalories = tdee
-            proteinG = 2.3 * weight
-            fatsG = (targetCalories * 0.30) / 9.0
-            let remainingCalories = targetCalories - (proteinG * 4) - (fatsG * 9)
-            carbsG = max(0, remainingCalories / 4.0)
+            // Protein = 25%
+            // Fat = 25%
+            // Carbs = remaining calories
+            let proteinCal = targetCalories * 0.25
+            proteinG = proteinCal / 4.0
+            let fatCal = targetCalories * 0.25
+            fatsG = fatCal / 9.0
+            let remainingCal = targetCalories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
             
-        case .leanBulking:
-            // Calories: TDEE + 350
-            // Protein: 2.5 x BW
-            // Fats: 20%
-            // Carbs: Remainder (Target ~50%)
-            targetCalories = tdee + 350
-            proteinG = 2.5 * weight
-            fatsG = (targetCalories * 0.20) / 9.0
-            let remainingCalories = targetCalories - (proteinG * 4) - (fatsG * 9)
-            carbsG = max(0, remainingCalories / 4.0)
+        case .lowFat:
+            // Protein = 1.6 x BW
+            // Fat = 15%
+            // Carbs = remaining calories
+            proteinG = 1.6 * weight
+            let proteinCal = proteinG * 4.0
+            let fatCal = targetCalories * 0.15
+            fatsG = fatCal / 9.0
+            let remainingCal = targetCalories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
+            
+        case .lowCarb:
+            // Protein = 2.0 x BW
+            // Carbs = 10%
+            // Fat = remaining calories
+            proteinG = 2.0 * weight
+            let proteinCal = proteinG * 4.0
+            let carbCal = targetCalories * 0.10
+            carbsG = carbCal / 4.0
+            let remainingCal = targetCalories - proteinCal - carbCal
+            fatsG = max(0, remainingCal / 9.0)
             
         case .custom:
-            return nil
+            // Default fallback (Balanced)
+            let proteinCal = targetCalories * 0.25
+            proteinG = proteinCal / 4.0
+            let fatCal = targetCalories * 0.25
+            fatsG = fatCal / 9.0
+            let remainingCal = targetCalories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
         }
-        
-        // Safety clamps
-        targetCalories = max(1200, targetCalories)
+
         
         // Fibre: 14g per 1000 kcal, clamped 20-40g
         let fibreFromCalories = (targetCalories / 1000) * 14
@@ -199,18 +291,20 @@ extension MacroCalculator {
         heightInches: String,
         weightValue: String,
         workoutDays: Int,
-        macroFocus: MacroFocusOption
+        weightGoal: WeightGoalOption,
+        macroStrategy: MacroDistributionStrategy,
+        activityLevelRaw: String? = nil
     ) -> Input? {
                 guard let genderOption = genderOption,
                             genderOption != .preferNotSay,
-                            macroFocus != .custom,
+                            weightGoal != .custom,
                             let heightCm = heightInCentimeters(unitSystem: unitSystem, heightValue: heightValue, heightFeet: heightFeet, heightInches: heightInches),
                             let weightKg = weightInKilograms(unitSystem: unitSystem, weightValue: weightValue) else {
                         return nil
                 }
 
         let gender: Gender = (genderOption == .male) ? .male : .female
-        let activityLevel = ActivityLevel.fromWorkoutDays(workoutDays)
+        let activityLevel = ActivityLevel.fromAccountActivityLevel(activityLevelRaw) ?? ActivityLevel.fromWorkoutDays(workoutDays)
 
         return Input(
             gender: gender,
@@ -218,7 +312,8 @@ extension MacroCalculator {
             heightCm: heightCm,
             weightKg: weightKg,
             activityLevel: activityLevel,
-            macroFocus: macroFocus
+            weightGoal: weightGoal,
+            macroStrategy: macroStrategy
         )
     }
 

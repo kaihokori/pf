@@ -322,7 +322,8 @@ struct OnboardingView: View {
         account.activityLevel = viewModel.selectedActivityLevel.rawValue
         account.maintenanceCalories = Int(viewModel.maintenanceCaloriesValue) ?? 0
         account.calorieGoal = calorieGoal
-        account.macroFocusRaw = viewModel.selectedMacroFocus?.rawValue
+        account.weightGoalRaw = viewModel.selectedWeightGoal?.rawValue
+        account.macroStrategyRaw = viewModel.selectedMacroStrategy.rawValue
         
         account.startWeekOn = account.startWeekOn?.isEmpty == false ? account.startWeekOn : "monday"
         account.autoRestDayIndices = autoRestDayIndices
@@ -362,7 +363,8 @@ struct OnboardingView: View {
         let day = Day.fetchOrCreate(for: today, in: modelContext, trackedMacros: trackedMacros)
         day.calorieGoal = calorieGoal
         day.maintenanceCalories = account.maintenanceCalories
-        day.macroFocusRaw = account.macroFocusRaw
+        day.weightGoalRaw = account.weightGoalRaw
+        day.macroStrategyRaw = account.macroStrategyRaw
         day.weightUnitRaw = weightUnitRaw
         day.ensureMacroConsumptions(for: trackedMacros)
         if !dailyTasks.isEmpty {
@@ -377,6 +379,66 @@ struct OnboardingView: View {
             try modelContext.save()
         } catch {
             print("Failed to save account to SwiftData: \(error)")
+        }
+        
+        // Schedule notifications
+        // Daily Tasks
+        if UserDefaults.standard.object(forKey: "alerts.dailyTasksEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleDailyTaskNotifications(dailyTasks)
+        } else {
+            NotificationsHelper.removeDailyTaskNotifications()
+        }
+
+        // Habits
+        if UserDefaults.standard.object(forKey: "alerts.habitsEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleHabitNotifications(habits)
+        } else {
+            NotificationsHelper.removeHabitNotifications()
+        }
+
+        // Daily Check-In
+        if UserDefaults.standard.object(forKey: "alerts.dailyCheckInEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleDailyCheckInNotifications(autoRestIndices: Set(account.autoRestDayIndices), completedIndices: [])
+        } else {
+            NotificationsHelper.removeDailyCheckInNotifications()
+        }
+
+        // Weekly Progress
+        if UserDefaults.standard.object(forKey: "alerts.weeklyProgressEnabled") as? Bool ?? true {
+            let time = UserDefaults.standard.double(forKey: "alerts.weeklyProgressTime")
+            let resolvedTime = time == 0 ? 9 * 3600 : time
+            NotificationsHelper.scheduleWeeklyProgressNotifications(time: resolvedTime)
+        } else {
+            NotificationsHelper.removeWeeklyProgressNotifications()
+        }
+
+        if UserDefaults.standard.object(forKey: "alerts.weeklyScheduleEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleWeeklyScheduleNotifications(workoutSchedule)
+        } else {
+            NotificationsHelper.removeWeeklyScheduleNotifications()
+        }
+        
+        if UserDefaults.standard.object(forKey: "alerts.itineraryEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleItineraryNotifications(account.itineraryEvents)
+        } else {
+            NotificationsHelper.removeItineraryNotifications()
+        }
+
+        let defaults = UserDefaults.standard
+        let nutritionEnabled = defaults.object(forKey: "alerts.nutritionSupplementsEnabled") as? Bool ?? true
+        let nutritionTime = defaults.object(forKey: "alerts.nutritionSupplementsTime") as? Double ?? (9 * 3600)
+        if nutritionEnabled {
+            NotificationsHelper.scheduleNutritionSupplementNotifications(account.nutritionSupplements, time: nutritionTime)
+        } else {
+            NotificationsHelper.removeNutritionSupplementNotifications()
+        }
+
+        let workoutSuppEnabled = defaults.object(forKey: "alerts.workoutSupplementsEnabled") as? Bool ?? true
+        let workoutSuppTime = defaults.object(forKey: "alerts.workoutSupplementsTime") as? Double ?? (16 * 3600)
+        if workoutSuppEnabled {
+            NotificationsHelper.scheduleWorkoutSupplementNotifications(account.workoutSupplements, time: workoutSuppTime)
+        } else {
+            NotificationsHelper.removeWorkoutSupplementNotifications()
         }
 
         let accountService = AccountFirestoreService()
@@ -504,6 +566,9 @@ struct OnboardingView: View {
             }
             return "Please complete all fields."
         case .nutritionTracking:
+            if let error = validateMacroField(value: viewModel.calorieValue, label: "Calorie target", min: 500, max: 20000) {
+                return error
+            }
             if let error = validateMacroField(value: viewModel.proteinValue, label: "Protein target", min: 0, max: 10000) {
                 return error
             }
@@ -516,8 +581,8 @@ struct OnboardingView: View {
             guard parsedNumber(from: viewModel.waterIntakeValue) != nil else {
                 return "Please enter a valid water intake target."
             }
-            if viewModel.selectedMacroFocus == nil {
-                return "Please select your macro focus."
+            if viewModel.selectedWeightGoal == nil {
+                return "Please select your weight goal."
             }
             return "Please complete all fields."
         case .dailySupplements:
@@ -712,39 +777,17 @@ private struct AccountSetupStepView: View {
 
 private struct NutritionTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @State private var showMacroExplainer = false
+    @State private var showWeightGoalExplainer = false
+    @State private var showMacroStrategyExplainer = false
     @State private var showMaintenanceExplainer = false
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            SectionTitle("Macro Goal")
+            SectionTitle("Maintenance Calories")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
-                ForEach(MacroFocusOption.allCases) { option in
-                    SelectablePillComponent(
-                        label: option.displayName,
-                        isSelected: viewModel.selectedMacroFocus == option
-                    ) {
-                        viewModel.selectMacroFocus(option)
-                    }
-                }
-            }
-
-            Button(action: { showMacroExplainer = true }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "info.circle")
-                    Text("Tap for Explanation")
-                    Spacer()
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-
-            SectionTitle("Tracked Macros")
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Maintenance Calories")
                         .font(.footnote)
@@ -796,10 +839,99 @@ private struct NutritionTrackingStepView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                
+            }
 
-                // Fibre field removed per request
+            SectionTitle("Weight Goal")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
+                ForEach(MacroCalculator.WeightGoalOption.allCases) { option in
+                    SelectablePillComponent(
+                        label: option.displayName,
+                        isSelected: viewModel.selectedWeightGoal == option
+                    ) {
+                        viewModel.selectWeightGoal(option)
+                    }
+                }
+            }
 
+            Button(action: { showWeightGoalExplainer = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                    Text("Tap for Explanation")
+                    Spacer()
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            
+            SectionTitle("Macro Strategy")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
+                ForEach(MacroCalculator.MacroDistributionStrategy.allCases) { option in
+                    SelectablePillComponent(
+                        label: option.displayName,
+                        isSelected: viewModel.selectedMacroStrategy == option
+                    ) {
+                        viewModel.selectedMacroStrategy = option
+                    }
+                }
+            }
+
+            Button(action: { showMacroStrategyExplainer = true }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                    Text("Tap for Explanation")
+                    Spacer()
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            SectionTitle("Target Calories")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    TextField(
+                        "0",
+                        text: Binding(
+                            get: { viewModel.calorieValue },
+                            set: { viewModel.updateMacroField(.calories, newValue: $0) }
+                        )
+                    )
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.plain)
+                    Text("cal")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    
+                    let disableAuto = viewModel.shouldDisableCalorieAuto
+                    Button(action: { viewModel.autoCalculateMacro(.calories) }) {
+                        Text("Auto")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                    .fill(Color.accentColor)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(disableAuto)
+                    .opacity(disableAuto ? 0.5 : 1)
+                }
+                .padding()
+                .surfaceCard(12)
+            }
+
+            SectionTitle("Tracked Macros")
+            VStack(spacing: 16) {
                 // Protein
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
@@ -1106,16 +1238,32 @@ private struct NutritionTrackingStepView: View {
             .sheet(isPresented: $showMaintenanceExplainer) {
                 MaintenanceCaloriesExplainer()
             }
-            .sheet(isPresented: $showMacroExplainer) {
+            .sheet(isPresented: $showWeightGoalExplainer) {
                 NavigationStack {
-                    MacroCalculationExplainer()
+                    WeightGoalExplainer()
                         .padding(.horizontal, 18)
-                        .navigationTitle("Macro Information")
+                        .navigationTitle("Weight Goals")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .navigationBarLeading) {
                                 Button("Done") {
-                                    showMacroExplainer = false
+                                    showWeightGoalExplainer = false
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
+                }
+            }
+            .sheet(isPresented: $showMacroStrategyExplainer) {
+                NavigationStack {
+                    MacroStrategyExplainer()
+                        .padding(.horizontal, 18)
+                        .navigationTitle("Macro Strategies")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showMacroStrategyExplainer = false
                                 }
                                 .foregroundStyle(.primary)
                             }
@@ -2246,7 +2394,8 @@ final class OnboardingViewModel: ObservableObject {
     private var workoutDaysCount: Int {
         max(0, Weekday.allCases.count - selectedWorkoutDays.count)
     }
-    @Published var selectedMacroFocus: MacroFocusOption?
+    @Published var selectedWeightGoal: MacroCalculator.WeightGoalOption?
+    @Published var selectedMacroStrategy: MacroCalculator.MacroDistributionStrategy = .balanced
     @Published var maintenanceCaloriesValue: String = ""
     @Published var calorieValue: String = ""
     @Published var proteinValue: String = ""
@@ -2386,7 +2535,12 @@ final class OnboardingViewModel: ObservableObject {
             selectedActivityLevel = ActivityLevelOption(rawValue: account.activityLevel ?? ActivityLevelOption.moderatelyActive.rawValue) ?? .moderatelyActive
             maintenanceCaloriesValue = account.maintenanceCalories > 0 ? String(account.maintenanceCalories) : ""
             calorieValue = account.calorieGoal > 0 ? String(account.calorieGoal) : ""
-            macroFocusRawToSelection(account.macroFocusRaw)
+            if let wRaw = account.weightGoalRaw {
+                selectedWeightGoal = MacroCalculator.WeightGoalOption(rawValue: wRaw)
+            }
+            if let sRaw = account.macroStrategyRaw {
+                selectedMacroStrategy = MacroCalculator.MacroDistributionStrategy(rawValue: sRaw) ?? .balanced
+            }
             customMacros = account.trackedMacros.filter { defaultMacroNames.contains($0.name) == false }
             goals = account.goals
             expenseCategories = account.expenseCategories
@@ -2404,12 +2558,6 @@ final class OnboardingViewModel: ObservableObject {
         ["Protein", "Carbs", "Fats", "Water"]
     }
 
-    private func macroFocusRawToSelection(_ raw: String?) {
-        guard let raw else { return }
-        if let focus = MacroFocusOption(rawValue: raw) {
-            selectedMacroFocus = focus
-        }
-    }
 
     var currentStepIndex: Int {
         steps.firstIndex(of: currentStep) ?? 0
@@ -2434,12 +2582,19 @@ final class OnboardingViewModel: ObservableObject {
             heightFeet: heightFeet,
             heightInches: heightInches,
             weightValue: weightValue,
-            workoutDays: workoutDaysCount
+            workoutDays: workoutDaysCount,
+            activityLevelRaw: selectedActivityLevel.rawValue
         )
     }
 
     var shouldDisableMaintenanceAuto: Bool {
-        selectedGender == .preferNotSay || selectedMacroFocus == nil || selectedMacroFocus == .custom
+        selectedGender == .preferNotSay
+    }
+
+    var shouldDisableCalorieAuto: Bool {
+        // Disable calorie Auto when gender is unspecified or the user
+        // has selected a custom macro focus (cannot compute from presets).
+        selectedGender == .preferNotSay || selectedWeightGoal == .custom
     }
 
     var canContinue: Bool {
@@ -2454,7 +2609,7 @@ final class OnboardingViewModel: ObservableObject {
                 && Double(fatValue) != nil
                 && Double(carbohydrateValue) != nil
                 && Double(waterIntakeValue) != nil
-            let macroFocusValid = selectedMacroFocus != nil
+            let macroFocusValid = selectedWeightGoal != nil
             return macrosValid && macroFocusValid
         case .dailySupplements:
             return true
@@ -2623,13 +2778,13 @@ final class OnboardingViewModel: ObservableObject {
         regenerateWorkoutSchedule()
     }
 
-    func markMacroFocusAsCustom() {
-        selectedMacroFocus = .custom
+    func markWeightGoalAsCustom() {
+        selectedWeightGoal = .custom
         lastCalculatedTargets = nil
     }
 
-    func selectMacroFocus(_ option: MacroFocusOption) {
-        selectedMacroFocus = option
+    func selectWeightGoal(_ option: MacroCalculator.WeightGoalOption) {
+        selectedWeightGoal = option
 
         guard option != .custom else {
             lastCalculatedTargets = nil
@@ -2641,35 +2796,21 @@ final class OnboardingViewModel: ObservableObject {
             maintenanceCaloriesValue = String(maintenance)
         }
 
-        // Try to compute full macro targets using the new logic from MaintenanceCaloriesExplainer
-        if let input = MacroCalculator.makeInput(
-            genderOption: selectedGender,
-            birthDate: birthDate,
-            unitSystem: unitSystem,
-            heightValue: heightValue,
-            heightFeet: heightFeet,
-            heightInches: heightInches,
-            weightValue: weightValue,
-            workoutDays: workoutDaysCount,
-            macroFocus: option
-        ), let result = MacroCalculator.calculateTargets(for: input) {
-            applyMacroTargets(result)
-        } else {
-            lastCalculatedTargets = nil
-        }
+        // Do not auto-apply macros here; let the user trigger Auto explicitly.
+        lastCalculatedTargets = nil
     }
 
     func updateMaintenanceCalories(_ newValue: String) {
         maintenanceCaloriesValue = newValue
 
-        guard let focus = selectedMacroFocus, focus != .custom else { return }
+        guard let focus = selectedWeightGoal, focus != .custom else { return }
         guard let autoMaintenance = estimatedMaintenanceCalories else { return }
 
         let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let enteredValue = Double(trimmed) else { return }
 
         if Int(enteredValue.rounded()) != autoMaintenance {
-            markMacroFocusAsCustom()
+            markWeightGoalAsCustom()
         }
     }
     
@@ -2681,6 +2822,32 @@ final class OnboardingViewModel: ObservableObject {
     }
     
     func autoCalculateMacro(_ field: MacroField) {
+        // First try to respect the selected weight goal using current maintenance, then
+        // fall back to the full macro calculator if needed.
+        if field == .calories, let goal = selectedWeightGoal, goal != .custom {
+            let maintenance = Int(maintenanceCaloriesValue)
+                ?? estimatedMaintenanceCalories
+
+            let targetCalories: Int? = {
+                guard let maintenance else { return nil }
+                switch goal {
+                case .maintainWeight: return maintenance
+                case .mildWeightLoss: return maintenance - 250
+                case .weightLoss: return maintenance - 500
+                case .extremeWeightLoss: return maintenance - 1000
+                case .mildWeightGain: return maintenance + 250
+                case .weightGain: return maintenance + 500
+                case .extremeWeightGain: return maintenance + 1000
+                case .custom: return maintenance
+                }
+            }()
+
+            if let target = targetCalories {
+                calorieValue = String(max(1200, target))
+                return
+            }
+        }
+
         guard let input = MacroCalculator.makeInput(
             genderOption: selectedGender,
             birthDate: birthDate,
@@ -2690,7 +2857,8 @@ final class OnboardingViewModel: ObservableObject {
             heightInches: heightInches,
             weightValue: weightValue,
             workoutDays: workoutDaysCount,
-            macroFocus: selectedMacroFocus ?? .balanced
+            weightGoal: selectedWeightGoal ?? .maintainWeight,
+            macroStrategy: selectedMacroStrategy
         ), let result = MacroCalculator.calculateTargets(for: input) else { return }
         
         switch field {
@@ -2707,6 +2875,10 @@ final class OnboardingViewModel: ObservableObject {
     func autoCalculateAllMacros() {
         // Prefer provided gender, otherwise default to male for calculation
         let genderForCalc = selectedGender ?? .male
+        
+        // Use current calorie value if valid
+        let currentCalories = Int(calorieValue)
+        
         guard let input = MacroCalculator.makeInput(
             genderOption: genderForCalc,
             birthDate: birthDate,
@@ -2716,14 +2888,17 @@ final class OnboardingViewModel: ObservableObject {
             heightInches: heightInches,
             weightValue: weightValue,
             workoutDays: workoutDaysCount,
-            macroFocus: selectedMacroFocus ?? .balanced
-        ), let result = MacroCalculator.calculateTargets(for: input) else { return }
+            weightGoal: selectedWeightGoal ?? .maintainWeight,
+            macroStrategy: selectedMacroStrategy
+        ), let result = MacroCalculator.calculateTargets(for: input, overrideCalories: currentCalories) else { return }
 
-        applyMacroTargets(result)
+        applyMacroTargets(result, overrideCalories: currentCalories, updateCalories: false)
     }
 
-    private func applyMacroTargets(_ result: MacroCalculator.Result, overrideCalories: Int? = nil) {
-        calorieValue = String(overrideCalories ?? result.calories)
+    private func applyMacroTargets(_ result: MacroCalculator.Result, overrideCalories: Int? = nil, updateCalories: Bool = true) {
+        if updateCalories {
+            calorieValue = String(overrideCalories ?? result.calories)
+        }
         proteinValue = String(result.protein)
         proteinUnit = "g"
         carbohydrateValue = String(result.carbohydrates)
@@ -2738,7 +2913,8 @@ final class OnboardingViewModel: ObservableObject {
 
     func updateMacroField(_ field: MacroField, newValue: String) {
         switch field {
-        case .calories: calorieValue = newValue
+        case .calories:
+            calorieValue = newValue
         case .protein: proteinValue = newValue
         case .fats: fatValue = newValue
         case .carbohydrates: carbohydrateValue = newValue
@@ -2746,15 +2922,15 @@ final class OnboardingViewModel: ObservableObject {
         case .water: waterIntakeValue = newValue
         }
 
-        guard selectedMacroFocus != .custom else { return }
+        guard selectedWeightGoal != .custom else { return }
         guard let snapshot = lastCalculatedTargets else {
-            markMacroFocusAsCustom()
+            markWeightGoalAsCustom()
             return
         }
 
         if snapshot.value(for: field) != newValue {
             lastCalculatedTargets = nil
-            markMacroFocusAsCustom()
+            markWeightGoalAsCustom()
         }
     }
     
@@ -3038,40 +3214,7 @@ enum GoalOption: String, CaseIterable, Identifiable {
     }
 }
 
-enum MacroFocusOption: String, CaseIterable, Identifiable {
-    case leanCutting
-    case lowCarb
-    case balanced
-    case leanBulking
-    case custom
-    var id: String { rawValue }
 
-    var displayName: String {
-        switch self {
-        case .leanCutting: return "Lean Cutting"
-        case .lowCarb: return "Low Carb"
-        case .balanced: return "Balanced"
-        case .leanBulking: return "Lean Bulking"
-        case .custom: return "Custom"
-        }
-    }
-
-    init?(rawValue: String) {
-        let normalized = rawValue
-        switch normalized {
-        case "other":
-            self = .custom
-        case "highProtein":
-            // Backwards compatibility for stored values prior to the Lean presets rollout
-            self = .leanBulking
-        case let value where MacroFocusOption.allCases.contains(where: { $0.rawValue == value }):
-            // Directly select the matching case without recursion
-            self = MacroFocusOption.allCases.first { $0.rawValue == value } ?? .custom
-        default:
-            return nil
-        }
-    }
-}
 
 extension OnboardingViewModel {
     enum MacroField {

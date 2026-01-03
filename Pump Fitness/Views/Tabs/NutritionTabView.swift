@@ -21,12 +21,13 @@ struct NutritionTabView: View {
     @State private var showLogIntakeSheet = false
     @State private var showCalorieGoalSheet = false
     @Binding var calorieGoal: Int
-    @Binding var selectedMacroFocus: MacroFocusOption?
+    @Binding var selectedMacroFocus: MacroCalculator.WeightGoalOption?
     @Binding var trackedMacros: [TrackedMacro]
     @Binding var macroConsumptions: [MacroConsumption]
     @Binding var cravings: [CravingItem]
     @Binding var mealReminders: [MealReminder]
     @Binding var checkedMeals: Set<String>
+    @Binding var selectedMacroStrategy: MacroCalculator.MacroDistributionStrategy?
     @State private var showMacroEditorSheet = false
     @State private var selectedMacroForLog: MacroMetric?
     @State private var showConsumedSheet = false
@@ -53,13 +54,14 @@ struct NutritionTabView: View {
         consumedCalories: Binding<Int>,
         selectedDate: Binding<Date>,
         calorieGoal: Binding<Int>,
-        selectedMacroFocus: Binding<MacroFocusOption?>,
+        selectedMacroFocus: Binding<MacroCalculator.WeightGoalOption?>,
         trackedMacros: Binding<[TrackedMacro]>,
         macroConsumptions: Binding<[MacroConsumption]>,
         cravings: Binding<[CravingItem]>,
         mealReminders: Binding<[MealReminder]>,
         checkedMeals: Binding<Set<String>>,
         maintenanceCalories: Binding<Int>,
+        selectedMacroStrategy: Binding<MacroCalculator.MacroDistributionStrategy?>,
         isPro: Bool
     ) {
         _account = account
@@ -73,6 +75,7 @@ struct NutritionTabView: View {
         _mealReminders = mealReminders
         _checkedMeals = checkedMeals
         _maintenanceCalories = maintenanceCalories
+        _selectedMacroStrategy = selectedMacroStrategy
         self.isPro = isPro
     }
 
@@ -127,6 +130,10 @@ struct NutritionTabView: View {
     }
 
     private func fetchDayTakenSupplements() {
+        // Optimistic load
+        let localDay = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        dayTakenSupplementIDs = Set(localDay.takenSupplements)
+
         dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { day in
             DispatchQueue.main.async {
                 if let day = day {
@@ -179,21 +186,6 @@ struct NutritionTabView: View {
                                 .font(.title3)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            Button {
-                                showCalorieGoalSheet = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                            }
-                            .nutritionTip(.editCalorieGoal)
-                            .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
@@ -211,6 +203,21 @@ struct NutritionTabView: View {
                         .padding(.top, 14)
 
                         Button {
+                            showCalorieGoalSheet = true
+                        } label: {
+                            Label("Change Goal", systemImage: "pencil")
+                              .font(.callout.weight(.semibold))
+                              .padding(.vertical, 18)
+                              .frame(maxWidth: .infinity, minHeight: 52)
+                              .glassEffect(in: .rect(cornerRadius: 16.0))
+                              .contentShape(Rectangle())
+                        }
+                        .nutritionTip(.editCalorieGoal)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 8)
+                        .buttonStyle(.plain)
+
+                        Button {
                             showLogIntakeSheet = true
                         } label: {
                             Label("Log Intake", systemImage: "plus")
@@ -221,9 +228,8 @@ struct NutritionTabView: View {
                               .contentShape(Rectangle())
                         }
                         .nutritionTip(.logIntake)
-                        
                         .padding(.horizontal, 18)
-                        .padding(.top, 18)
+                        .padding(.top, 8)
                         .buttonStyle(.plain)
 
                         HStack {
@@ -243,6 +249,7 @@ struct NutritionTabView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                             .nutritionTip(.editMacros, onStepChange: { step in
                                 if step == 7 {
@@ -284,6 +291,7 @@ struct NutritionTabView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -328,6 +336,7 @@ struct NutritionTabView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                             .nutritionTip(.editSupplements)
                             .buttonStyle(.plain)
@@ -359,6 +368,7 @@ struct NutritionTabView: View {
                                 } catch {
                                     print("NutritionTabView: failed to save Day after toggling supplement: \(error)")
                                 }
+                                
                                 dayFirestoreService.updateDayFields(["takenSupplements": day.takenSupplements], for: day) { success in
                                     if !success { print("NutritionTabView: failed to sync takenSupplements to Firestore") }
                                 }
@@ -403,6 +413,7 @@ struct NutritionTabView: View {
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -581,6 +592,7 @@ struct NutritionTabView: View {
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
                                         .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -729,6 +741,9 @@ struct NutritionTabView: View {
                 tint: accentOverride ?? .accentColor,
                 isMultiColourTheme: themeManager.selectedTheme == .multiColour,
                 macroFocus: selectedMacroFocus,
+                calorieGoal: calorieGoal,
+                bodyWeightKg: bodyWeightKg,
+                selectedMacroStrategy: $selectedMacroStrategy,
                 isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty,
                 onDone: { showMacroEditorSheet = false }
             )
@@ -872,6 +887,14 @@ private extension NutritionTabView {
         return themeManager.selectedTheme.accent(for: colorScheme)
     }
 
+    var bodyWeightKg: Double {
+        guard let w = account.weight else { return 70 }
+        if account.unitSystem == "imperial" {
+            return w * 0.453592
+        }
+        return w
+    }
+
     private func updateWeeklyEntries() {
         weeklyEntries = account.weeklyProgress.map { record in
             WeeklyProgressEntry(
@@ -980,14 +1003,10 @@ private extension NutritionTabView {
     }
 
     func handleMealIntakeSave(_ entry: MealIntakeEntry) {
-        // First merge the latest remote day into the local cache to avoid clobbering
-        // previously logged meals when the user adds a new intake before sync completes.
-        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { fetchedDay in
-            DispatchQueue.main.async {
-                let day = fetchedDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-                applyMealIntake(entry, to: day)
-            }
-        }
+        // Optimistically update the local day immediately.
+        // We trust the local cache for immediate feedback.
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+        applyMealIntake(entry, to: day)
     }
 
     private func deleteMealEntry(_ entry: MealIntakeEntry) {
@@ -1022,11 +1041,13 @@ private extension NutritionTabView {
             print("NutritionTabView: failed to save Day after deleting meal entry: \(error)")
         }
 
+        // Notify other UI that this day's data changed so they can refresh immediately
+        NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
+
         dayFirestoreService.saveDay(day) { success in
             if !success {
                 print("NutritionTabView: failed to sync meal entry deletion to Firestore")
             }
-            NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
         }
     }
 
@@ -1071,12 +1092,13 @@ private extension NutritionTabView {
             print("NutritionTabView: failed to save Day after logging intake: \(error)")
         }
 
+        // Notify other UI that this day's data changed so they can refresh immediately
+        NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
+
         dayFirestoreService.saveDay(day) { success in
             if !success {
                 print("NutritionTabView: failed to sync logged intake to Firestore")
             }
-            // Notify other UI that this day's data changed so they can refresh
-            NotificationCenter.default.post(name: .dayDataDidChange, object: nil, userInfo: ["date": self.selectedDate])
         }
     }
 }
@@ -1132,6 +1154,7 @@ struct CalorieSummary: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
+            .padding(.vertical, 12)
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill")
                     .font(.caption)
@@ -1766,7 +1789,7 @@ struct MacroSummary: View {
 }
 
 private struct CalorieGoalEditorSheet: View {
-    @Binding var selectedMacroFocus: MacroFocusOption?
+    @Binding var selectedMacroFocus: MacroCalculator.WeightGoalOption?
     @Binding var calorieGoal: Int
     var maintenanceCalories: Int
     var activityLevelName: String
@@ -1776,9 +1799,10 @@ private struct CalorieGoalEditorSheet: View {
     @State private var goalText: String = ""
     @State private var isApplyingPreset = false
     @State private var originalGoal: Int = 0
-    @State private var originalFocus: MacroFocusOption?
+    @State private var originalFocus: MacroCalculator.WeightGoalOption?
     @FocusState private var isGoalFieldFocused: Bool
     @State private var didInitializeGoalField: Bool = false
+    @State private var showMacroExplainer = false
 
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
@@ -1787,11 +1811,11 @@ private struct CalorieGoalEditorSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Macro goal")
+                        Text("Weight Goal")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: pillColumns, alignment: .leading, spacing: 12) {
-                            ForEach(MacroFocusOption.allCases) { option in
+                            ForEach(MacroCalculator.WeightGoalOption.allCases) { option in
                                 SelectablePillComponent(
                                     label: option.displayName,
                                     isSelected: selectedMacroFocus == option,
@@ -1801,6 +1825,17 @@ private struct CalorieGoalEditorSheet: View {
                                 }
                             }
                         }
+
+                        Button(action: { showMacroExplainer = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "info.circle")
+                                Text("Tap for Explanation")
+                                Spacer()
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -1820,25 +1855,25 @@ private struct CalorieGoalEditorSheet: View {
                         .surfaceCard(16)
                     }
 
-                    if let focus = selectedMacroFocus, focus != .custom {
-                        let recommendation = CalorieGoalPlanner.recommendation(for: focus, maintenanceCalories: maintenanceCalories)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Recommended for \(focus.displayName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(maintenanceCalories) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentCaloriesText) = \(recommendation.value) cal")
-                                .font(.body)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(tint)
-                            Text("Based on your maintenance of \(maintenanceCalories) cal and \(activityLevelName) activity level. Adjust manually if you need a custom target.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if selectedMacroFocus == .custom {
-                        Text("Custom targets override the preset strategy.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    // if let focus = selectedMacroFocus, focus != .custom {
+                    //     let recommendation = CalorieGoalPlanner.recommendation(for: focus, maintenanceCalories: maintenanceCalories)
+                    //     VStack(alignment: .leading, spacing: 6) {
+                    //         Text("Recommended for \(focus.displayName)")
+                    //             .font(.caption)
+                    //             .foregroundStyle(.secondary)
+                    //         Text("\(maintenanceCalories) cal \(recommendation.adjustmentSymbol) \(recommendation.adjustmentCaloriesText) = \(recommendation.value) cal")
+                    //             .font(.body)
+                    //             .fontWeight(.semibold)
+                    //             .foregroundStyle(tint)
+                    //         Text("Based on your maintenance of \(maintenanceCalories) cal and \(activityLevelName) activity level. Adjust manually if you need a custom target.")
+                    //             .font(.footnote)
+                    //             .foregroundStyle(.secondary)
+                    //     }
+                    // } else if selectedMacroFocus == .custom {
+                    //     Text("Custom targets override the preset strategy.")
+                    //         .font(.footnote)
+                    //         .foregroundStyle(.secondary)
+                    // }
 
                     if maintenanceCalories <= 0 {
                         Text("Maintenance cannot be calculated unless you select \"Male\" or \"Female\".")
@@ -1865,6 +1900,22 @@ private struct CalorieGoalEditorSheet: View {
                 }
             }
         }
+        .sheet(isPresented: $showMacroExplainer) {
+            NavigationStack {
+                WeightGoalExplainer()
+                    .padding(.horizontal, 18)
+                    .navigationTitle("Weight Goals")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Done") {
+                                showMacroExplainer = false
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                    }
+            }
+        }
         .onAppear {
             // Initialize the editor fields programmatically. We set a small flag
             // so the `onChange(of: goalText)` handler can ignore this initial
@@ -1887,7 +1938,7 @@ private struct CalorieGoalEditorSheet: View {
         }
     }
 
-    private func handleMacroSelection(_ option: MacroFocusOption) {
+    private func handleMacroSelection(_ option: MacroCalculator.WeightGoalOption) {
         selectedMacroFocus = option
         guard option != .custom else { return }
         let recommended = CalorieGoalPlanner.recommendation(for: option, maintenanceCalories: maintenanceCalories).value
@@ -1942,7 +1993,7 @@ enum CalorieGoalPlanner {
         }
     }
 
-    static func recommendation(for focus: MacroFocusOption, maintenanceCalories: Int) -> Recommendation {
+    static func recommendation(for focus: MacroCalculator.WeightGoalOption, maintenanceCalories: Int) -> Recommendation {
         guard maintenanceCalories > 0 else {
             return Recommendation(value: 0, adjustmentCalories: 0)
         }
@@ -1955,20 +2006,26 @@ enum CalorieGoalPlanner {
         return Recommendation(value: rounded, adjustmentCalories: Int(adjustment))
     }
 
-    static func recommendedCalories(for focus: MacroFocusOption, maintenanceCalories: Int) -> Int {
+    static func recommendedCalories(for focus: MacroCalculator.WeightGoalOption, maintenanceCalories: Int) -> Int {
         recommendation(for: focus, maintenanceCalories: maintenanceCalories).value
     }
 
-    private static func adjustmentCalories(for focus: MacroFocusOption) -> Int {
+    private static func adjustmentCalories(for focus: MacroCalculator.WeightGoalOption) -> Int {
         switch focus {
-        case .leanCutting:
-            return -500
-        case .lowCarb:
-            return -500
-        case .balanced:
+        case .maintainWeight:
             return 0
-        case .leanBulking:
-            return 350
+        case .mildWeightLoss:
+            return -250
+        case .weightLoss:
+            return -500
+        case .extremeWeightLoss:
+            return -1000
+        case .mildWeightGain:
+            return 250
+        case .weightGain:
+            return 500
+        case .extremeWeightGain:
+            return 1000
         case .custom:
             return 0
         }
@@ -2143,11 +2200,16 @@ private extension MacroMetric {
     }
 }
 
+
+
 struct MacroEditorSheet: View {
     @Binding var macros: [MacroMetric]
     var tint: Color
     var isMultiColourTheme: Bool
-    var macroFocus: MacroFocusOption?
+    var macroFocus: MacroCalculator.WeightGoalOption?
+    var calorieGoal: Int
+    var bodyWeightKg: Double
+    @Binding var selectedMacroStrategy: MacroCalculator.MacroDistributionStrategy?
     var isPro: Bool
     var onDone: () -> Void
 
@@ -2157,6 +2219,8 @@ struct MacroEditorSheet: View {
     @State private var newCustomTarget: String = ""
     @State private var hasLoadedState = false
     @State private var showProSubscription = false
+    @State private var selectedStrategy: MacroCalculator.MacroDistributionStrategy = .custom
+    @State private var showMacroExplainer = false
 
     private var canAddMoreMacros: Bool {
         if isPro { return true }
@@ -2171,6 +2235,49 @@ struct MacroEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    // Macro Split Strategy
+                    VStack(alignment: .leading, spacing: 12) {
+                        MacroEditorSectionHeader(title: "Macro Split")
+                        
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], alignment: .leading, spacing: 12) {
+                            ForEach(MacroCalculator.MacroDistributionStrategy.allCases) { strategy in
+                                SelectablePillComponent(
+                                    label: strategy.displayName,
+                                    isSelected: selectedStrategy == strategy,
+                                    selectedTint: tint
+                                ) {
+                                    selectedStrategy = strategy
+                                }
+                            }
+                        }
+                        
+                        Button(action: { showMacroExplainer = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "info.circle")
+                                Text("Tap for Explanation")
+                                Spacer()
+                            }
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                            
+                        Button(action: autoCalculateMacros) {
+                            Text("Auto Calculate Macros")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16.0, style: .continuous)
+                                        .fill(selectedStrategy == .custom ? Color.gray.opacity(0.5) : tint)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(selectedStrategy == .custom)
+                    }
+
                     // Tracked macros
                     if !workingMacros.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -2317,8 +2424,6 @@ struct MacroEditorSheet: View {
                             }
                         }
                     }
-
-                    MacroCalculationExplainer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
@@ -2332,9 +2437,26 @@ struct MacroEditorSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         macros = workingMacros
+                        selectedMacroStrategy = selectedStrategy
                         onDone()
                     }
                     .fontWeight(.semibold)
+                }
+            }
+            .sheet(isPresented: $showMacroExplainer) {
+                NavigationStack {
+                    MacroStrategyExplainer()
+                        .padding(.horizontal, 18)
+                        .navigationTitle("Macro Strategies")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showMacroExplainer = false
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
                 }
             }
         }
@@ -2348,6 +2470,7 @@ struct MacroEditorSheet: View {
     private func loadInitialState() {
         guard !hasLoadedState else { return }
         workingMacros = macros
+        selectedStrategy = selectedMacroStrategy ?? .custom
         hasLoadedState = true
     }
 
@@ -2391,6 +2514,88 @@ struct MacroEditorSheet: View {
         workingMacros.append(newMetric)
         newCustomName = ""
         newCustomTarget = ""
+    }
+
+    private func autoCalculateMacros() {
+        guard selectedStrategy != .custom else { return }
+        
+        let calories = Double(calorieGoal)
+        var proteinG: Double = 0
+        var fatG: Double = 0
+        var carbsG: Double = 0
+        
+        switch selectedStrategy {
+        case .highProtein:
+            // Protein = 2.5 x BW (or 30% of calories, whichever is higher)
+            // Fat = 20%
+            // Carbs = remaining calories
+            let proteinByWeight = 2.5 * bodyWeightKg
+            let proteinByCal = (calories * 0.30) / 4.0
+            proteinG = max(proteinByWeight, proteinByCal)
+            
+            let proteinCal = proteinG * 4.0
+            let fatCal = calories * 0.20
+            fatG = fatCal / 9.0
+            let remainingCal = calories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
+            
+        case .balanced:
+            // Protein = 25%
+            // Fat = 25%
+            // Carbs = remaining calories
+            let proteinCal = calories * 0.25
+            proteinG = proteinCal / 4.0
+            let fatCal = calories * 0.25
+            fatG = fatCal / 9.0
+            let remainingCal = calories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
+            
+        case .lowFat:
+            // Protein = 1.6 x BW
+            // Fat = 15%
+            // Carbs = remaining calories
+            proteinG = 1.6 * bodyWeightKg
+            let proteinCal = proteinG * 4.0
+            let fatCal = calories * 0.15
+            fatG = fatCal / 9.0
+            let remainingCal = calories - proteinCal - fatCal
+            carbsG = max(0, remainingCal / 4.0)
+            
+        case .lowCarb:
+            // Protein = 2.0 x BW
+            // Carbs = 10%
+            // Fat = remaining calories
+            proteinG = 2.0 * bodyWeightKg
+            let proteinCal = proteinG * 4.0
+            let carbCal = calories * 0.10
+            carbsG = carbCal / 4.0
+            let remainingCal = calories - proteinCal - carbCal
+            fatG = max(0, remainingCal / 9.0)
+            
+        case .custom:
+            return
+        }
+        
+        updateOrAddMacro(.protein, value: proteinG)
+        updateOrAddMacro(.carbs, value: carbsG)
+        updateOrAddMacro(.fats, value: fatG)
+    }
+    
+    private func updateOrAddMacro(_ preset: MacroPreset, value: Double) {
+        let rounded = value.rounded()
+        let targetLabel = String(format: "%.0f g", rounded)
+        
+        if let idx = workingMacros.firstIndex(where: { 
+            if case .preset(let p) = $0.source { return p == preset }
+            return false 
+        }) {
+            workingMacros[idx].targetLabel = targetLabel
+        } else {
+            // Add it if not present
+            var newMetric = MacroMetric.preset(preset)
+            newMetric.targetLabel = targetLabel
+            workingMacros.append(newMetric)
+        }
     }
 }
 
@@ -2531,7 +2736,6 @@ private struct CustomMacroComposer: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(isDisabled)
             }
 
             if !canAddMore {

@@ -262,7 +262,6 @@ private struct FullScreenMapView: View {
                             .annotationTitles(.hidden)
                         }
                     }
-                    .ignoresSafeArea()
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 0)
                             .onEnded { gesture in
@@ -296,6 +295,7 @@ private struct FullScreenMapView: View {
                             }
                     )
                 }
+                .ignoresSafeArea()
 
                 .onAppear {
                     if locationManager.lastLocation == nil {

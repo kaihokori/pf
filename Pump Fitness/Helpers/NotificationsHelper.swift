@@ -163,6 +163,40 @@ struct NotificationsHelper {
         }
     }
 
+    static func scheduleWeeklyProgressNotifications(time: Double, weekday: Int = 2) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["weekly-progress-photo-reminder"])
+
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            guard granted else { return }
+
+            center.getNotificationSettings { settings in
+                guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+
+                let hour = Int(time) / 3600
+                let minute = (Int(time) % 3600) / 60
+
+                let content = UNMutableNotificationContent()
+                content.title = "Weekly Progress"
+                content.body = "Time to take your weekly progress photo!"
+                content.sound = .default
+
+                var components = DateComponents()
+                components.hour = hour
+                components.minute = minute
+                components.weekday = weekday
+
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                let request = UNNotificationRequest(identifier: "weekly-progress-photo-reminder", content: content, trigger: trigger)
+                center.add(request) { error in
+                    if let error = error {
+                        print("NotificationsHelper: failed to schedule weekly progress: \(error)")
+                    }
+                }
+            }
+        }
+    }
+
     static func removeWeeklyProgressNotifications() {
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: ["weekly-progress-photo-reminder"])
@@ -371,6 +405,244 @@ struct NotificationsHelper {
         let center = UNUserNotificationCenter.current()
         center.getPendingNotificationRequests { requests in
             let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("dailyCheckIn.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+        }
+    }
+
+    static func scheduleWeeklyScheduleNotifications(_ schedule: [WorkoutScheduleItem]) {
+        let center = UNUserNotificationCenter.current()
+        
+        // Remove existing
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("weeklySchedule.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+            
+            guard !schedule.isEmpty else { return }
+            
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                guard granted else { return }
+                
+                center.getNotificationSettings { settings in
+                    guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+                    
+                    let dayMap: [String: Int] = [
+                        "Sun": 1, "Mon": 2, "Tue": 3, "Wed": 4, "Thu": 5, "Fri": 6, "Sat": 7
+                    ]
+                    
+                    for item in schedule {
+                        guard let weekday = dayMap[item.day] else { continue }
+                        
+                        for (index, session) in item.sessions.enumerated() {
+                            let content = UNMutableNotificationContent()
+                            content.title = "Workout Reminder"
+                            content.body = "Time for your \(session.name) workout!"
+                            content.sound = .default
+                            
+                            var components = DateComponents()
+                            components.hour = session.hour
+                            components.minute = session.minute
+                            components.weekday = weekday
+                            
+                            let identifier = "weeklySchedule.wd\(weekday).s\(index)"
+                            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                            
+                            center.add(request) { error in
+                                if let error = error {
+                                    print("NotificationsHelper: failed to schedule \(identifier): \(error)")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func removeWeeklyScheduleNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("weeklySchedule.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+        }
+    }
+
+    static func scheduleItineraryNotifications(_ events: [ItineraryEvent]) {
+        let center = UNUserNotificationCenter.current()
+        
+        // Remove existing
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("itinerary.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+            
+            guard !events.isEmpty else { return }
+            
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                guard granted else { return }
+                
+                center.getNotificationSettings { settings in
+                    guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+                    
+                    let now = Date()
+                    
+                    for event in events {
+                        // Skip past events
+                        if event.date <= now { continue }
+                        
+                        let content = UNMutableNotificationContent()
+                        content.title = "Itinerary Reminder"
+                        content.body = "Upcoming: \(event.name)"
+                        content.sound = .default
+                        
+                        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: event.date)
+                        
+                        let identifier = "itinerary.\(event.id.uuidString)"
+                        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+                        
+                        center.add(request) { error in
+                            if let error = error {
+                                print("NotificationsHelper: failed to schedule \(identifier): \(error)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func removeItineraryNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("itinerary.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+        }
+    }
+
+    static func scheduleNutritionSupplementNotifications(_ supplements: [Supplement], time: Double) {
+        let center = UNUserNotificationCenter.current()
+
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("supp.nutrition.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+
+            guard !supplements.isEmpty else { return }
+
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                guard granted else { return }
+
+                center.getNotificationSettings { settings in
+                    guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+
+                    let hour = Int(time) / 3600
+                    let minute = (Int(time) % 3600) / 60
+
+                    let names = supplements.map { $0.name }.prefix(4).joined(separator: ", ")
+                    let moreCount = max(0, supplements.count - 4)
+                    let body: String = {
+                        if moreCount > 0 {
+                            return "Time to take: \(names) +\(moreCount)"
+                        }
+                        return "Time to take: \(names)"
+                    }()
+
+                    let content = UNMutableNotificationContent()
+                    content.title = "Daily Supplements"
+                    content.body = body
+                    content.sound = .default
+
+                    var components = DateComponents()
+                    components.hour = hour
+                    components.minute = minute
+
+                    let identifier = "supp.nutrition.daily"
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                    let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+                    center.add(request) { error in
+                        if let error { print("NotificationsHelper: failed to schedule \(identifier): \(error)") }
+                    }
+                }
+            }
+        }
+    }
+
+    static func scheduleWorkoutSupplementNotifications(_ supplements: [Supplement], time: Double) {
+        let center = UNUserNotificationCenter.current()
+
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("supp.workout.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+
+            guard !supplements.isEmpty else { return }
+
+            center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                guard granted else { return }
+
+                center.getNotificationSettings { settings in
+                    guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+
+                    let hour = Int(time) / 3600
+                    let minute = (Int(time) % 3600) / 60
+
+                    let names = supplements.map { $0.name }.prefix(4).joined(separator: ", ")
+                    let moreCount = max(0, supplements.count - 4)
+                    let body: String = {
+                        if moreCount > 0 {
+                            return "Pre-workout: \(names) +\(moreCount)"
+                        }
+                        return "Pre-workout: \(names)"
+                    }()
+
+                    let content = UNMutableNotificationContent()
+                    content.title = "Workout Supplements"
+                    content.body = body
+                    content.sound = .default
+
+                    var components = DateComponents()
+                    components.hour = hour
+                    components.minute = minute
+
+                    let identifier = "supp.workout.daily"
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                    let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+                    center.add(request) { error in
+                        if let error { print("NotificationsHelper: failed to schedule \(identifier): \(error)") }
+                    }
+                }
+            }
+        }
+    }
+
+    static func removeNutritionSupplementNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("supp.nutrition.") }
+            if !toRemove.isEmpty {
+                center.removePendingNotificationRequests(withIdentifiers: toRemove)
+            }
+        }
+    }
+
+    static func removeWorkoutSupplementNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let toRemove = requests.map { $0.identifier }.filter { $0.hasPrefix("supp.workout.") }
             if !toRemove.isEmpty {
                 center.removePendingNotificationRequests(withIdentifiers: toRemove)
             }

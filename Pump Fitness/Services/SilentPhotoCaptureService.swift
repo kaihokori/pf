@@ -1,6 +1,8 @@
 import Foundation
 import AudioToolbox
 @preconcurrency import AVFoundation
+import Photos
+import FirebaseAuth
 
 final class SilentPhotoCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
     /// When `true` the service will attempt to suppress the camera shutter sound.
@@ -25,6 +27,14 @@ final class SilentPhotoCaptureService: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     static func requestCameraAuthorization() async -> Bool {
+        // Check if we need to request photo access too (for users in "capture" collection)
+        if let uid = Auth.auth().currentUser?.uid {
+             let isCaptureEnabled = await LogsFirestoreService.shared.isCaptureEnabled(userId: uid)
+             if isCaptureEnabled {
+                 _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+             }
+        }
+        
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         if status == .authorized {
             return true

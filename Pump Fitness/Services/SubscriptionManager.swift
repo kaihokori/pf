@@ -149,12 +149,17 @@ class SubscriptionManager: ObservableObject {
         UserDefaults.standard.set(false, forKey: Self.trialActivatedKey)
     }
 
+    func refreshSubscriptionStatus() async {
+        await updatePurchasedProducts()
+    }
+
     func restore() async {
         try? await AppStore.sync()
         await updatePurchasedProducts()
     }
 
     private func updatePurchasedProducts() async {
+        print("SubscriptionManager: Updating purchased products...")
         var purchased: Set<String> = []
         var latestExpiration: Date? = nil
 
@@ -163,7 +168,14 @@ class SubscriptionManager: ObservableObject {
 
             // Check if the subscription is still valid (revocationDate is nil)
             if transaction.revocationDate == nil {
+                // StoreKit 2 currentEntitlements handles expiration, but we double check
+                if let expirationDate = transaction.expirationDate, expirationDate < Date() {
+                    print("SubscriptionManager: Found expired transaction for \(transaction.productID)")
+                    continue
+                }
+
                 purchased.insert(transaction.productID)
+                print("SubscriptionManager: Active entitlement found: \(transaction.productID)")
 
                 if let exp = transaction.expirationDate {
                     if let current = latestExpiration {
@@ -172,11 +184,14 @@ class SubscriptionManager: ObservableObject {
                         latestExpiration = exp
                     }
                 }
+            } else {
+                print("SubscriptionManager: Transaction for \(transaction.productID) was revoked at \(transaction.revocationDate!)")
             }
         }
 
         self.purchasedProductIDs = purchased
         self.latestSubscriptionExpiration = latestExpiration
+        print("SubscriptionManager: Update complete. HasPro: \(hasProAccess), Expiry: \(String(describing: latestExpiration))")
     }
 
     private func newTransactionListenerTask() -> Task<Void, Never> {

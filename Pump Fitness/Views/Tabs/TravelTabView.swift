@@ -211,10 +211,18 @@ private extension TravelTabView {
         }
         updated.sort { $0.date < $1.date }
         itineraryEvents = updated
+        
+        if UserDefaults.standard.object(forKey: "alerts.itineraryEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleItineraryNotifications(updated)
+        }
     }
 
     private func deleteEvent(_ event: ItineraryEvent) {
         itineraryEvents.removeAll { $0.id == event.id }
+        
+        if UserDefaults.standard.object(forKey: "alerts.itineraryEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleItineraryNotifications(itineraryEvents)
+        }
     }
 }
 

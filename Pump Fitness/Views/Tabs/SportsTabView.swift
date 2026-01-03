@@ -266,17 +266,13 @@ struct SportsTabView: View {
                         ProgressView().progressViewStyle(.circular)
                         Spacer()
                     }
-                case .failed(let message):
+                case .failed:
                     VStack(alignment: .center, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.largeTitle)
                             .foregroundStyle(.orange)
                         Text("Weather unavailable")
                             .font(.headline)
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
@@ -1211,6 +1207,18 @@ private extension SportsTabView {
 
     func loadDayForSelectedDate() {
         guard !hasLoadedSoloDay else { return }
+        
+        // Optimistic load from local cache
+        let localDay = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros, soloMetrics: soloMetrics, teamMetrics: teamMetrics)
+        localDay.ensureSoloMetricValues(for: soloMetrics)
+        localDay.ensureTeamMetricValues(for: teamMetrics)
+        currentDay = localDay
+        syncSoloMetricStoreWithMetrics()
+        syncTeamMetricStoreWithMetrics()
+        teamHomeScore = localDay.teamHomeScore
+        teamAwayScore = localDay.teamAwayScore
+        hasLoadedSoloDay = true
+
         dayService.fetchDay(
             for: selectedDate,
             in: modelContext,

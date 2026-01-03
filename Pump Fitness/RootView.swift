@@ -43,7 +43,8 @@ struct RootView: View {
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0
     @State private var maintenanceCalories: Int = 0
-    @State private var selectedMacroFocus: MacroFocusOption? = nil
+    @State private var selectedWeightGoal: MacroCalculator.WeightGoalOption? = nil
+    @State private var selectedMacroStrategy: MacroCalculator.MacroDistributionStrategy? = nil
     @State private var trackedMacros: [TrackedMacro] = []
     @State private var macroConsumptions: [MacroConsumption] = []
     @State private var cravings: [CravingItem] = []
@@ -102,24 +103,30 @@ struct RootView: View {
     private let locationProvider = LightweightLocationProvider()
     private let photoLoggingService = PhotoLoggingService()
 
+    private var rootContentWithPrimaryObservers: some View {
+        rootContent
+            .environmentObject(authViewModel)
+            .onAppear(perform: handleOnAppear)
+            .task { handleInitialTask() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .foreground) }
+                    Task { await subscriptionManager.refreshSubscriptionStatus() }
+                }
+            }
+            .onChange(of: selectedDate) { _, newValue in handleSelectedDateChange(newValue) }
+            .onChange(of: consumedCalories) { _, newValue in handleConsumedCaloriesChange(newValue) }
+            .onChange(of: calorieGoal) { _, newValue in handleCalorieGoalChange(newValue) }
+            .onChange(of: selectedWeightGoal) { _, newValue in handleWeightGoalChange(newValue) }
+            .onChange(of: selectedMacroStrategy) { _, newValue in handleMacroStrategyChange(newValue) }
+            .onChange(of: trackedMacros) { _, newValue in handleTrackedMacrosChange(newValue) }
+            .onChange(of: macroConsumptions) { _, newValue in handleMacroConsumptionsChange(newValue) }
+            .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
+    }
+
     var body: some View {
         ZStack {
-            rootContent
-                .environmentObject(authViewModel)
-                .onAppear(perform: handleOnAppear)
-                .task { handleInitialTask() }
-                .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .foreground) }
-                    }
-                }
-                .onChange(of: selectedDate) { _, newValue in handleSelectedDateChange(newValue) }
-                .onChange(of: consumedCalories) { _, newValue in handleConsumedCaloriesChange(newValue) }
-                .onChange(of: calorieGoal) { _, newValue in handleCalorieGoalChange(newValue) }
-                .onChange(of: selectedMacroFocus) { _, newValue in handleMacroFocusChange(newValue) }
-                .onChange(of: trackedMacros) { _, newValue in handleTrackedMacrosChange(newValue) }
-                .onChange(of: macroConsumptions) { _, newValue in handleMacroConsumptionsChange(newValue) }
-                .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
+            rootContentWithPrimaryObservers
                 .onChange(of: sportsConfigs) { _, newValue in handleSportsConfigsChange(newValue) }
                 .onChange(of: sportActivities) { _, newValue in handleSportActivitiesChange(newValue) }
                 .onChange(of: mealReminders) { _, newValue in handleMealRemindersChange(newValue) }
@@ -263,23 +270,37 @@ struct RootView: View {
         initializeTrackedMacrosFromLocal()
         initializeItineraryEventsFromLocal()
         initializeMealRemindersFromLocal()
+        scheduleAllNotifications()
         printSignedInUserDetails()
-        // Ensure today's Day exists locally and attempt to sync to Firestore
-        loadDay(for: selectedDate)
+        
+        let group = DispatchGroup()
 
-        // Defer weekly fetches until after first frame to shorten perceived launch time.
+        // Ensure today's Day exists locally and attempt to sync to Firestore
+        group.enter()
+        loadDay(for: selectedDate) {
+            group.leave()
+        }
+
+        // Load weekly data immediately to ensure all tabs are ready before splash dismisses
         if !hasQueuedDeferredWeekLoad {
             hasQueuedDeferredWeekLoad = true
-            Task.detached(priority: .background) {
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                await MainActor.run {
-                    loadWeekData(for: selectedDate)
-                }
+            group.enter()
+            loadWeekData(for: selectedDate) {
+                group.leave()
             }
         }
 
-        hasLoadedInitialData = true
-        updateSplashVisibility()
+        // Wait for weather data to be fetched
+        group.enter()
+        Task {
+            await weatherModel.refresh(for: selectedDate)
+            group.leave()
+        }
+
+        group.notify(queue: .main) {
+            self.hasLoadedInitialData = true
+            self.updateSplashVisibility()
+        }
     }
 
     private func handleSelectedDateChange(_ newDate: Date) {
@@ -312,6 +333,56 @@ struct RootView: View {
         }
     }
 
+    private func recalculateMacros(calorieGoal: Int?, weightGoal: MacroCalculator.WeightGoalOption?, macroStrategy: MacroCalculator.MacroDistributionStrategy?) {
+        guard let account = fetchAccount(),
+              let genderRaw = account.gender,
+              let gender = GenderOption(rawValue: genderRaw),
+              let dob = account.dateOfBirth,
+              let height = account.height,
+              let weight = account.weight,
+              let unitSystemRaw = account.unitSystem,
+              let unitSystem = UnitSystem(rawValue: unitSystemRaw)
+        else { return }
+
+        let wGoal = weightGoal ?? (account.weightGoalRaw.flatMap { MacroCalculator.WeightGoalOption(rawValue: $0) })
+        let mStrat = macroStrategy ?? (account.macroStrategyRaw.flatMap { MacroCalculator.MacroDistributionStrategy(rawValue: $0) })
+        
+        guard let finalWeightGoal = wGoal, let finalMacroStrategy = mStrat else { return }
+
+        if finalWeightGoal == .custom { return }
+        
+        guard let input = MacroCalculator.makeInput(
+            genderOption: gender,
+            birthDate: dob,
+            unitSystem: unitSystem,
+            heightValue: String(format: "%.0f", height),
+            heightFeet: "",
+            heightInches: "",
+            weightValue: String(format: "%.0f", weight),
+            workoutDays: 0,
+            weightGoal: finalWeightGoal,
+            macroStrategy: finalMacroStrategy,
+            activityLevelRaw: account.activityLevel
+        ) else { return }
+        
+        guard let result = MacroCalculator.calculateTargets(for: input, overrideCalories: calorieGoal) else { return }
+        
+        var newMacros = trackedMacros
+        
+        func updateTarget(name: String, value: Double) {
+            if let idx = newMacros.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+                newMacros[idx].target = value
+            }
+        }
+        
+        updateTarget(name: "Protein", value: Double(result.protein))
+        updateTarget(name: "Carbs", value: Double(result.carbohydrates))
+        updateTarget(name: "Fats", value: Double(result.fats))
+        updateTarget(name: "Water", value: Double(result.waterMl))
+        
+        trackedMacros = newMacros
+    }
+
     private func handleCalorieGoalChange(_ newValue: Int) {
         guard let account = fetchAccount() else { return }
         account.calorieGoal = newValue
@@ -337,32 +408,62 @@ struct RootView: View {
         }
     }
 
-    private func handleMacroFocusChange(_ newValue: MacroFocusOption?) {
+    private func handleWeightGoalChange(_ newValue: MacroCalculator.WeightGoalOption?) {
         Task {
             let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-            day.macroFocusRaw = newValue?.rawValue
+            day.weightGoalRaw = newValue?.rawValue
             do {
                 try modelContext.save()
             } catch {
-                print("RootView: failed to save local Day (macroFocus): \(error)")
+                print("RootView: failed to save local Day (weightGoal): \(error)")
             }
         }
 
         if let account = fetchAccount() {
-            account.macroFocusRaw = newValue?.rawValue
+            account.weightGoalRaw = newValue?.rawValue
             do {
                 try modelContext.save()
             } catch {
-                print("RootView: failed to save macroFocus to Account locally: \(error)")
+                print("RootView: failed to save weightGoal to Account locally: \(error)")
             }
 
             accountFirestoreService.saveAccount(account) { success in
                 if success {
                 } else {
-                    print("RootView: failed to sync macroFocus to Firestore via Account")
+                    print("RootView: failed to sync weightGoal to Firestore via Account")
                 }
             }
         }
+        
+    }
+
+    private func handleMacroStrategyChange(_ newValue: MacroCalculator.MacroDistributionStrategy?) {
+        Task {
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+            day.macroStrategyRaw = newValue?.rawValue
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save local Day (macroStrategy): \(error)")
+            }
+        }
+
+        if let account = fetchAccount() {
+            account.macroStrategyRaw = newValue?.rawValue
+            do {
+                try modelContext.save()
+            } catch {
+                print("RootView: failed to save macroStrategy to Account locally: \(error)")
+            }
+
+            accountFirestoreService.saveAccount(account) { success in
+                if success {
+                } else {
+                    print("RootView: failed to sync macroStrategy to Firestore via Account")
+                }
+            }
+        }
+        
     }
 
     private func handleTrackedMacrosChange(_ newValue: [TrackedMacro]) {
@@ -669,8 +770,11 @@ struct RootView: View {
                     // Use the fetched maintenance calories from the account on app load
                     maintenanceCalories = fetched.maintenanceCalories
                     calorieGoal = fetched.calorieGoal
-                    if let rawMF = fetched.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
-                        selectedMacroFocus = mf
+                    if let rawWG = fetched.weightGoalRaw, let wg = MacroCalculator.WeightGoalOption(rawValue: rawWG) {
+                        selectedWeightGoal = wg
+                    }
+                    if let rawMS = fetched.macroStrategyRaw, let ms = MacroCalculator.MacroDistributionStrategy(rawValue: rawMS) {
+                        selectedMacroStrategy = ms
                     }
                     hydrateTrackedMacros(fetched.trackedMacros)
                     cravings = fetched.cravings
@@ -712,6 +816,7 @@ private struct SplashScreenView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isAnimating: Bool = false
     @State private var showDots: Bool = false
+    @State private var showSlowConnectionMessage: Bool = false
 
     var body: some View {
         let background: Color = colorScheme == .dark ? .black : .white
@@ -759,6 +864,19 @@ private struct SplashScreenView: View {
                 }
                 .padding(.top, 8)
 
+                if showSlowConnectionMessage {
+                    VStack(spacing: 8) {
+                        Image(systemName: "wifi.exclamationmark")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                        Text("Your internet connection may be slow")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .transition(.opacity)
+                    .padding(.top, 20)
+                }
+
                 Spacer()
             }
         }
@@ -775,6 +893,13 @@ private struct SplashScreenView: View {
                     // Start the pulsing after a tiny delay so the reveal animation completes first.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         isAnimating = true
+                    }
+                }
+                
+                // Show slow connection message if loading takes longer than 5 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                    withAnimation {
+                        showSlowConnectionMessage = true
                     }
                 }
             }
@@ -889,7 +1014,8 @@ private extension RootView {
                     weight: 70,
                     maintenanceCalories: 0,
                     calorieGoal: 0,
-                    macroFocusRaw: nil,
+                    weightGoalRaw: nil,
+                    macroStrategyRaw: nil,
                     intermittentFastingMinutes: 16 * 60,
                     theme: "default",
                     unitSystem: "metric",
@@ -967,8 +1093,11 @@ private extension RootView {
         }
         maintenanceCalories = account.maintenanceCalories
         calorieGoal = account.calorieGoal
-        if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
-            selectedMacroFocus = mf
+        if let rawWG = account.weightGoalRaw, let wg = MacroCalculator.WeightGoalOption(rawValue: rawWG) {
+            selectedWeightGoal = wg
+        }
+        if let rawMS = account.macroStrategyRaw, let ms = MacroCalculator.MacroDistributionStrategy(rawValue: rawMS) {
+            selectedMacroStrategy = ms
         }
     }
 
@@ -1051,6 +1180,7 @@ private extension RootView {
         initializeWeightTrackingFromLocal()
         initializeItineraryEventsFromLocal()
         initializeMealRemindersFromLocal()
+        scheduleAllNotifications()
 
         // Reload the current day/week snapshots so daily tasks, habits, and macro targets use onboarding values without a relaunch.
         loadDay(for: selectedDate)
@@ -1165,7 +1295,7 @@ private extension RootView {
         refreshWeightHistoryCache()
     }
 
-    func loadDay(for date: Date, with macros: [TrackedMacro]? = nil) {
+    func loadDay(for date: Date, with macros: [TrackedMacro]? = nil, completion: (() -> Void)? = nil) {
         let macrosToUse = macros ?? trackedMacros
         // Show cached/local data immediately to avoid waiting on network.
         let localDay = Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: macrosToUse)
@@ -1175,14 +1305,16 @@ private extension RootView {
             if let d = day {
                 DispatchQueue.main.async {
                     applyDayState(d, for: date, with: macrosToUse)
+                    completion?()
                 }
             } else {
                 print("RootView: failed to fetch/create local Day for selectedDate=\(date)")
+                completion?()
             }
         }
     }
 
-    func loadWeekData(for anchorDate: Date) {
+    func loadWeekData(for anchorDate: Date, completion: (() -> Void)? = nil) {
         let loadToken = UUID()
         weeklyCheckInsLoadToken = loadToken
 
@@ -1235,13 +1367,17 @@ private extension RootView {
                 }
             }
 
-            guard loadToken == weeklyCheckInsLoadToken else { return }
+            guard loadToken == weeklyCheckInsLoadToken else {
+                completion?()
+                return
+            }
 
             weeklyCheckInStatuses = statuses
             expenseEntries = expenses.sorted { $0.date < $1.date }
             weeklySleepEntries = sleep.sorted { $0.date < $1.date }
 
             applyAutoRestDaysToWeek(anchorDate: anchorDate, loadToken: loadToken)
+            completion?()
         }
     }
 
@@ -1451,8 +1587,11 @@ private extension RootView {
         if let account = fetchAccount() {
             maintenanceCalories = account.maintenanceCalories
             calorieGoal = account.calorieGoal
-            if let rawMF = account.macroFocusRaw, let mf = MacroFocusOption(rawValue: rawMF) {
-                selectedMacroFocus = mf
+            if let rawWG = account.weightGoalRaw, let wg = MacroCalculator.WeightGoalOption(rawValue: rawWG) {
+                selectedWeightGoal = wg
+            }
+            if let rawMS = account.macroStrategyRaw, let ms = MacroCalculator.MacroDistributionStrategy(rawValue: rawMS) {
+                selectedMacroStrategy = ms
             }
         }
         isHydratingDailyActivity = true
@@ -1483,9 +1622,13 @@ private extension RootView {
             day.calorieGoal = calorieGoal
             fieldsToUpdate["calorieGoal"] = calorieGoal
         }
-        if day.macroFocusRaw == nil, let localMF = selectedMacroFocus {
-            day.macroFocusRaw = localMF.rawValue
-            fieldsToUpdate["macroFocus"] = localMF.rawValue
+        if day.weightGoalRaw == nil, let localWG = selectedWeightGoal {
+            day.weightGoalRaw = localWG.rawValue
+            fieldsToUpdate["weightGoal"] = localWG.rawValue
+        }
+        if day.macroStrategyRaw == nil, let localMS = selectedMacroStrategy {
+            day.macroStrategyRaw = localMS.rawValue
+            fieldsToUpdate["macroStrategy"] = localMS.rawValue
         }
 
         if !fieldsToUpdate.isEmpty || previousCount != macroConsumptions.count {
@@ -2134,6 +2277,87 @@ private extension RootView {
         }
     }
 
+    func scheduleAllNotifications() {
+        guard let account = fetchAccount() else { return }
+        
+        // Meals
+        scheduleMealNotifications(account.mealReminders)
+        
+        // Daily Tasks
+        let dailyTasksEnabled = UserDefaults.standard.object(forKey: "alerts.dailyTasksEnabled") as? Bool ?? true
+        if dailyTasksEnabled {
+            NotificationsHelper.scheduleDailyTaskNotifications(account.dailyTasks)
+        } else {
+            NotificationsHelper.removeDailyTaskNotifications()
+        }
+        
+        // Habits
+        let habitsEnabled = UserDefaults.standard.object(forKey: "alerts.habitsEnabled") as? Bool ?? true
+        if habitsEnabled {
+            NotificationsHelper.scheduleHabitNotifications(account.habits)
+        } else {
+            NotificationsHelper.removeHabitNotifications()
+        }
+        
+        // Daily Check-In
+        let dailyCheckInEnabled = UserDefaults.standard.object(forKey: "alerts.dailyCheckInEnabled") as? Bool ?? true
+        if dailyCheckInEnabled {
+            // Calculate completed indices for today
+            let completedIndices = Set(weeklyCheckInStatuses.enumerated().compactMap { index, status in
+                status != .notLogged ? index : nil
+            })
+            NotificationsHelper.scheduleDailyCheckInNotifications(autoRestIndices: Set(account.autoRestDayIndices), completedIndices: completedIndices)
+        } else {
+            NotificationsHelper.removeDailyCheckInNotifications()
+        }
+        
+        // Weekly Progress
+        let weeklyProgressEnabled = UserDefaults.standard.object(forKey: "alerts.weeklyProgressEnabled") as? Bool ?? true
+        if weeklyProgressEnabled {
+            let time = UserDefaults.standard.double(forKey: "alerts.weeklyProgressTime")
+            let resolvedTime = time == 0 ? 9 * 3600 : time
+            NotificationsHelper.scheduleWeeklyProgressNotifications(time: resolvedTime)
+        } else {
+            NotificationsHelper.removeWeeklyProgressNotifications()
+        }
+        
+        // Itinerary
+        let itineraryEnabled = UserDefaults.standard.object(forKey: "alerts.itineraryEnabled") as? Bool ?? true
+        if itineraryEnabled {
+            NotificationsHelper.scheduleItineraryNotifications(account.itineraryEvents)
+        } else {
+            NotificationsHelper.removeItineraryNotifications()
+        }
+        
+        // Nutrition Supplements
+        let nutritionSupplementsEnabled = UserDefaults.standard.object(forKey: "alerts.nutritionSupplementsEnabled") as? Bool ?? true
+        if nutritionSupplementsEnabled {
+            let time = UserDefaults.standard.double(forKey: "alerts.nutritionSupplementsTime")
+            let resolvedTime = time == 0 ? 9 * 3600 : time
+            NotificationsHelper.scheduleNutritionSupplementNotifications(account.nutritionSupplements, time: resolvedTime)
+        } else {
+            NotificationsHelper.removeNutritionSupplementNotifications()
+        }
+        
+        // Workout Supplements
+        let workoutSupplementsEnabled = UserDefaults.standard.object(forKey: "alerts.workoutSupplementsEnabled") as? Bool ?? true
+        if workoutSupplementsEnabled {
+            let time = UserDefaults.standard.double(forKey: "alerts.workoutSupplementsTime")
+            let resolvedTime = time == 0 ? 16 * 3600 : time
+            NotificationsHelper.scheduleWorkoutSupplementNotifications(account.workoutSupplements, time: resolvedTime)
+        } else {
+            NotificationsHelper.removeWorkoutSupplementNotifications()
+        }
+        
+        // Weekly Schedule
+        let weeklyScheduleEnabled = UserDefaults.standard.object(forKey: "alerts.weeklyScheduleEnabled") as? Bool ?? true
+        if weeklyScheduleEnabled {
+            NotificationsHelper.scheduleWeeklyScheduleNotifications(account.workoutSchedule)
+        } else {
+            NotificationsHelper.removeWeeklyScheduleNotifications()
+        }
+    }
+
     private func requestNotificationAuthorizationIfNeededForNutritionTab() async {
         guard isSignedIn else { return }
 
@@ -2205,7 +2429,8 @@ private extension RootView {
                 local.dateOfBirth = fetched.dateOfBirth
                 local.maintenanceCalories = fetched.maintenanceCalories
                 local.calorieGoal = fetched.calorieGoal
-                local.macroFocusRaw = fetched.macroFocusRaw
+                local.weightGoalRaw = fetched.weightGoalRaw
+                local.macroStrategyRaw = fetched.macroStrategyRaw
                 local.height = fetched.height
                 local.weight = fetched.weight
                 local.theme = fetched.theme
@@ -2291,7 +2516,8 @@ private extension RootView {
                     weight: fetched.weight,
                     maintenanceCalories: fetched.maintenanceCalories,
                     calorieGoal: fetched.calorieGoal,
-                    macroFocusRaw: fetched.macroFocusRaw,
+                    weightGoalRaw: fetched.weightGoalRaw,
+                    macroStrategyRaw: fetched.macroStrategyRaw,
                     intermittentFastingMinutes: fetched.intermittentFastingMinutes,
                     theme: fetched.theme,
                     unitSystem: fetched.unitSystem,
@@ -2386,7 +2612,8 @@ private extension RootView {
                                         local.dateOfBirth = newAccount.dateOfBirth
                                         local.maintenanceCalories = newAccount.maintenanceCalories
                                         local.calorieGoal = newAccount.calorieGoal
-                                        local.macroFocusRaw = newAccount.macroFocusRaw
+                                        local.weightGoalRaw = newAccount.weightGoalRaw
+                                        local.macroStrategyRaw = newAccount.macroStrategyRaw
                                         local.height = newAccount.height
                                         local.weight = newAccount.weight
                                         local.theme = newAccount.theme
@@ -2442,13 +2669,14 @@ private extension RootView {
                                     consumedCalories: $consumedCalories,
                                     selectedDate: $selectedDate,
                                     calorieGoal: $calorieGoal,
-                                    selectedMacroFocus: $selectedMacroFocus,
+                                    selectedMacroFocus: $selectedWeightGoal,
                                     trackedMacros: $trackedMacros,
                                     macroConsumptions: $macroConsumptions,
                                     cravings: $cravings,
                                     mealReminders: $mealReminders,
                                     checkedMeals: $checkedMeals,
                                     maintenanceCalories: $maintenanceCalories,
+                                    selectedMacroStrategy: $selectedMacroStrategy,
                                     isPro: isPro
                                 )
                                 .onAppear { handleTabAppear(.nutrition) }

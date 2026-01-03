@@ -2401,6 +2401,14 @@ extension RoutineTabView {
     }
 
     private func loadDailyTasks() {
+        // Load from local cache immediately
+        let localDay = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros)
+        currentDay = localDay
+        pruneCompletions(for: localDay)
+        pruneHabitCompletions(for: localDay)
+        rebuildDailyTaskItems(using: localDay)
+        rebuildHabitProgress(using: localDay)
+
         dayService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros) { day in
             DispatchQueue.main.async {
                 let resolvedDay = day ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: account.trackedMacros)
@@ -2415,8 +2423,18 @@ extension RoutineTabView {
 
     private func loadHabitWeek() {
         let dates = weekDates(for: selectedDate)
+        
+        // Load locally immediately
+        var localDayMap: [Date: Day] = [:]
+        for date in dates {
+            let localDay = Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: account.trackedMacros)
+            pruneHabitCompletions(for: localDay)
+            localDayMap[Calendar.current.startOfDay(for: date)] = localDay
+        }
+        rebuildHabitProgress(using: localDayMap)
+
         let group = DispatchGroup()
-        var dayMap: [Date: Day] = [:]
+        var remoteDayMap: [Date: Day] = [:]
 
         for date in dates {
             group.enter()
@@ -2424,14 +2442,14 @@ extension RoutineTabView {
                 DispatchQueue.main.async {
                     let resolvedDay = day ?? Day.fetchOrCreate(for: date, in: modelContext, trackedMacros: account.trackedMacros)
                     pruneHabitCompletions(for: resolvedDay)
-                    dayMap[Calendar.current.startOfDay(for: date)] = resolvedDay
+                    remoteDayMap[Calendar.current.startOfDay(for: date)] = resolvedDay
                     group.leave()
                 }
             }
         }
 
         group.notify(queue: .main) {
-            rebuildHabitProgress(using: dayMap)
+            rebuildHabitProgress(using: remoteDayMap)
         }
     }
 

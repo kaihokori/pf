@@ -195,7 +195,8 @@ class DayFirestoreService {
     private func dayHasMeaningfulData(_ day: Day) -> Bool {
         if day.calorieGoal != 0 { return true }
         if day.maintenanceCalories != 0 { return true }
-        if let focus = day.macroFocusRaw, !focus.isEmpty { return true }
+        if let wg = day.weightGoalRaw, !wg.isEmpty { return true }
+        if let ms = day.macroStrategyRaw, !ms.isEmpty { return true }
         if day.caloriesConsumed != 0 { return true }
         if !day.completedMeals.isEmpty { return true }
         if !day.takenSupplements.isEmpty { return true }
@@ -271,7 +272,8 @@ class DayFirestoreService {
                 let caloriesOpt = data["caloriesConsumed"] as? Int
                 let calorieGoalRemote = data["calorieGoal"] as? Int ?? (data["calorieGoal"] as? NSNumber)?.intValue
                 let maintenanceRemote = data["maintenanceCalories"] as? Int ?? (data["maintenanceCalories"] as? NSNumber)?.intValue
-                let macroFocusRemote = data["macroFocus"] as? String ?? data["macroFocusRaw"] as? String
+                let weightGoalRemote = data["weightGoal"] as? String ?? data["weightGoalRaw"] as? String
+                let macroStrategyRemote = data["macroStrategy"] as? String ?? data["macroStrategyRaw"] as? String
                 let weightUnitRemote = data["weightUnit"] as? String
                 let caloriesBurnedRemote = (data["caloriesBurned"] as? NSNumber)?.doubleValue
                 let stepsTakenRemote = (data["stepsTaken"] as? NSNumber)?.doubleValue
@@ -301,7 +303,8 @@ class DayFirestoreService {
 
                     if let goal = calorieGoalRemote { day.calorieGoal = goal }
                     if let maintenance = maintenanceRemote { day.maintenanceCalories = maintenance }
-                    if let macroFocusRemote { day.macroFocusRaw = macroFocusRemote }
+                    if let weightGoalRemote { day.weightGoalRaw = weightGoalRemote }
+                    if let macroStrategyRemote { day.macroStrategyRaw = macroStrategyRemote }
                     if let weightUnitRemote, !weightUnitRemote.isEmpty { day.weightUnitRaw = weightUnitRemote }
 
                     let mergedMacros = self.mergeMacroConsumptions(local: day.macroConsumptions, remote: macroConsumptionsRemote)
@@ -434,7 +437,8 @@ class DayFirestoreService {
                         calorieGoal: calorieGoalRemote ?? 0,
                         maintenanceCalories: maintenanceRemote ?? 0,
                         weightUnitRaw: weightUnitRemote,
-                        macroFocusRaw: macroFocusRemote,
+                        weightGoalRaw: weightGoalRemote,
+                        macroStrategyRaw: macroStrategyRemote,
                         workoutCheckInStatusRaw: workoutStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue, macroConsumptions: macroConsumptionsRemote,
                         completedMeals: completedMealsRemote ?? [],
                         takenSupplements: takenSupplementsRemote ?? [],
@@ -534,8 +538,11 @@ class DayFirestoreService {
         if forceWrite || day.maintenanceCalories != 0 {
             data["maintenanceCalories"] = day.maintenanceCalories
         }
-        if forceWrite || (day.macroFocusRaw?.isEmpty == false) {
-            data["macroFocus"] = day.macroFocusRaw ?? ""
+        if forceWrite || (day.weightGoalRaw?.isEmpty == false) {
+            data["weightGoal"] = day.weightGoalRaw ?? ""
+        }
+        if forceWrite || (day.macroStrategyRaw?.isEmpty == false) {
+            data["macroStrategy"] = day.macroStrategyRaw ?? ""
         }
         if forceWrite || (day.weightUnitRaw?.isEmpty == false) {
             data["weightUnit"] = day.weightUnitRaw ?? "kg"

@@ -340,8 +340,37 @@ struct AccountsView: View {
                                 viewModel.saveChanges()
 
                                 await MainActor.run {
-                                    account.profileImage = viewModel.profile.avatarImageData
-                                    account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
+                                    // Check if the image has changed to avoid unnecessary re-uploads
+                                    let newImageData = viewModel.profile.avatarImageData
+                                    let oldImageData = account.profileImage
+                                    let oldAvatar = account.profileAvatar
+                                    
+                                    let imageChanged = newImageData != oldImageData
+                                    
+                                    account.profileImage = newImageData
+                                    
+                                    // Only overwrite profileAvatar if we have a NEW image (to trigger upload)
+                                    // or if we have NO image (to revert to color).
+                                    // If we have the SAME image and it has a URL, keep the URL.
+                                    if imageChanged {
+                                        // Image changed: set to color index to trigger upload in AccountFirestoreService
+                                        account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
+                                    } else if newImageData == nil {
+                                        // No image: set to color index
+                                        account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
+                                    } else {
+                                        // Image exists and hasn't changed.
+                                        // If oldAvatar is a URL, keep it.
+                                        // If oldAvatar is NOT a URL (e.g. "0"), keep it (it might trigger upload if logic allows, or just stay as is).
+                                        // But if we want to ensure consistency with color selection if it changed:
+                                        if let oldAvatar = oldAvatar, oldAvatar.hasPrefix("http") {
+                                            // Keep URL
+                                        } else {
+                                            // Update color just in case
+                                            account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
+                                        }
+                                    }
+
                                     account.name = viewModel.profile.name
                                     account.gender = viewModel.profile.selectedGender?.rawValue
                                     account.dateOfBirth = viewModel.profile.birthDate
@@ -352,8 +381,6 @@ struct AccountsView: View {
                                     account.unitSystem = viewModel.profile.unitSystem.rawValue
                                     account.startWeekOn = viewModel.profile.weekStart.rawValue
                                     account.activityLevel = viewModel.profile.activityLevel.rawValue
-                                    account.profileImage = viewModel.profile.avatarImageData
-                                    account.profileAvatar = String(describing: viewModel.profile.avatarColor.rawValue)
 
                                     themeManager.setTheme(viewModel.profile.appTheme)
                                     
@@ -365,12 +392,21 @@ struct AccountsView: View {
                                 }
 
                                 // Save to Firestore using the updated account
-                                let success = await viewModel.saveAccountToFirestore(account)
+                                let (success, newAvatarURL) = await viewModel.saveAccountToFirestore(account)
                                 if !success {
                                     print("Failed to save account to Firestore")
                                 }
-
+                                
+                                // Save locally again to persist any URL updates from Firestore service
                                 await MainActor.run {
+                                    if let url = newAvatarURL {
+                                        account.profileAvatar = url
+                                    }
+                                    do {
+                                        try modelContext.save()
+                                    } catch {
+                                        print("AccountsView: failed to save locally after Firestore sync: \(error)")
+                                    }
                                     dismiss()
                                 }
                             }
@@ -559,7 +595,16 @@ struct AccountsView: View {
             ActivityLevelExplainer()
         }
         .sheet(isPresented: $showAlertsSheet) {
-            AlertSheetView()
+            AlertSheetView(
+                workoutSchedule: account.workoutSchedule,
+                itineraryEvents: account.itineraryEvents,
+                nutritionSupplements: account.nutritionSupplements,
+                workoutSupplements: account.workoutSupplements,
+                dailyTasks: account.dailyTasks,
+                habits: account.habits,
+                mealReminders: account.mealReminders,
+                autoRestIndices: account.autoRestDayIndices
+            )
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             // When reassessment completes, pop back to the main tab instead of returning here.
@@ -572,6 +617,14 @@ struct AccountsView: View {
     }
     
     struct AlertSheetView: View {
+        var workoutSchedule: [WorkoutScheduleItem]
+        var itineraryEvents: [ItineraryEvent]
+        var nutritionSupplements: [Supplement]
+        var workoutSupplements: [Supplement]
+        var dailyTasks: [DailyTaskDefinition]
+        var habits: [HabitDefinition]
+        var mealReminders: [MealReminder]
+        var autoRestIndices: [Int]
         let pillColumns = [GridItem(.adaptive(minimum: 120), spacing: 12)]
         @Environment(\.dismiss) private var dismiss
         @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
@@ -583,10 +636,39 @@ struct AccountsView: View {
         @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = true
         @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
         @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
+        @AppStorage("alerts.weeklyScheduleEnabled") private var weeklyScheduleAlertsEnabled: Bool = true
+        @AppStorage("alerts.itineraryEnabled") private var itineraryAlertsEnabled: Bool = true
+        @AppStorage("alerts.nutritionSupplementsEnabled") private var nutritionSupplementsAlertsEnabled: Bool = true
+        @AppStorage("alerts.workoutSupplementsEnabled") private var workoutSupplementsAlertsEnabled: Bool = true
         
         @AppStorage("alerts.habitsTime") private var habitsTime: Double = 9 * 3600
         @AppStorage("alerts.dailyCheckInTime") private var dailyCheckInTime: Double = 18 * 3600
         @AppStorage("alerts.weeklyProgressTime") private var weeklyProgressTime: Double = 9 * 3600
+        @AppStorage("alerts.nutritionSupplementsTime") private var nutritionSupplementsTime: Double = 9 * 3600
+        @AppStorage("alerts.workoutSupplementsTime") private var workoutSupplementsTime: Double = 16 * 3600
+        @AppStorage("alerts.weeklyProgressDay") private var weeklyProgressDay: Int = 2
+        @EnvironmentObject private var themeManager: ThemeManager
+        @Environment(\.colorScheme) private var colorScheme
+
+        var currentAccent: Color {
+            if themeManager.selectedTheme == .multiColour {
+                return .accentColor
+            }
+            return themeManager.selectedTheme.accent(for: colorScheme)
+        }
+
+        private func dayLabel(for weekday: Int) -> String {
+            switch weekday {
+            case 1: return "S"
+            case 2: return "M"
+            case 3: return "T"
+            case 4: return "W"
+            case 5: return "T"
+            case 6: return "F"
+            case 7: return "S"
+            default: return ""
+            }
+        }
 
         private func binding(for time: Binding<Double>) -> Binding<Date> {
             Binding(
@@ -611,120 +693,289 @@ struct AccountsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Toggle(isOn: $dailyTasksAlertsEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Daily Task")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive local reminders for tasks in your Daily Tasks list.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
+                    ScrollView(showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 20) {
+                            // Nutrition
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Nutrition")
+                                    .font(.title2.weight(.bold))
+                                Divider()
 
-                        Toggle(isOn: $activityTimersAlertsEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Activity Timers")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive a notification when an activity timer finishes.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Daily Supplements")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Get a reminder to take your daily supplements.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if nutritionSupplementsAlertsEnabled {
+                                        DatePicker("", selection: binding(for: $nutritionSupplementsTime), displayedComponents: .hourAndMinute)
+                                            .labelsHidden()
+                                    }
+                                    Toggle("", isOn: $nutritionSupplementsAlertsEnabled)
+                                        .labelsHidden()
+                                }
 
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Habits")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive a daily reminder with your remaining habits.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if habitsAlertsEnabled {
-                                DatePicker("", selection: binding(for: $habitsTime), displayedComponents: .hourAndMinute)
-                                    .labelsHidden()
-                            }
-                            Toggle("", isOn: $habitsAlertsEnabled)
-                                .labelsHidden()
-                        }
+                                Toggle(isOn: $mealsAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Meal Reminders")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive reminders to log meals at scheduled times.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
 
-                        Toggle(isOn: $timeTrackingAlertsEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Time Tracking")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive a notification when your timer or stopwatch target is reached.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                Toggle(isOn: $fastingAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Intermittent Fasting")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive a notification when your fasting window ends.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
                             }
-                        }
-                        .toggleStyle(.switch)
 
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Daily Check-In")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive a reminder to check in on your workout days.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if dailyCheckInAlertsEnabled {
-                                DatePicker("", selection: binding(for: $dailyCheckInTime), displayedComponents: .hourAndMinute)
-                                    .labelsHidden()
-                            }
-                            Toggle("", isOn: $dailyCheckInAlertsEnabled)
-                                .labelsHidden()
-                        }
+                            // Routine
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Routine")
+                                    .font(.title2.weight(.bold))
+                                Divider()
 
-                        Toggle(isOn: $fastingAlertsEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Intermittent Fasting")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive a notification when your fasting window ends.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
+                                Toggle(isOn: $dailyTasksAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Daily Tasks")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive local reminders for tasks in your Daily Tasks list.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
 
-                        Toggle(isOn: $mealsAlertsEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Meal Reminders")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive reminders to log meals at scheduled times.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
+                                Toggle(isOn: $activityTimersAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Activity Timers")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive a notification when an activity timer finishes.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
 
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Weekly Progress")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Receive a weekly reminder to capture your progress photo.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Habits")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive a daily reminder with your remaining habits.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if habitsAlertsEnabled {
+                                        DatePicker("", selection: binding(for: $habitsTime), displayedComponents: .hourAndMinute)
+                                            .labelsHidden()
+                                    }
+                                    Toggle("", isOn: $habitsAlertsEnabled)
+                                        .labelsHidden()
+                                }
                             }
-                            Spacer()
-                            if weeklyProgressAlertsEnabled {
-                                DatePicker("", selection: binding(for: $weeklyProgressTime), displayedComponents: .hourAndMinute)
-                                    .labelsHidden()
+
+                            // Workout
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Workout")
+                                    .font(.title2.weight(.bold))
+                                Divider()
+
+                                Toggle(isOn: $weeklyScheduleAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Weekly Schedule")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive reminders for your scheduled workouts.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Workout Supplements")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Get a reminder to take your workout supplements.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if workoutSupplementsAlertsEnabled {
+                                        DatePicker("", selection: binding(for: $workoutSupplementsTime), displayedComponents: .hourAndMinute)
+                                            .labelsHidden()
+                                    }
+                                    Toggle("", isOn: $workoutSupplementsAlertsEnabled)
+                                        .labelsHidden()
+                                }
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Daily Check-In")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive a reminder to check in on your workout days.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if dailyCheckInAlertsEnabled {
+                                        DatePicker("", selection: binding(for: $dailyCheckInTime), displayedComponents: .hourAndMinute)
+                                            .labelsHidden()
+                                    }
+                                    Toggle("", isOn: $dailyCheckInAlertsEnabled)
+                                        .labelsHidden()
+                                }
+
+                                VStack {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Weekly Progress")
+                                                .font(.subheadline.weight(.semibold))
+                                            Text("Receive a weekly reminder to capture your progress photo.")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        if weeklyProgressAlertsEnabled {
+                                            DatePicker("", selection: binding(for: $weeklyProgressTime), displayedComponents: .hourAndMinute)
+                                                .labelsHidden()
+                                        }
+                                        Toggle("", isOn: $weeklyProgressAlertsEnabled)
+                                            .labelsHidden()
+                                    }
+
+                                    if weeklyProgressAlertsEnabled {
+                                        HStack(spacing: 8) {
+                                            ForEach([2, 3, 4, 5, 6, 7, 1], id: \.self) { day in
+                                                let isSelected = weeklyProgressDay == day
+                                                Button {
+                                                    weeklyProgressDay = day
+                                                } label: {
+                                                    Text(dayLabel(for: day))
+                                                        .font(.caption.weight(.semibold))
+                                                        .frame(width: 32, height: 32)
+                                                        .background(isSelected ? currentAccent : Color.secondary.opacity(0.1))
+                                                        .foregroundColor(isSelected ? .white : .primary)
+                                                        .clipShape(Circle())
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                        .padding(.top, 4)
+                                    }
+                                }
                             }
-                            Toggle("", isOn: $weeklyProgressAlertsEnabled)
-                                .labelsHidden()
+
+                            // Sports
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Sports")
+                                    .font(.title2.weight(.bold))
+                                Divider()
+
+                                Toggle(isOn: $timeTrackingAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Time Tracking")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive a notification when your timer or stopwatch target is reached.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
+                            }
+
+                            // Travel
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Travel")
+                                    .font(.title2.weight(.bold))
+                                Divider()
+
+                                Toggle(isOn: $itineraryAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Travel Itinerary")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive reminders for your upcoming itinerary events.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
+                            }
                         }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 8)
                     }
-                    Spacer()
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") {
+                            if mealsAlertsEnabled {
+                                NotificationsHelper.scheduleMealNotifications(mealReminders)
+                            } else {
+                                NotificationsHelper.removeMealNotifications()
+                            }
+
+                            if dailyTasksAlertsEnabled {
+                                NotificationsHelper.scheduleDailyTaskNotifications(dailyTasks)
+                            } else {
+                                NotificationsHelper.removeDailyTaskNotifications()
+                            }
+
+                            if habitsAlertsEnabled {
+                                NotificationsHelper.scheduleHabitNotifications(habits)
+                            } else {
+                                NotificationsHelper.removeHabitNotifications()
+                            }
+
+                            if dailyCheckInAlertsEnabled {
+                                NotificationsHelper.scheduleDailyCheckInNotifications(autoRestIndices: Set(autoRestIndices), completedIndices: [])
+                            } else {
+                                NotificationsHelper.removeDailyCheckInNotifications()
+                            }
+
+                            if weeklyProgressAlertsEnabled {
+                                NotificationsHelper.scheduleWeeklyProgressNotifications(time: weeklyProgressTime, weekday: weeklyProgressDay)
+                            } else {
+                                NotificationsHelper.removeWeeklyProgressNotifications()
+                            }
+
+                            if weeklyScheduleAlertsEnabled {
+                                NotificationsHelper.scheduleWeeklyScheduleNotifications(workoutSchedule)
+                            } else {
+                                NotificationsHelper.removeWeeklyScheduleNotifications()
+                            }
+                            
+                            if itineraryAlertsEnabled {
+                                NotificationsHelper.scheduleItineraryNotifications(itineraryEvents)
+                            } else {
+                                NotificationsHelper.removeItineraryNotifications()
+                            }
+
+                            if nutritionSupplementsAlertsEnabled {
+                                NotificationsHelper.scheduleNutritionSupplementNotifications(nutritionSupplements, time: nutritionSupplementsTime)
+                            } else {
+                                NotificationsHelper.removeNutritionSupplementNotifications()
+                            }
+
+                            if workoutSupplementsAlertsEnabled {
+                                NotificationsHelper.scheduleWorkoutSupplementNotifications(workoutSupplements, time: workoutSupplementsTime)
+                            } else {
+                                NotificationsHelper.removeWorkoutSupplementNotifications()
+                            }
                             dismiss()
                         }
                         .fontWeight(.semibold)
@@ -1815,10 +2066,10 @@ final class AccountsViewModel: ObservableObject {
     }
 
     // Async wrapper so callers can await Firestore save
-    func saveAccountToFirestore(_ account: Account) async -> Bool {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            firestoreService.saveAccount(account) { success in
-                continuation.resume(returning: success)
+    func saveAccountToFirestore(_ account: Account) async -> (Bool, String?) {
+        await withCheckedContinuation { (continuation: CheckedContinuation<(Bool, String?), Never>) in
+            firestoreService.saveAccount(account) { success, url in
+                continuation.resume(returning: (success, url))
             }
         }
     }
@@ -1971,26 +2222,20 @@ final class AccountsViewModel: ObservableObject {
     }
 
     private func autoUpdateMaintenanceCalories(force: Bool = false) {
-        // Only auto-update if gender is known and not 'preferNotSay'
-        guard let gender = draft.selectedGender, gender != .preferNotSay else { return }
-
-        guard let weightKg = weightInKilograms(), let heightCm = heightInCentimeters() else { return }
-
-        let calendar = Calendar.current
-        let today = Date()
-        let years = calendar.dateComponents([.year], from: draft.birthDate, to: today).year ?? 0
-        let age = max(0, years)
-
-        let rmr: Double
-        if gender == .male {
-            rmr = 10.0 * weightKg + 6.25 * heightCm - 5.0 * Double(age) + 5.0
-        } else {
-            rmr = 10.0 * weightKg + 6.25 * heightCm - 5.0 * Double(age) - 161.0
-        }
-
-        let multiplier = draft.activityLevel.tdeeMultiplier
-        let tdee = rmr * multiplier
-        let newValue = String(Int(tdee.rounded()))
+        // Use MacroCalculator to ensure consistency with Onboarding
+        guard let calories = MacroCalculator.estimateMaintenanceCalories(
+            genderOption: draft.selectedGender,
+            birthDate: draft.birthDate,
+            unitSystem: draft.unitSystem,
+            heightValue: draft.heightValue,
+            heightFeet: draft.heightFeet,
+            heightInches: draft.heightInches,
+            weightValue: draft.weightValue,
+            workoutDays: 0, // Ignored when activityLevelRaw is provided
+            activityLevelRaw: draft.activityLevel.rawValue
+        ) else { return }
+        
+        let newValue = String(calories)
 
         if force {
             // Force overwrite when relevant fields changed (user expects recalculation)

@@ -421,7 +421,8 @@ class Day {
     var caloriesConsumed: Int = 0
     var calorieGoal: Int = 0
     var maintenanceCalories: Int = 0
-    var macroFocusRaw: String?
+    var weightGoalRaw: String?
+    var macroStrategyRaw: String?
     var workoutCheckInStatusRaw: String? = WorkoutCheckInStatus.notLogged.rawValue
     var workoutCheckInStatus: WorkoutCheckInStatus {
         get { WorkoutCheckInStatus(rawValue: workoutCheckInStatusRaw ?? WorkoutCheckInStatus.notLogged.rawValue) ?? .notLogged }
@@ -468,7 +469,8 @@ class Day {
         calorieGoal: Int = 0,
         maintenanceCalories: Int = 0,
         weightUnitRaw: String? = "kg",
-        macroFocusRaw: String? = nil,
+        weightGoalRaw: String? = nil,
+        macroStrategyRaw: String? = nil,
         workoutCheckInStatusRaw: String? = WorkoutCheckInStatus.notLogged.rawValue,
         macroConsumptions: [MacroConsumption] = [],
         completedMeals: [String] = [],
@@ -502,7 +504,8 @@ class Day {
         self.calorieGoal = calorieGoal
         self.maintenanceCalories = maintenanceCalories
         self.weightUnitRaw = weightUnitRaw
-        self.macroFocusRaw = macroFocusRaw
+        self.weightGoalRaw = weightGoalRaw
+        self.macroStrategyRaw = macroStrategyRaw
         self.workoutCheckInStatusRaw = workoutCheckInStatusRaw
         self.macroConsumptions = macroConsumptions
         self.completedMeals = completedMeals
@@ -571,14 +574,16 @@ class Day {
         }
 
         var inheritedCalorieGoal: Int = 0
-        var inheritedMacroFocusRaw: String? = nil
+        var inheritedWeightGoalRaw: String? = nil
+        var inheritedMacroStrategyRaw: String? = nil
         var inheritedMaintenance: Int = 0
         do {
             let acctReq = FetchDescriptor<Account>()
             let accounts = try context.fetch(acctReq)
             if let acct = accounts.first {
                 inheritedCalorieGoal = acct.calorieGoal
-                inheritedMacroFocusRaw = acct.macroFocusRaw
+                inheritedWeightGoalRaw = acct.weightGoalRaw
+                inheritedMacroStrategyRaw = acct.macroStrategyRaw
                 inheritedMaintenance = acct.maintenanceCalories
                 if let weight = acct.weight, let height = acct.height {
                     let age: Int = {
@@ -609,7 +614,8 @@ class Day {
                 let allDays = try context.fetch(allRequest)
                 if let last = allDays.sorted(by: { $0.date < $1.date }).last {
                     if inheritedCalorieGoal == 0 { inheritedCalorieGoal = last.calorieGoal }
-                    if inheritedMacroFocusRaw == nil { inheritedMacroFocusRaw = last.macroFocusRaw }
+                    if inheritedWeightGoalRaw == nil { inheritedWeightGoalRaw = last.weightGoalRaw }
+                    if inheritedMacroStrategyRaw == nil { inheritedMacroStrategyRaw = last.macroStrategyRaw }
                     if inheritedMaintenance == 0 { inheritedMaintenance = last.maintenanceCalories }
                 }
             } catch {
@@ -635,7 +641,8 @@ class Day {
             caloriesConsumed: 0,
             calorieGoal: inheritedCalorieGoal,
             maintenanceCalories: inheritedMaintenance,
-            macroFocusRaw: inheritedMacroFocusRaw,
+            weightGoalRaw: inheritedWeightGoalRaw,
+            macroStrategyRaw: inheritedMacroStrategyRaw,
             macroConsumptions: consumptions,
             completedMeals: [],
             takenSupplements: [],

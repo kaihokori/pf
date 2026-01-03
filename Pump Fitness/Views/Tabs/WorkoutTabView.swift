@@ -6,6 +6,10 @@ import TipKit
 
 private extension WorkoutTabView {
     func fetchDayTakenWorkoutSupplements() {
+        // Optimistic load
+        let localDay = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        dayTakenWorkoutSupplementIDs = Set(localDay.takenWorkoutSupplements)
+
         dayFirestoreService.fetchDay(for: selectedDate, in: modelContext) { day in
             DispatchQueue.main.async {
                 if let day = day {
@@ -634,6 +638,7 @@ struct WorkoutTabView: View {
                             } catch {
                                 print("WorkoutTabView: failed to save Day after toggling workout supplement: \(error)")
                             }
+                            
                             dayFirestoreService.updateDayFields(["takenWorkoutSupplements": day.takenWorkoutSupplements], for: day) { success in
                                 if !success { print("WorkoutTabView: failed to sync takenWorkoutSupplements to Firestore") }
                             }
@@ -944,6 +949,14 @@ struct WorkoutTabView: View {
                 },
                 onCancel: {
                     weeklySelectedEntry = nil
+                },
+                onDelete: {
+                    if let idx = weeklyEntries.firstIndex(where: { $0.id == entry.id }) {
+                        weeklyEntries.remove(at: idx)
+                        persistWeeklyProgressEntries()
+                        scheduleProgressReminder()
+                    }
+                    weeklySelectedEntry = nil
                 }
             )
             .presentationDetents([.large])
@@ -1132,6 +1145,13 @@ struct WorkoutTabView: View {
                 print("WorkoutTabView: failed to sync workout schedule to Firestore")
             }
         }
+        
+        // Reschedule notifications
+        if UserDefaults.standard.object(forKey: "alerts.weeklyScheduleEnabled") as? Bool ?? true {
+            NotificationsHelper.scheduleWeeklyScheduleNotifications(updated)
+        } else {
+            NotificationsHelper.removeWeeklyScheduleNotifications()
+        }
     }
 
     func scheduleProgressReminder() {
@@ -1245,21 +1265,6 @@ struct WorkoutTabView: View {
         // Start with locally edited entries.
         for entry in filteredEntries {
             mergedById[entry.id] = entry
-        }
-
-        // Preserve any existing account entries that aren't currently in memory to avoid accidental overwrites.
-        for record in account.weeklyProgress {
-            let uuid = UUID(uuidString: record.id) ?? UUID()
-            if mergedById[uuid] == nil {
-                mergedById[uuid] = WeeklyProgressEntry(
-                    id: uuid,
-                    date: record.date,
-                    weight: record.weight,
-                    waterPercent: record.waterPercent,
-                    bodyFatPercent: record.bodyFatPercent,
-                    photoData: record.photoData
-                )
-            }
         }
 
         let mergedEntries = mergedById.values.sorted { $0.date < $1.date }
@@ -3377,17 +3382,20 @@ private struct WeeklyProgressAddSheet: View {
     var initialEntry: WeeklyProgressEntry? = nil
     var onSave: (WeeklyProgressEntry) -> Void
     var onCancel: () -> Void = {}
+    var onDelete: (() -> Void)? = nil
 
     init(
         tint: Color = .accentColor,
         initialEntry: WeeklyProgressEntry? = nil,
         onSave: @escaping (WeeklyProgressEntry) -> Void,
-        onCancel: @escaping () -> Void = {}
+        onCancel: @escaping () -> Void = {},
+        onDelete: (() -> Void)? = nil
     ) {
         self.tint = tint
         self.initialEntry = initialEntry
         self.onSave = onSave
         self.onCancel = onCancel
+        self.onDelete = onDelete
 
         _date = State(initialValue: initialEntry?.date ?? Date())
         _weightText = State(initialValue: initialEntry != nil ? String(format: "%.1f", initialEntry!.weight) : "")
@@ -3544,6 +3552,23 @@ private struct WeeklyProgressAddSheet: View {
                                 Spacer()
                             }
                             .padding(.top, 6)
+                        }
+
+                        if initialEntry != nil {
+                            Button {
+                                onDelete?()
+                            } label: {
+                                Text("Delete Entry")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.red)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.red.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .contentShape(Rectangle())
+                            }
+                            .padding(.top, 12)
                         }
                     }
                 }

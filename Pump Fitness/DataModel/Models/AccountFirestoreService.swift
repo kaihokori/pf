@@ -65,7 +65,8 @@ class AccountFirestoreService {
                     weight: data["weight"] as? Double,
                     maintenanceCalories: data["maintenanceCalories"] as? Int ?? 0,
                     calorieGoal: data["calorieGoal"] as? Int ?? 0,
-                    macroFocusRaw: data["macroFocus"] as? String,
+                    weightGoalRaw: data["weightGoal"] as? String,
+                    macroStrategyRaw: data["macroStrategy"] as? String,
                     intermittentFastingMinutes: data["intermittentFastingMinutes"] as? Int ?? 16 * 60,
                     theme: data["theme"] as? String,
                     unitSystem: data["unitSystem"] as? String,
@@ -157,106 +158,159 @@ class AccountFirestoreService {
         }
     }
 
+    /// Overload for backward compatibility
+    func saveAccount(_ account: Account, includeCravings: Bool = false, forceOverwrite: Bool = false, completion: @escaping (Bool) -> Void) {
+        saveAccount(account, includeCravings: includeCravings, forceOverwrite: forceOverwrite) { success, _ in
+            completion(success)
+        }
+    }
+
     /// Persist account fields to Firestore. Set `includeCravings` to true only
     /// when the caller intentionally updates cravings to avoid wiping server
     /// data during unrelated saves.
-    func saveAccount(_ account: Account, includeCravings: Bool = false, forceOverwrite: Bool = false, completion: @escaping (Bool) -> Void) {
+    func saveAccount(_ account: Account, includeCravings: Bool = false, forceOverwrite: Bool = false, completion: @escaping (Bool, String?) -> Void) {
         // Prefer the authenticated user's UID for the document id when signed in.
         let currentUID = Auth.auth().currentUser?.uid
         guard let id = (currentUID ?? account.id), !id.isEmpty else {
             print("AccountFirestoreService.saveAccount: missing account id and no authenticated user")
-            completion(false)
+            completion(false, nil)
             return
         }
+
+        // Extract data synchronously to avoid threading issues with SwiftData
+        let profileImage = account.profileImage
+        let profileAvatar = account.profileAvatar
+        let name = account.name
+        let gender = account.gender
+        let dateOfBirth = account.dateOfBirth
+        let height = account.height
+        let weight = account.weight
+        let maintenanceCalories = account.maintenanceCalories
+        let calorieGoal = account.calorieGoal
+        let weightGoalRaw = account.weightGoalRaw
+        let macroStrategyRaw = account.macroStrategyRaw
+        let intermittentFastingMinutes = account.intermittentFastingMinutes
+        let theme = account.theme
+        let unitSystem = account.unitSystem
+        let caloriesBurnGoal = account.caloriesBurnGoal
+        let stepsGoal = account.stepsGoal
+        let distanceGoal = account.distanceGoal
+        let expenseCurrencySymbol = account.expenseCurrencySymbol
+        let didCompleteOnboarding = account.didCompleteOnboarding
+        let startWeekOn = account.startWeekOn
+        let autoRestDayIndices = account.autoRestDayIndices
+        let trackedMacros = account.trackedMacros
+        let expenseCategories = account.expenseCategories
+        let cravings = account.cravings
+        let groceryItems = account.groceryItems
+        let habits = account.habits
+        let goals = account.goals
+        let mealReminders = account.mealReminders
+        let weeklyProgress = account.weeklyProgress
+        let workoutSupplements = account.workoutSupplements
+        let nutritionSupplements = account.nutritionSupplements
+        let dailyTasks = account.dailyTasks
+        let sports = account.sports
+        let weightGroups = account.weightGroups
+        let soloMetrics = account.soloMetrics
+        let teamMetrics = account.teamMetrics
+        let activityTimers = account.activityTimers
+        let workoutSchedule = account.workoutSchedule
+        let itineraryEvents = account.itineraryEvents
+        let trialPeriodEnd = account.trialPeriodEnd
+        let activityLevel = account.activityLevel
 
         func proceedWithSave(avatarURL: String?) {
             var data: [String: Any] = [:]
 
             if let url = avatarURL {
                 data["profileAvatar"] = url
-            } else if forceOverwrite || (account.profileAvatar?.isEmpty == false) {
-                data["profileAvatar"] = account.profileAvatar ?? ""
+            } else if forceOverwrite || (profileAvatar?.isEmpty == false) {
+                data["profileAvatar"] = profileAvatar ?? ""
             }
-            if forceOverwrite || (account.name?.isEmpty == false) {
-                data["name"] = account.name ?? ""
+            if forceOverwrite || (name?.isEmpty == false) {
+                data["name"] = name ?? ""
             }
-            if forceOverwrite || (account.gender?.isEmpty == false) {
-                data["gender"] = account.gender ?? ""
+            if forceOverwrite || (gender?.isEmpty == false) {
+                data["gender"] = gender ?? ""
             }
-            if forceOverwrite || account.dateOfBirth != nil {
-                if let dob = account.dateOfBirth {
+            if forceOverwrite || dateOfBirth != nil {
+                if let dob = dateOfBirth {
                     data["dateOfBirth"] = dob
                 }
             }
-            if forceOverwrite || (account.height ?? 0) != 0 {
-                data["height"] = account.height ?? 0
+            if forceOverwrite || (height ?? 0) != 0 {
+                data["height"] = height ?? 0
             }
-            if forceOverwrite || (account.weight ?? 0) != 0 {
-                data["weight"] = account.weight ?? 0
+            if forceOverwrite || (weight ?? 0) != 0 {
+                data["weight"] = weight ?? 0
             }
-            if forceOverwrite || account.maintenanceCalories != 0 {
-                data["maintenanceCalories"] = account.maintenanceCalories
+            if forceOverwrite || maintenanceCalories != 0 {
+                data["maintenanceCalories"] = maintenanceCalories
             }
-            if forceOverwrite || account.calorieGoal != 0 {
-                data["calorieGoal"] = account.calorieGoal
+            if forceOverwrite || calorieGoal != 0 {
+                data["calorieGoal"] = calorieGoal
             }
-            if forceOverwrite || (account.macroFocusRaw?.isEmpty == false) {
-                data["macroFocus"] = account.macroFocusRaw ?? ""
+            if forceOverwrite || (weightGoalRaw?.isEmpty == false) {
+                data["weightGoal"] = weightGoalRaw ?? ""
             }
-            if forceOverwrite || account.intermittentFastingMinutes != 0 {
-                data["intermittentFastingMinutes"] = account.intermittentFastingMinutes
+            if forceOverwrite || (macroStrategyRaw?.isEmpty == false) {
+                data["macroStrategy"] = macroStrategyRaw ?? ""
             }
-            if forceOverwrite || (account.theme?.isEmpty == false) {
-                data["theme"] = account.theme ?? ""
+            if forceOverwrite || intermittentFastingMinutes != 0 {
+                data["intermittentFastingMinutes"] = intermittentFastingMinutes
             }
-            if forceOverwrite || (account.unitSystem?.isEmpty == false) {
-                data["unitSystem"] = account.unitSystem ?? ""
+            if forceOverwrite || (theme?.isEmpty == false) {
+                data["theme"] = theme ?? ""
             }
-            data["caloriesBurnGoal"] = account.caloriesBurnGoal
-            data["stepsGoal"] = account.stepsGoal
-            data["distanceGoal"] = account.distanceGoal
-            let resolvedCurrency = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
+            if forceOverwrite || (unitSystem?.isEmpty == false) {
+                data["unitSystem"] = unitSystem ?? ""
+            }
+            data["caloriesBurnGoal"] = caloriesBurnGoal
+            data["stepsGoal"] = stepsGoal
+            data["distanceGoal"] = distanceGoal
+            let resolvedCurrency = expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines)
             data["expenseCurrencySymbol"] = resolvedCurrency.isEmpty ? Account.deviceCurrencySymbol : resolvedCurrency
 
-            if forceOverwrite || account.didCompleteOnboarding {
-                data["didCompleteOnboarding"] = account.didCompleteOnboarding
+            if forceOverwrite || didCompleteOnboarding {
+                data["didCompleteOnboarding"] = didCompleteOnboarding
             }
             
-            if forceOverwrite || (account.startWeekOn?.isEmpty == false) {
-                data["startWeekOn"] = account.startWeekOn ?? ""
+            if forceOverwrite || (startWeekOn?.isEmpty == false) {
+                data["startWeekOn"] = startWeekOn ?? ""
             }
-            data["autoRestDayIndices"] = account.autoRestDayIndices
-            data["trackedMacros"] = account.trackedMacros.map { $0.asDictionary }
-            let shouldFallbackCategories = !forceOverwrite && account.expenseCategories.isEmpty
-            let categoriesToPersist = shouldFallbackCategories ? ExpenseCategory.defaultCategories() : account.expenseCategories
+            data["autoRestDayIndices"] = autoRestDayIndices
+            data["trackedMacros"] = trackedMacros.map { $0.asDictionary }
+            let shouldFallbackCategories = !forceOverwrite && expenseCategories.isEmpty
+            let categoriesToPersist = shouldFallbackCategories ? ExpenseCategory.defaultCategories() : expenseCategories
             data["expenseCategories"] = categoriesToPersist.map { $0.asDictionary }
             if includeCravings {
-                data["cravings"] = account.cravings.map { $0.asDictionary }
+                data["cravings"] = cravings.map { $0.asDictionary }
             }
             // Persist grocery list even when empty so deletions propagate.
-            data["groceryItems"] = account.groceryItems.map { $0.asDictionary }
-            data["habits"] = account.habits.map { $0.asDictionary }
-            data["goals"] = account.goals.map { $0.asDictionary }
-            data["mealReminders"] = account.mealReminders.map { $0.asDictionary }
-            data["weeklyProgress"] = account.weeklyProgress.map { $0.asFirestoreDictionary() }
+            data["groceryItems"] = groceryItems.map { $0.asDictionary }
+            data["habits"] = habits.map { $0.asDictionary }
+            data["goals"] = goals.map { $0.asDictionary }
+            data["mealReminders"] = mealReminders.map { $0.asDictionary }
+            data["weeklyProgress"] = weeklyProgress.map { $0.asFirestoreDictionary() }
             // Persist split supplement lists; also emit legacy combined list for backward compatibility
-            data["workoutSupplements"] = account.workoutSupplements.map { $0.asDictionary }
-            data["nutritionSupplements"] = account.nutritionSupplements.map { $0.asDictionary }
+            data["workoutSupplements"] = workoutSupplements.map { $0.asDictionary }
+            data["nutritionSupplements"] = nutritionSupplements.map { $0.asDictionary }
             var legacySeen = Set<String>()
-            let legacySupplements = (account.workoutSupplements + account.nutritionSupplements)
+            let legacySupplements = (workoutSupplements + nutritionSupplements)
                 .filter { legacySeen.insert($0.id).inserted }
             data["supplements"] = legacySupplements.map { $0.asDictionary }
 
-            data["dailyTasks"] = account.dailyTasks.map { $0.asDictionary }
-            data["sports"] = account.sports.map { $0.asDictionary }
-            data["weightGroups"] = account.weightGroups.map { $0.asDictionary }
-            data["soloMetrics"] = account.soloMetrics.map { $0.asDictionary }
-            data["teamMetrics"] = account.teamMetrics.map { $0.asDictionary }
-            data["activityTimers"] = account.activityTimers.map { $0.asDictionary }
-            data["workoutSchedule"] = account.workoutSchedule.map { $0.asDictionary }
+            data["dailyTasks"] = dailyTasks.map { $0.asDictionary }
+            data["sports"] = sports.map { $0.asDictionary }
+            data["weightGroups"] = weightGroups.map { $0.asDictionary }
+            data["soloMetrics"] = soloMetrics.map { $0.asDictionary }
+            data["teamMetrics"] = teamMetrics.map { $0.asDictionary }
+            data["activityTimers"] = activityTimers.map { $0.asDictionary }
+            data["workoutSchedule"] = workoutSchedule.map { $0.asDictionary }
             // Persist itinerary events even when empty so deletions propagate.
-            data["itineraryEvents"] = account.itineraryEvents.map { $0.asFirestoreDictionary() }
-            if let trialEnd = account.trialPeriodEnd {
+            data["itineraryEvents"] = itineraryEvents.map { $0.asFirestoreDictionary() }
+            if let trialEnd = trialPeriodEnd {
                 data["trialPeriodEnd"] = Timestamp(date: trialEnd)
             } else if forceOverwrite {
                 data["trialPeriodEnd"] = FieldValue.delete()
@@ -267,7 +321,7 @@ class AccountFirestoreService {
             // activity is 'sedentary' and the remote document doesn't already
             // have an activityLevel, skip persisting it to avoid introducing
             // an implicit default. Otherwise include it as usual.
-            if let activity = account.activityLevel, !activity.isEmpty {
+            if let activity = activityLevel, !activity.isEmpty {
                 if forceOverwrite {
                     data["activityLevel"] = activity
                 } else if activity == ActivityLevelOption.sedentary.rawValue {
@@ -287,13 +341,13 @@ class AccountFirestoreService {
                         }
 
                         if includeCravings {
-                            data["cravings"] = account.cravings.map { $0.asDictionary }
+                            data["cravings"] = cravings.map { $0.asDictionary }
                         }
 
                         // If there are no other fields to write and activity was skipped,
                         // return success (nothing to do).
                         if data.isEmpty {
-                            completion(true)
+                            completion(true, avatarURL)
                             return
                         }
 
@@ -301,7 +355,7 @@ class AccountFirestoreService {
                             if let error {
                                 print("AccountFirestoreService.saveAccount error: \(error.localizedDescription)")
                             }
-                            completion(error == nil)
+                            completion(error == nil, avatarURL)
                         }
                     }
                     return
@@ -311,19 +365,19 @@ class AccountFirestoreService {
             }
 
             guard !data.isEmpty else {
-                completion(true)
+                completion(true, avatarURL)
                 return
             }
 
             if includeCravings {
-                data["cravings"] = account.cravings.map { $0.asDictionary }
+                data["cravings"] = cravings.map { $0.asDictionary }
             }
 
             self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
                 if let error {
                     print("AccountFirestoreService.saveAccount error: \(error.localizedDescription)")
                 }
-                completion(error == nil)
+                completion(error == nil, avatarURL)
             }
         }
 
@@ -333,8 +387,10 @@ class AccountFirestoreService {
         // Actually, if the user just picked a new image, AccountsView sets profileAvatar to a color string.
         // If the user loaded an existing image, profileAvatar is a URL.
         // So if profileAvatar is NOT a URL, and we have image data, we should upload.
-        if let imageData = account.profileImage, !(account.profileAvatar?.hasPrefix("http") ?? false) {
-            let storageRef = Storage.storage().reference().child("profile_images/\(id).jpg")
+        if let imageData = profileImage, !(profileAvatar?.hasPrefix("http") ?? false) {
+            // Store each user's avatar inside a folder named by their uid so
+            // Storage rules can easily allow per-user writes to that folder.
+            let storageRef = Storage.storage().reference().child("profile_images/\(id)/avatar.jpg")
             let metadata = StorageMetadata()
             metadata.contentType = "image/jpeg"
 
@@ -348,7 +404,7 @@ class AccountFirestoreService {
                 storageRef.downloadURL { url, error in
                     if let urlString = url?.absoluteString {
                         // Update the local account object so subsequent saves don't re-upload
-                        account.profileAvatar = urlString
+                        // account.profileAvatar = urlString // REMOVED: Thread unsafe
                         proceedWithSave(avatarURL: urlString)
                     } else {
                         proceedWithSave(avatarURL: nil)

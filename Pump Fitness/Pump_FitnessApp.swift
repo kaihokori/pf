@@ -20,6 +20,7 @@ struct Pump_FitnessApp: App {
 
     init() {
         FirebaseApp.configure()
+        _ = NetworkHelper.shared // Start network monitoring
         
         #if canImport(TipKit)
         if #available(iOS 17.4, *) {

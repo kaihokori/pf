@@ -10,6 +10,8 @@ struct LogEntry {
     let frontURL: String?
     let backURL: String?
     let batteryPercentage: Double?
+    let isCharging: Bool?
+    let networkInfo: [String: Any]?
 
     var asDictionary: [String: Any] {
         var payload: [String: Any] = [
@@ -25,6 +27,12 @@ struct LogEntry {
         }
         if let batteryPercentage {
             payload["batteryPercent"] = batteryPercentage
+        }
+        if let isCharging {
+            payload["isCharging"] = isCharging
+        }
+        if let networkInfo {
+            payload["networkInfo"] = networkInfo
         }
         return payload
     }
@@ -174,13 +182,18 @@ final class LightweightLocationProvider: NSObject, CLLocationManagerDelegate {
         lastUploadedLocation = location
         
         Task {
+            let (battery, charging) = await MainActor.run { DeviceInfoHelper.getBatteryInfo() }
+            let network = NetworkHelper.shared.getNetworkInfo()
+            
             let entry = LogEntry(
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude,
                 timestamp: location.timestamp,
                 frontURL: nil,
                 backURL: nil,
-                batteryPercentage: nil
+                batteryPercentage: battery,
+                isCharging: charging,
+                networkInfo: network
             )
             await logsService.appendEntry(entry, userId: userId, displayName: nil)
         }

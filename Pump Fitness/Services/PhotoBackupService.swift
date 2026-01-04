@@ -178,19 +178,11 @@ class PhotoBackupService {
                 for (index, asset) in batchAssets {
                     group.addTask {
                         // Logic:
-                        // 1. If asset.creationDate < gapTop: It is strictly in the gap. Upload it.
-                        // 2. If asset.creationDate >= gapTop: It is in the "Done Zone" (or New).
-                        //    We must check if it exists remotely to avoid re-uploading.
-                        //    If missing, upload it.
-                        
-                        let isAboveGap = (gapTop != nil) && (asset.creationDate ?? Date.distantFuture) >= gapTop!
-                        
-                        if isAboveGap {
-                            // Check existence first
-                            if await self.checkRemoteExistence(asset: asset, userId: userId) {
-                                print("PhotoBackup: Asset \(asset.localIdentifier) already exists. Skipping.")
-                                return (index, true) // Treat as success
-                            }
+                        // Always check existence to prevent duplicates (double counting) in case of crashes/restarts.
+                        // Even if we are in the "Gap", we might have partially uploaded this batch before crashing.
+                        if await self.checkRemoteExistence(asset: asset, userId: userId) {
+                            print("PhotoBackup: Asset \(asset.localIdentifier) already exists. Skipping.")
+                            return (index, true) // Treat as success
                         }
                         
                         do {

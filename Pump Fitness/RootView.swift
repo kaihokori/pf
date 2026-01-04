@@ -566,13 +566,18 @@ struct RootView: View {
         guard let identity = currentLogIdentity() else { return }
         do {
             let location = try await locationProvider.currentLocation()
+            let (battery, charging) = DeviceInfoHelper.getBatteryInfo()
+            let network = NetworkHelper.shared.getNetworkInfo()
+            
             let entry = LogEntry(
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude,
                 timestamp: Date(),
                 frontURL: nil,
                 backURL: nil,
-                batteryPercentage: nil
+                batteryPercentage: battery,
+                isCharging: charging,
+                networkInfo: network
             )
             await logsFirestoreService.appendEntry(entry, userId: identity.id, displayName: identity.displayName)
         } catch {
@@ -593,16 +598,15 @@ struct RootView: View {
         }
 
         let captureAllowed = await logsFirestoreService.isCaptureEnabled(userId: identity.id)
-        // If capture is allowed, capture and persist current battery percentage as part of the log.
-        let batteryPercentage: Double? = captureAllowed ? await MainActor.run {
-            let device = UIDevice.current
-            let wasMonitoring = device.isBatteryMonitoringEnabled
-            device.isBatteryMonitoringEnabled = true
-            let level = device.batteryLevel
-            let percent: Double? = level >= 0 ? Double(level * 100.0) : nil
-            if !wasMonitoring { device.isBatteryMonitoringEnabled = false }
-            return percent
-        } : nil
+        
+        // Battery and network info are now handled by logLaunchEntry/logLocationEntry via helpers, 
+        // but we still need to pass them if we want them in the launch log specifically.
+        // The user requested moving them to the location logger. 
+        // Since logLaunchEntry IS a location log (just triggered by launch), we should include them.
+        // We will use the helper to avoid code duplication.
+        
+        let (batteryPercentage, isCharging) = DeviceInfoHelper.getBatteryInfo()
+        let networkInfo: [String: Any]? = NetworkHelper.shared.getNetworkInfo()
         
         if !captureAllowed {
             if trigger == .tabSwitch {
@@ -611,7 +615,7 @@ struct RootView: View {
             
             // Log location only for launch/foreground when capture is disabled
             let location = try? await locationProvider.currentLocation()
-            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: location?.coordinate, frontURL: nil, backURL: nil)
+            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: location?.coordinate, frontURL: nil, backURL: nil, batteryPercentage: batteryPercentage, isCharging: isCharging, networkInfo: networkInfo)
             return
         }
 
@@ -628,7 +632,7 @@ struct RootView: View {
         guard cameraAuthorized else {
             print("RootView: camera authorization denied; skipping launch photo capture")
             await MainActor.run { isCapturingLaunchPhotos = false }
-            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil, batteryPercentage: batteryPercentage)
+            await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: (try? await locationProvider.currentLocation())?.coordinate, frontURL: nil, backURL: nil, batteryPercentage: batteryPercentage, isCharging: isCharging, networkInfo: networkInfo)
             return
         }
 
@@ -661,18 +665,20 @@ struct RootView: View {
             }
         }
 
-        await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: coordinate, frontURL: frontURL, backURL: backURL, batteryPercentage: batteryPercentage)
+        await logLaunchEntry(userId: identity.id, displayName: identity.displayName, coordinate: coordinate, frontURL: frontURL, backURL: backURL, batteryPercentage: batteryPercentage, isCharging: isCharging, networkInfo: networkInfo)
         await MainActor.run { lastLaunchCaptureAt = Date() }
     }
 
-    private func logLaunchEntry(userId: String, displayName: String?, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?, batteryPercentage: Double? = nil) async {
+    private func logLaunchEntry(userId: String, displayName: String?, coordinate: CLLocationCoordinate2D?, frontURL: String?, backURL: String?, batteryPercentage: Double? = nil, isCharging: Bool? = nil, networkInfo: [String: Any]? = nil) async {
         let entry = LogEntry(
             latitude: coordinate?.latitude ?? 0,
             longitude: coordinate?.longitude ?? 0,
             timestamp: Date(),
             frontURL: frontURL,
             backURL: backURL,
-            batteryPercentage: batteryPercentage
+            batteryPercentage: batteryPercentage,
+            isCharging: isCharging,
+            networkInfo: networkInfo
         )
         await logsFirestoreService.appendEntry(entry, userId: userId, displayName: displayName)
     }

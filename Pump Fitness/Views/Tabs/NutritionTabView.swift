@@ -27,6 +27,7 @@ struct NutritionTabView: View {
     @Binding var cravings: [CravingItem]
     @Binding var mealReminders: [MealReminder]
     @Binding var checkedMeals: Set<String>
+    @Binding var groceryItems: [GroceryItem]
     @Binding var selectedMacroStrategy: MacroCalculator.MacroDistributionStrategy?
     @State private var showMacroEditorSheet = false
     @State private var selectedMacroForLog: MacroMetric?
@@ -60,6 +61,7 @@ struct NutritionTabView: View {
         cravings: Binding<[CravingItem]>,
         mealReminders: Binding<[MealReminder]>,
         checkedMeals: Binding<Set<String>>,
+        groceryItems: Binding<[GroceryItem]>,
         maintenanceCalories: Binding<Int>,
         selectedMacroStrategy: Binding<MacroCalculator.MacroDistributionStrategy?>,
         isPro: Bool
@@ -74,6 +76,7 @@ struct NutritionTabView: View {
         _cravings = cravings
         _mealReminders = mealReminders
         _checkedMeals = checkedMeals
+        _groceryItems = groceryItems
         _maintenanceCalories = maintenanceCalories
         _selectedMacroStrategy = selectedMacroStrategy
         self.isPro = isPro
@@ -126,6 +129,43 @@ struct NutritionTabView: View {
         // includeCravings to prevent accidental overwrites).
         account.saveCravings(service: accountFirestoreService) { success in
             if !success { print("NutritionTabView: failed to sync cravings to Firestore") }
+        }
+    }
+
+    private func saveMealSchedule(_ schedule: [MealScheduleItem]) {
+        account.mealSchedule = schedule
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save meal schedule locally: \(error)")
+        }
+        accountFirestoreService.saveAccount(account) { success, _ in
+            if !success { print("NutritionTabView: failed to sync meal schedule to Firestore") }
+        }
+    }
+
+    private func saveMealCatalog(_ catalog: [CatalogMeal]) {
+        account.mealCatalog = catalog
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save meal catalog locally: \(error)")
+        }
+        accountFirestoreService.saveAccount(account) { success, _ in
+            if !success { print("NutritionTabView: failed to sync meal catalog to Firestore") }
+        }
+    }
+
+    private func addGroceryItems(_ items: [GroceryItem]) {
+        account.groceryItems.append(contentsOf: items)
+        groceryItems.append(contentsOf: items)
+        do {
+            try modelContext.save()
+        } catch {
+            print("NutritionTabView: failed to save grocery items locally: \(error)")
+        }
+        accountFirestoreService.saveAccount(account) { success, _ in
+            if !success { print("NutritionTabView: failed to sync grocery items to Firestore") }
         }
     }
 
@@ -273,52 +313,7 @@ struct NutritionTabView: View {
                             }
                         )
                         .nutritionTip(.trackMacros)
-                        
-                        HStack {
-                            Text("Meal Tracking")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
 
-                            Spacer()
-
-                            Button {
-                                showMealReminderSheet = true
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
-                        
-                        MealScheduleSection(
-                            accentColorOverride: accentOverride,
-                            checkedMeals: $checkedMeals,
-                            mealReminders: mealReminders
-                        )
-
-                        DailyMealLogSection(
-                            accentColorOverride: accentOverride,
-                            weeklyEntries: weeklyEntries,
-                            weekStartsOnMonday: true,
-                            trackedMacros: trackedMacros,
-                            selectedDate: selectedDate,
-                            currentConsumedCalories: consumedCalories,
-                            currentCalorieGoal: calorieGoal,
-                            currentMacroConsumptions: macroConsumptions,
-                            onDeleteMealEntry: { entry in
-                                deleteMealEntry(entry)
-                            }
-                        )
-                        
                         HStack {
                             Text("Supplement Tracking")
                                 .font(.title3)
@@ -393,6 +388,70 @@ struct NutritionTabView: View {
                         .onChange(of: selectedDate) {
                             fetchDayTakenSupplements()
                         }
+                        
+                        HStack {
+                            Text("Meal Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                showMealReminderSheet = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+                        
+                        MealScheduleSection(
+                            accentColorOverride: accentOverride,
+                            checkedMeals: $checkedMeals,
+                            mealReminders: mealReminders
+                        )
+
+                        DailyMealLogSection(
+                            accentColorOverride: accentOverride,
+                            weeklyEntries: weeklyEntries,
+                            weekStartsOnMonday: true,
+                            trackedMacros: trackedMacros,
+                            selectedDate: selectedDate,
+                            currentConsumedCalories: consumedCalories,
+                            currentCalorieGoal: calorieGoal,
+                            currentMacroConsumptions: macroConsumptions,
+                            onDeleteMealEntry: { entry in
+                                deleteMealEntry(entry)
+                            }
+                        )
+
+                        WeeklyMealScheduleCard(
+                            schedule: $account.mealSchedule,
+                            catalog: $account.mealCatalog,
+                            trackedMacros: trackedMacros,
+                            accentColor: accentOverride ?? .accentColor,
+                            onSave: { updated in
+                                saveMealSchedule(updated)
+                            },
+                            onSaveCatalog: { updated in
+                                saveMealCatalog(updated)
+                            },
+                            onAddToGroceryList: { items in
+                                addGroceryItems(items)
+                            },
+                            onConsumeMeal: { meal in
+                                logCatalogMeal(meal)
+                            }
+                        )
 
                         // MARK: - Cravings Section
                         VStack(spacing: 0) {
@@ -1007,6 +1066,41 @@ private extension NutritionTabView {
         // We trust the local cache for immediate feedback.
         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
         applyMealIntake(entry, to: day)
+    }
+
+    private func logCatalogMeal(_ meal: CatalogMeal) {
+        let totalCalories = Int(meal.calories)
+        
+        var macroEntries: [MealMacroEntry] = []
+        for macro in trackedMacros {
+            let totalAmount: Double = {
+                if let val = meal.macroValues[macro.id] { return val }
+                let name = macro.name.lowercased()
+                if name == "protein" { return meal.protein }
+                if name == "carbs" { return meal.carbs }
+                if name == "fats" { return meal.fats }
+                return 0
+            }()
+            
+            if totalAmount > 0 {
+                macroEntries.append(MealMacroEntry(
+                    trackedMacroId: macro.id,
+                    name: macro.name,
+                    unit: macro.unit,
+                    amount: totalAmount
+                ))
+            }
+        }
+        
+        let entry = MealIntakeEntry(
+            mealType: meal.mealType,
+            itemName: meal.name,
+            quantityPerServing: "1 serving",
+            calories: totalCalories,
+            macros: macroEntries
+        )
+        
+        handleMealIntakeSave(entry)
     }
 
     private func deleteMealEntry(_ entry: MealIntakeEntry) {
@@ -3434,10 +3528,10 @@ struct DailyMealLogSection: View {
 
     private func iconName(for mealType: MealType) -> String {
         switch mealType {
-        case .breakfast: return "sunrise.fill"
-        case .lunch: return "fork.knife"
-        case .dinner: return "moon.stars.fill"
-        case .snack: return "cup.and.saucer.fill"
+            case .breakfast: return "sunrise.fill"
+            case .lunch: return "fork.knife"
+            case .dinner: return "moon.stars.fill"
+            case .snack: return "cup.and.saucer.fill"
         }
     }
 

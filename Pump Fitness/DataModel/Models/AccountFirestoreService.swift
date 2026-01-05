@@ -47,6 +47,8 @@ class AccountFirestoreService {
                 let remoteExpenseCategories = (data["expenseCategories"] as? [[String: Any]] ?? []).compactMap { ExpenseCategory(dictionary: $0) }
                 let remoteCurrencySymbol = (data["expenseCurrencySymbol"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let remoteWorkoutSchedule = (data["workoutSchedule"] as? [[String: Any]] ?? []).compactMap { WorkoutScheduleItem(dictionary: $0) }
+                let remoteMealSchedule = (data["mealSchedule"] as? [[String: Any]] ?? []).compactMap { MealScheduleItem(dictionary: $0) }
+                let remoteMealCatalog = (data["mealCatalog"] as? [[String: Any]] ?? []).compactMap { CatalogMeal(dictionary: $0) }
 
                 let workoutSupplements = (data["workoutSupplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
                 let nutritionSupplements = (data["nutritionSupplements"] as? [[String: Any]] ?? []).compactMap { Supplement(dictionary: $0) }
@@ -74,6 +76,8 @@ class AccountFirestoreService {
                     startWeekOn: data["startWeekOn"] as? String,
                     autoRestDayIndices: (data["autoRestDayIndices"] as? [Int]) ?? (data["autoRestDayIndices"] as? [NSNumber])?.map { $0.intValue } ?? [],
                     workoutSchedule: remoteWorkoutSchedule.isEmpty ? WorkoutScheduleItem.defaults : remoteWorkoutSchedule,
+                    mealSchedule: remoteMealSchedule.isEmpty ? MealScheduleItem.defaults : remoteMealSchedule,
+                    mealCatalog: remoteMealCatalog,
                     trackedMacros: (data["trackedMacros"] as? [[String: Any]] ?? []).compactMap { TrackedMacro(dictionary: $0) },
                     cravings: (data["cravings"] as? [[String: Any]] ?? []).compactMap { CravingItem(dictionary: $0) },
                     // Preserve empty remote grocery arrays rather than substituting defaults.
@@ -216,6 +220,8 @@ class AccountFirestoreService {
         let teamMetrics = account.teamMetrics
         let activityTimers = account.activityTimers
         let workoutSchedule = account.workoutSchedule
+        let mealSchedule = account.mealSchedule
+        let mealCatalog = account.mealCatalog
         let itineraryEvents = account.itineraryEvents
         let trialPeriodEnd = account.trialPeriodEnd
         let activityLevel = account.activityLevel
@@ -308,6 +314,8 @@ class AccountFirestoreService {
             data["teamMetrics"] = teamMetrics.map { $0.asDictionary }
             data["activityTimers"] = activityTimers.map { $0.asDictionary }
             data["workoutSchedule"] = workoutSchedule.map { $0.asDictionary }
+            data["mealSchedule"] = mealSchedule.map { $0.asDictionary }
+            data["mealCatalog"] = mealCatalog.map { $0.asDictionary }
             // Persist itinerary events even when empty so deletions propagate.
             data["itineraryEvents"] = itineraryEvents.map { $0.asFirestoreDictionary() }
             if let trialEnd = trialPeriodEnd {

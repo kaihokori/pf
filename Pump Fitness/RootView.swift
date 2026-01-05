@@ -2681,6 +2681,7 @@ private extension RootView {
                                     cravings: $cravings,
                                     mealReminders: $mealReminders,
                                     checkedMeals: $checkedMeals,
+                                    groceryItems: $groceryItems,
                                     maintenanceCalories: $maintenanceCalories,
                                     selectedMacroStrategy: $selectedMacroStrategy,
                                     isPro: isPro

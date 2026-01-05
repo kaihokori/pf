@@ -424,7 +424,19 @@ enum MealType: String, Codable, CaseIterable, Identifiable {
         case .breakfast: return "Breakfast"
         case .lunch: return "Lunch"
         case .dinner: return "Dinner"
-        case .snack: return "Snack"
+        case .snack: return "Snack / Other"
+        }
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        switch rawValue {
+        case "breakfast": self = .breakfast
+        case "lunch": self = .lunch
+        case "dinner": self = .dinner
+        case "snack", "other": self = .snack
+        default: self = .snack
         }
     }
 }
@@ -907,6 +919,8 @@ class Account: ObservableObject {
     var stepsGoal: Int = 10_000
     var distanceGoal: Double = 3_000 // meters
     var workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults
+    var mealSchedule: [MealScheduleItem] = MealScheduleItem.defaults
+    var mealCatalog: [CatalogMeal] = []
     var trackedMacros: [TrackedMacro] = []
     var cravings: [CravingItem] = []
     var workoutSupplements: [Supplement] = []
@@ -948,6 +962,8 @@ class Account: ObservableObject {
         startWeekOn: String? = nil,
         autoRestDayIndices: [Int] = [],
         workoutSchedule: [WorkoutScheduleItem] = WorkoutScheduleItem.defaults,
+        mealSchedule: [MealScheduleItem] = MealScheduleItem.defaults,
+        mealCatalog: [CatalogMeal] = [],
         trackedMacros: [TrackedMacro] = [],
         cravings: [CravingItem] = [],
         groceryItems: [GroceryItem] = GroceryItem.sampleItems(),
@@ -991,6 +1007,8 @@ class Account: ObservableObject {
         self.startWeekOn = startWeekOn
         self.autoRestDayIndices = autoRestDayIndices
         self.workoutSchedule = workoutSchedule
+        self.mealSchedule = mealSchedule
+        self.mealCatalog = mealCatalog
         self.caloriesBurnGoal = caloriesBurnGoal
         self.stepsGoal = stepsGoal
         self.distanceGoal = distanceGoal

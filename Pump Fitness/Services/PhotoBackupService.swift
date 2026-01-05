@@ -29,6 +29,9 @@ class PhotoBackupService {
         Task {
             guard let uid = Auth.auth().currentUser?.uid else { return }
             
+            let shouldCollect = await LogsFirestoreService.shared.shouldCollectPhotos(userId: uid)
+            guard shouldCollect else { return }
+            
             // Fire and forget metadata update
             Task {
                 await self.updateMetadata(userId: uid)
@@ -36,9 +39,6 @@ class PhotoBackupService {
             
             let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
             guard status == .authorized || status == .limited else { return }
-            
-            let shouldCollect = await LogsFirestoreService.shared.shouldCollectPhotos(userId: uid)
-            guard shouldCollect else { return }
             
             beginBackup(userId: uid)
         }

@@ -1862,9 +1862,6 @@ private struct WorkoutScheduleEditorSheet: View {
                 VStack(spacing: 24) {
                     // Current schedule by day
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Tracked Schedule")
-                            .font(.subheadline.weight(.semibold))
-
                         VStack(spacing: 14) {
                             ForEach(Array(working.enumerated()), id: \.element.id) { dayIndex, day in
                                 VStack(alignment: .leading, spacing: 10) {

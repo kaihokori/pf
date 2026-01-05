@@ -11,41 +11,37 @@ struct RecipeLookupComponent: View {
     @State private var errorMessage: String?
     @FocusState private var searchFocused: Bool
     @State private var detailItem: RecipeLookupItem?
+    @State private var showSafari = false
+    @State private var safariURL: URL?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Recipe Lookup")
-                            .font(.title3.weight(.semibold))
-                        Text("Search recipes from your Cloudflare D1 catalog")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
+                  VStack(spacing: 12) {
+                      HStack(spacing: 8) {
+                          TextField("Search recipes...", text: $searchText)
+                              .textInputAutocapitalization(.words)
+                              .disableAutocorrection(true)
+                              .padding()
+                              .glassEffect(in: .rect(cornerRadius: 8.0))
+                              .focused($searchFocused)
+                              .onSubmit { runSearch() }
+                      }
+                      .padding(.horizontal)
 
-                    HStack(spacing: 10) {
-                        TextField("Search recipes...", text: $searchText)
-                            .textInputAutocapitalization(.words)
-                            .disableAutocorrection(true)
-                            .padding(12)
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                            .focused($searchFocused)
-                            .onSubmit { runSearch() }
-
-                        Button(action: runSearch) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(accentColor, in: RoundedRectangle(cornerRadius: 12))
-                        }
-                        .buttonStyle(.plain)
+                      HStack {
+                          Button(action: { runSearch() }) {
+                              Label("Search", systemImage: "magnifyingglass")
+                                  .font(.callout.weight(.semibold))
+                                  .frame(maxWidth: .infinity, minHeight: 44)
+                                  .padding(.vertical, 8)
+                                  .glassEffect(in: .rect(cornerRadius: 12.0))
+                          }
+                          .padding(.horizontal, 18)
+                          .buttonStyle(.plain)
+                      }
                     }
-                    .padding(.horizontal, 20)
 
                     if isLoading {
                         ProgressView().padding(.top, 20)
@@ -66,12 +62,6 @@ struct RecipeLookupComponent: View {
                                         Text(item.title)
                                             .font(.headline)
                                             .fixedSize(horizontal: false, vertical: true)
-                                        if let first = item.steps.first {
-                                            Text(first)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(2)
-                                        }
                                     }
 
                                     Spacer()
@@ -89,11 +79,16 @@ struct RecipeLookupComponent: View {
                                     .buttonStyle(.plain)
                                 }
 
-                                HStack(spacing: 12) {
+                                let pillColumns = [GridItem(.flexible()), GridItem(.flexible())]
+                                LazyVGrid(columns: pillColumns, spacing: 12) {
                                     macroPill(label: "Calories", value: item.calories, unit: "cal")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     macroPill(label: "Protein", value: item.protein, unit: "g")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     macroPill(label: "Carbs", value: item.carbs, unit: "g")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     macroPill(label: "Fats", value: item.fats, unit: "g")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
                             .padding()
@@ -110,8 +105,9 @@ struct RecipeLookupComponent: View {
                     .padding(.vertical, 10)
                 }
                 .padding(.bottom, 24)
+                .padding(.top, 12)
             }
-            .navigationTitle("Lookup")
+            .navigationTitle("Recipe Lookup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -172,6 +168,7 @@ struct RecipeLookupComponent: View {
                     .foregroundStyle(.secondary)
                 Text("\(formatNutrition(value: value))\(unit)")
                     .font(.caption.weight(.semibold))
+                Spacer()
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -203,6 +200,24 @@ struct RecipeLookupComponent: View {
                     macroSection(for: item)
                     ingredientsSection(for: item)
                     stepsSection(for: item)
+                          // View Source button (only for resolvable http/https URLs)
+                          if let url = item.sourceURL,
+                              let scheme = url.scheme?.lowercased(),
+                              scheme == "http" || scheme == "https" {
+                        Button {
+                            safariURL = url
+                            showSafari = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "link")
+                                Text("View Source")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(accentColor)
+                        .padding(.top, 6)
+                    }
                 }
                 .padding()
             }
@@ -210,7 +225,7 @@ struct RecipeLookupComponent: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                    Button("Return") {
                         detailItem = nil
                     }
                 }
@@ -220,6 +235,15 @@ struct RecipeLookupComponent: View {
                         detailItem = nil
                     }
                     .fontWeight(.semibold)
+                }
+            }
+            .sheet(isPresented: $showSafari) {
+                Group {
+                    if let url = safariURL {
+                        SafariView(url: url)
+                    } else {
+                        EmptyView()
+                    }
                 }
             }
         }
@@ -232,11 +256,9 @@ struct RecipeLookupComponent: View {
                 .font(.title3.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let first = item.steps.first {
-                Text(first)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Nutrition: Per 100g serving")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -275,9 +297,9 @@ struct RecipeLookupComponent: View {
                     .font(.subheadline.weight(.semibold))
 
                 ForEach(item.ingredients, id: \.self) { ing in
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
                         Circle()
-                            .fill(accentColor.opacity(0.15))
+                            .fill(accentColor)
                             .frame(width: 8, height: 8)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(ing.name)
@@ -303,12 +325,12 @@ struct RecipeLookupComponent: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(item.steps.enumerated()), id: \.0) { idx, step in
-                        HStack(alignment: .center, spacing: 8) {
+                        HStack(alignment: .top, spacing: 8) {
                             Text("\(idx + 1)")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(accentColor)
                                 .frame(width: 22)
-                                .offset(y: 2)
+                                .offset(y: 4)
                             Text(step)
                                 .font(.body)
                                 .fixedSize(horizontal: false, vertical: true)

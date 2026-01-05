@@ -39,6 +39,7 @@ struct LookupComponent: View {
     @Binding var shouldAutoSearch: Bool
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @FocusState private var searchFieldIsFocused: Bool
 
     @State private var searchText: String = ""
@@ -55,289 +56,284 @@ struct LookupComponent: View {
     @State private var detailError: String?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                HStack {
-                    Text("Food Lookup")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        TextField("", text: $searchText, prompt: Text("Search foods..."))
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                            .padding()
+                            .glassEffect(in: .rect(cornerRadius: 8.0))
+                            .focused($searchFieldIsFocused)
+                            .onSubmit { performSearch() }
 
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-                .padding(.top, 38)
-                .padding(.bottom, 8)
-
-                HStack(spacing: 8) {
-                    TextField("", text: $searchText, prompt: Text("Search foods..."))
-                        .textInputAutocapitalization(.words)
-                        .disableAutocorrection(true)
+                        HStack {
+                            TextField("0", text: $portionSizeGrams)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.plain)
+                            Text("g")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                         .padding()
+                        .frame(width: 100)
                         .glassEffect(in: .rect(cornerRadius: 8.0))
-                        .focused($searchFieldIsFocused)
-                        .onSubmit { performSearch() }
+                        .onChange(of: portionSizeGrams) { _, newValue in
+                            let filtered = newValue.filter { "0123456789".contains($0) }
+                            if filtered != newValue {
+                                portionSizeGrams = filtered
+                            }
+                            if portionSizeGrams.isEmpty {
+                                portionSizeGrams = "0"
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .onChange(of: searchText) { _, newValue in
+                        if itemName != newValue {
+                            itemName = newValue
+                        }
+                    }
+                    .onChange(of: itemName) { _, newValue in
+                        if searchText != newValue {
+                            searchText = newValue
+                        }
+                    }
+                    .onAppear {
+                        searchText = itemName
+                    }
 
                     HStack {
-                        TextField("0", text: $portionSizeGrams)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.plain)
-                        Text("g")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding()
-                    .frame(width: 100)
-                    .glassEffect(in: .rect(cornerRadius: 8.0))
-                    .onChange(of: portionSizeGrams) { _, newValue in
-                        let filtered = newValue.filter { "0123456789".contains($0) }
-                        if filtered != newValue {
-                            portionSizeGrams = filtered
+                        Button(action: { performSearch() }) {
+                            Label("Search", systemImage: "magnifyingglass")
+                                .font(.callout.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
                         }
-                        if portionSizeGrams.isEmpty {
-                            portionSizeGrams = "0"
+                        .padding(.leading, 18)
+                        .buttonStyle(.plain)
+
+                        Button(action: {
+                            searchFieldIsFocused = false
+                            errorMessage = nil
+                            showingScanner = true
+                        }) {
+                            Image(systemName: "barcode")
+                                .font(.title2.weight(.semibold))
+                                .frame(minWidth: 64, minHeight: 44)
+                                .padding(.vertical, 8)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
                         }
+                        .padding(.trailing, 18)
+                        .buttonStyle(.plain)
                     }
-                }
-                .padding(.horizontal)
 
-                .onChange(of: searchText) { _, newValue in
-                    if itemName != newValue {
-                        itemName = newValue
-                    }
-                }
-                .onChange(of: itemName) { _, newValue in
-                    if searchText != newValue {
-                        searchText = newValue
-                    }
-                }
-                .onAppear {
-                    searchText = itemName
-                }
-
-                HStack {
-                    Button(action: { performSearch() }) {
-                        Label("Search", systemImage: "magnifyingglass")
-                            .font(.callout.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .padding(.vertical, 8)
-                            .glassEffect(in: .rect(cornerRadius: 12.0))
-                    }
-                    .padding(.leading, 18)
-                    .buttonStyle(.plain)
-
-                    Button(action: {
-                        searchFieldIsFocused = false
-                        errorMessage = nil
-                        showingScanner = true
-                    }) {
-                        Image(systemName: "barcode")
-                            .font(.title2.weight(.semibold))
-                            .frame(minWidth: 64, minHeight: 44)
-                            .padding(.vertical, 8)
-                            .glassEffect(in: .rect(cornerRadius: 12.0))
-                    }
-                    .padding(.trailing, 18)
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 6) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Data sourced from FatSecret")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 18)
-
-                if let scannedBarcode, !scannedBarcode.isEmpty {
                     HStack(spacing: 6) {
-                        Image(systemName: "barcode.viewfinder")
-                            .font(.caption)
-                            .foregroundStyle(accentColor)
-                        Text("Scanned: \(scannedBarcode)")
+                        Image(systemName: "info.circle.fill")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Spacer()
+                        Text("Data sourced from FatSecret")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)
-                    .padding(.top, 12)
-                }
 
-                if let scannedItem {
-                    let grams = Double(portionSizeGrams) ?? 100.0
-                    let scaled = scannedItem.scaled(to: grams)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(scaled.name)
-                                    .font(.title3.weight(.semibold))
-                                    .lineLimit(2)
-
-                                if let brand = scaled.brand, !brand.isEmpty {
-                                    Text(brand)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-
+                    if let scannedBarcode, !scannedBarcode.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "barcode.viewfinder")
+                                .font(.caption)
+                                .foregroundStyle(accentColor)
+                            Text("Scanned: \(scannedBarcode)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Spacer()
-
-                            Text("\(Int(grams))g")
-                                .font(.caption2.weight(.medium))
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 10)
-                                .background(accentColor.opacity(0.15))
-                                .cornerRadius(10)
                         }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            let metrics: [(String, String)] = [
-                                ("Calories", "\(scaled.calories) cal"),
-                                ("Protein", "\(scaled.protein) g"),
-                                ("Carbs", "\(scaled.carbs) g"),
-                                ("Fat", "\(scaled.fat) g"),
-                                ("Sugar", "\(scaled.sugar) g"),
-                                ("Sodium", "\(scaled.sodium) mg"),
-                                ("Potassium", "\(scaled.potassium) mg")
-                            ]
-
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                                ForEach(metrics, id: \.0) { label, value in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(label)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        Text(value)
-                                            .font(.body.weight(.medium))
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding()
-                                    .background(.regularMaterial)
-                                    .cornerRadius(10)
-                                }
-                            }
-                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 12)
                     }
-                    .padding()
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
-                    .cornerRadius(16)
-                    .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 6)
-                    .padding(.horizontal)
 
-                    Button {
-                        let gramsInt = resolvedPortion()
-                        let scaledSelection = scannedItem.scaled(to: Double(gramsInt))
-                        itemName = scaledSelection.name
-                        onAdd(scaledSelection, gramsInt, nil)
-                    } label: {
-                        Label("Add", systemImage: "plus")
-                            .font(.callout.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .glassEffect(in: .rect(cornerRadius: 14.0))
-                    }
-                    .padding(.horizontal)
-                }
-
-                LazyVStack(spacing: 12, pinnedViews: []) {
-                    ForEach(foundItems) { item in
+                    if let scannedItem {
                         let grams = Double(portionSizeGrams) ?? 100.0
+                        let scaled = scannedItem.scaled(to: grams)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(alignment: .top, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.name)
-                                        .font(.headline)
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(scaled.name)
+                                        .font(.title3.weight(.semibold))
                                         .lineLimit(2)
 
-                                    if let brand = item.brand, !brand.isEmpty {
+                                    if let brand = scaled.brand, !brand.isEmpty {
                                         Text(brand)
-                                            .font(.caption2)
+                                            .font(.caption)
                                             .foregroundStyle(.secondary)
-                                            .lineLimit(1)
                                     }
                                 }
 
                                 Spacer()
 
-                                Button {
-                                    showDetail(for: item, portion: grams)
-                                } label: {
-                                    Image(systemName: "chevron.forward.circle")
-                                        .font(.title3.weight(.semibold))
-                                        .foregroundStyle(accentColor)
-                                        .padding(6)
-                                        .background(accentColor.opacity(0.12))
-                                        .clipShape(Circle())
+                                Text("\(Int(grams))g")
+                                    .font(.caption2.weight(.medium))
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 10)
+                                    .background(accentColor.opacity(0.15))
+                                    .cornerRadius(10)
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                let metrics: [(String, String)] = [
+                                    ("Calories", "\(scaled.calories) cal"),
+                                    ("Protein", "\(scaled.protein) g"),
+                                    ("Carbs", "\(scaled.carbs) g"),
+                                    ("Fat", "\(scaled.fat) g"),
+                                    ("Sugar", "\(scaled.sugar) g"),
+                                    ("Sodium", "\(scaled.sodium) mg"),
+                                    ("Potassium", "\(scaled.potassium) mg")
+                                ]
+
+                                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                    ForEach(metrics, id: \.0) { label, value in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(label)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            Text(value)
+                                                .font(.body.weight(.medium))
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding()
+                                        .background(.regularMaterial)
+                                        .cornerRadius(10)
+                                    }
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding()
-                        .background(Color(.systemBackground).opacity(colorScheme == .dark ? 0.12 : 0.95))
-                        .cornerRadius(14)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .strokeBorder(accentColor.opacity(0.15), lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 4)
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .cornerRadius(16)
+                        .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 6)
+                        .padding(.horizontal)
+
+                        Button {
+                            let gramsInt = resolvedPortion()
+                            let scaledSelection = scannedItem.scaled(to: Double(gramsInt))
+                            itemName = scaledSelection.name
+                            onAdd(scaledSelection, gramsInt, nil)
+                        } label: {
+                            Label("Add", systemImage: "plus")
+                                .font(.callout.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .glassEffect(in: .rect(cornerRadius: 14.0))
+                        }
                         .padding(.horizontal)
                     }
-                }
-                .padding(.bottom, 24)
 
-                Group {
-                    if isLoading {
-                        HStack { Spacer(); ProgressView().padding(); Spacer() }
-                    } else if let msg = errorMessage {
-                        HStack { Spacer(); Text(msg).foregroundColor(.red).font(.caption); Spacer() }
+                    LazyVStack(spacing: 12, pinnedViews: []) {
+                        ForEach(foundItems) { item in
+                            let grams = Double(portionSizeGrams) ?? 100.0
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .top, spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.name)
+                                            .font(.headline)
+                                            .lineLimit(2)
+
+                                        if let brand = item.brand, !brand.isEmpty {
+                                            Text(brand)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    Button {
+                                        showDetail(for: item, portion: grams)
+                                    } label: {
+                                        Image(systemName: "chevron.forward.circle")
+                                            .font(.title3.weight(.semibold))
+                                            .foregroundStyle(accentColor)
+                                            .padding(6)
+                                            .background(accentColor.opacity(0.12))
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemBackground).opacity(colorScheme == .dark ? 0.12 : 0.95))
+                            .cornerRadius(14)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(accentColor.opacity(0.15), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 4)
+                            .padding(.horizontal)
+                        }
                     }
+                    .padding(.bottom, 24)
+
+                    Group {
+                        if isLoading {
+                            HStack { Spacer(); ProgressView().padding(); Spacer() }
+                        } else if let msg = errorMessage {
+                            HStack { Spacer(); Text(msg).foregroundColor(.red).font(.caption); Spacer() }
+                        }
+                    }
+                    .padding(.top, 38)
                 }
-                .padding(.top, 38)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 18)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .onAppear {
-            searchText = itemName
-            if shouldOpenScanner {
-                showingScanner = true
-                shouldOpenScanner = false
-            }
-            triggerAutoSearchIfNeeded()
-        }
-        .onChange(of: shouldOpenScanner) { _, new in
-            if new {
-                showingScanner = true
-                shouldOpenScanner = false
-            }
-        }
-        .onChange(of: shouldAutoSearch) { _, newValue in
-            if newValue {
+            .onAppear {
+                searchText = itemName
+                if shouldOpenScanner {
+                    showingScanner = true
+                    shouldOpenScanner = false
+                }
                 triggerAutoSearchIfNeeded()
             }
-        }
-
-        .sheet(isPresented: $showingScanner) {
-            BarcodeScannerView(
-                onCodeFound: { code in
-                    showingScanner = false
-                    handleBarcode(code)
-                },
-                onError: { message in
-                    showingScanner = false
-                    errorMessage = message
+            .onChange(of: shouldOpenScanner) { _, new in
+                if new {
+                    showingScanner = true
+                    shouldOpenScanner = false
                 }
-            )
-            .ignoresSafeArea()
-        }
-        .sheet(item: $detailItem) { item in
-            detailSheet(for: item)
-                .presentationDetents([.medium, .large])
+            }
+            .onChange(of: shouldAutoSearch) { _, newValue in
+                if newValue {
+                    triggerAutoSearchIfNeeded()
+                }
+            }
+            .navigationTitle("Food Lookup")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showingScanner) {
+                BarcodeScannerView(
+                    onCodeFound: { code in
+                        showingScanner = false
+                        handleBarcode(code)
+                    },
+                    onError: { message in
+                        showingScanner = false
+                        errorMessage = message
+                    }
+                )
+                .ignoresSafeArea()
+            }
+            .sheet(item: $detailItem) { item in
+                detailSheet(for: item)
+                    .presentationDetents([.medium, .large])
+            }
         }
     }
 }
@@ -474,7 +470,7 @@ private extension LookupComponent {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { detailItem = nil }
+                    Button("Cancel") { detailItem = nil }
                         .tint(accentColor)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -522,11 +518,7 @@ private extension LookupComponent {
             }()
 
             if let sup = supplemental {
-                Text("Portion: \(detailPortion)g (\(sup))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Portion: \(detailPortion)g")
+                Text("Nutrition: \(sup)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

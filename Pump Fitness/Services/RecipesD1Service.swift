@@ -10,6 +10,11 @@ struct RecipeLookupItem: Identifiable, Codable, Hashable {
     var title: String
     var ingredients: [RecipeIngredient]
     var steps: [String]
+    // Optional source URL for the recipe (if provided by the DB)
+    var sourceURL: URL?
+
+    /// All nutrition fields below are PER 100g.
+    /// calories is kcal per 100g.
     var calories: Double
     var protein: Double
     var carbs: Double
@@ -24,6 +29,7 @@ struct RecipeLookupItem: Identifiable, Codable, Hashable {
         protein: Double = 0,
         carbs: Double = 0,
         fats: Double = 0
+        , sourceURL: URL? = nil
     ) {
         self.id = id
         self.title = title
@@ -33,11 +39,11 @@ struct RecipeLookupItem: Identifiable, Codable, Hashable {
         self.protein = protein
         self.carbs = carbs
         self.fats = fats
+        self.sourceURL = sourceURL
     }
 }
 
-/// Lightweight client to query Cloudflare D1 for recipes. Expects a Cloudflare API token with D1 query scope.
-/// Configure `accountId`, `databaseId`, and `apiToken` via app secrets or build settings.
+/// Lightweight client to query Cloudflare D1 for recipes.
 final class RecipesD1Service {
     static let shared = RecipesD1Service()
 
@@ -92,7 +98,10 @@ final class RecipesD1Service {
         var stringValue: String? {
             switch self {
             case .string(let s): return s
-            case .number(let n): return String(n)
+            case .number(let n):
+                // Avoid scientific notation surprises for whole numbers
+                if n.rounded() == n { return String(Int(n)) }
+                return String(n)
             case .bool(let b): return b ? "true" : "false"
             case .null: return nil
             }
@@ -101,7 +110,11 @@ final class RecipesD1Service {
         var doubleValue: Double? {
             switch self {
             case .number(let n): return n
-            case .string(let s): return Double(s)
+            case .string(let s):
+                // Handle commas, whitespace
+                let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: ",", with: "")
+                return Double(cleaned)
             default: return nil
             }
         }
@@ -120,7 +133,15 @@ final class RecipesD1Service {
 
         let sanitized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let pattern = "%\(sanitized)%"
-        let sql = "SELECT id, title, instructions, ingredients, quantity, unit, nutr_values_per100g FROM recipes WHERE title LIKE ? LIMIT \(limit);"
+
+        // Note: nutr_values_per100g is per 100g, and we keep it that way.
+        let sql = """
+        SELECT id, title, instructions, ingredients, quantity, unit, nutr_values_per100g, url
+        FROM recipes
+        WHERE title LIKE ?
+        LIMIT \(limit);
+        """
+
         let payload: [String: Any] = ["params": [pattern], "sql": sql]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -137,61 +158,137 @@ final class RecipesD1Service {
         return rows.compactMap { row in
             let idString = row["id"]?.stringValue
             let id = idString.flatMap(UUID.init(uuidString:)) ?? UUID()
+
             let title = row["title"]?.stringValue ?? ""
             guard !title.isEmpty else { return nil }
+
             let instructionsJSON = row["instructions"]?.stringValue ?? ""
             let steps = Self.parseInstructions(json: instructionsJSON)
 
             let ingredientsJSON = row["ingredients"]?.stringValue ?? ""
             let quantitiesJSON = row["quantity"]?.stringValue ?? ""
             let unitsJSON = row["unit"]?.stringValue ?? ""
-            let ingredients = Self.parseIngredients(ingredientsJSON: ingredientsJSON, quantitiesJSON: quantitiesJSON, unitsJSON: unitsJSON)
+            let ingredients = Self.parseIngredients(
+                ingredientsJSON: ingredientsJSON,
+                quantitiesJSON: quantitiesJSON,
+                unitsJSON: unitsJSON
+            )
 
             let nutrString = row["nutr_values_per100g"]?.stringValue ?? ""
-            let nutrients = Self.parseNutrients(json: nutrString)
+            let nutrients = Self.parseNutrientsPer100g(json: nutrString)
+
+            // Optional URL column
+            let urlString = row["url"]?.stringValue ?? ""
+            let sourceURL = URL(string: urlString)
 
             return RecipeLookupItem(
                 id: id,
                 title: title,
                 ingredients: ingredients,
                 steps: steps,
-                calories: nutrients.calories,
-                protein: nutrients.protein,
-                carbs: nutrients.carbs,
-                fats: nutrients.fats
+                calories: nutrients.kcalPer100g,
+                protein: nutrients.proteinPer100g,
+                carbs: nutrients.carbsPer100g,
+                fats: nutrients.fatPer100g,
+                sourceURL: sourceURL
             )
         }
     }
 
-    private static func parseNutrients(json: String) -> (calories: Double, protein: Double, carbs: Double, fats: Double) {
+    // MARK: - Nutrient parsing (PER 100g)
+
+    private struct NutrientsPer100g {
+        let kcalPer100g: Double
+        let proteinPer100g: Double
+        let carbsPer100g: Double
+        let fatPer100g: Double
+    }
+
+    /// Parses nutr_values_per100g and returns values PER 100g.
+    /// Ensures calories are kcal (converts from kJ when necessary).
+    /// IMPORTANT: carbs never fall back to sugars.
+    private static func parseNutrientsPer100g(json: String) -> NutrientsPer100g {
         guard let data = json.data(using: .utf8),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return (0, 0, 0, 0)
+            return NutrientsPer100g(kcalPer100g: 0, proteinPer100g: 0, carbsPer100g: 0, fatPer100g: 0)
         }
 
-        func value(for keys: [String]) -> Double {
-            for key in keys {
-                if let v = dict[key] as? Double { return v }
-                if let s = dict[key] as? String, let d = Double(s) { return d }
+        func asDouble(_ any: Any?) -> Double? {
+            if let d = any as? Double { return d }
+            if let i = any as? Int { return Double(i) }
+            if let s = any as? String {
+                let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: ",", with: "")
+                return Double(cleaned)
             }
-            return 0
+            return nil
         }
 
-        let calories = value(for: ["calories", "energy", "kcal"])
-        let protein = value(for: ["protein"])
-        let carbs = value(for: [
+        func first(_ keys: [String]) -> Double? {
+            for k in keys {
+                if let v = asDouble(dict[k]) { return v }
+            }
+            return nil
+        }
+
+        // Protein
+        let protein = first(["protein", "pro"]) ?? 0
+
+        // Fat
+        let fat = first(["fat", "fats", "total_fat"]) ?? 0
+
+        // Carbs: try many common dataset keys
+        let totalCarbKeys = [
             "carbs",
+            "carb",
             "carbohydrates",
             "carbohydrate",
             "total_carbohydrate",
-            "sugars"
-        ])
-        let fats = value(for: ["fat", "fats"])
-        return (calories, protein, carbs, fats)
+            "totalcarbohydrate",
+            "cho",                    // common abbreviation (carbohydrate)
+            "chocdf",                 // USDA-style
+            "carbohydrate_by_difference"
+        ]
+
+        var carbs = first(totalCarbKeys) ?? 0
+
+        // If total carbs truly missing, fall back to sugars (better than showing 0)
+        if carbs == 0 {
+            let sugars = first(["sugars", "sugar", "sug"]) ?? 0
+            if sugars > 0 { carbs = sugars }
+        }
+
+        // Energy: prefer explicit kcal keys; else convert kJ keys; else heuristic on "energy"
+        let kcalKeys = ["kcal", "calories_kcal", "energy_kcal", "calories"]
+        let kJKeys = ["kj", "kJ", "energy_kj", "nrg"]
+
+        var kcal = first(kcalKeys) ?? 0
+        if kcal == 0 {
+            if let kj = first(kJKeys) {
+                kcal = kj / 4.184
+            } else if let energy = first(["energy"]) {
+                kcal = (energy > 900) ? (energy / 4.184) : energy
+            }
+        }
+
+        func sanitize(_ x: Double) -> Double {
+            guard x.isFinite else { return 0 }
+            return x
+        }
+
+        return NutrientsPer100g(
+            kcalPer100g: sanitize(kcal),
+            proteinPer100g: sanitize(protein),
+            carbsPer100g: sanitize(carbs),
+            fatPer100g: sanitize(fat)
+        )
     }
+
+    // MARK: - JSON helpers
 
     private static func parseTextArray(json: String) -> [String] {
         guard let data = json.data(using: .utf8) else { return [] }
+
         if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             return array.compactMap { $0["text"] as? String }
         }
@@ -207,10 +304,13 @@ final class RecipesD1Service {
         let units = parseTextArray(json: unitsJSON)
 
         var combined: [RecipeIngredient] = []
+        combined.reserveCapacity(names.count)
+
         for idx in 0..<names.count {
             let name = names[idx]
             let qty = idx < quantities.count ? quantities[idx] : ""
             let unit = idx < units.count ? units[idx] : ""
+
             let quantityText: String
             if !qty.isEmpty && !unit.isEmpty {
                 quantityText = "\(qty) \(unit)"
@@ -219,8 +319,10 @@ final class RecipesD1Service {
             } else {
                 quantityText = ""
             }
+
             combined.append(RecipeIngredient(name: name, quantity: quantityText))
         }
+
         return combined
     }
 

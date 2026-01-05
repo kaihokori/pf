@@ -102,7 +102,8 @@ struct MealScheduleItem: Identifiable, Codable, Hashable {
     }
 
     static var defaults: [MealScheduleItem] {
-        []
+        let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        return days.map { MealScheduleItem(day: $0, sessions: []) }
     }
 }
 
@@ -228,7 +229,7 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
         id: UUID = UUID(),
         name: String,
         mealType: MealType = .snack,
-        colorHex: String = "",
+        colorHex: String = "#4A7BD0",
         ingredients: [CatalogIngredient] = [],
         calories: Double = 0,
         protein: Double = 0,

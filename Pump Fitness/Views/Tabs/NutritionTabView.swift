@@ -781,6 +781,13 @@ struct NutritionTabView: View {
             }
         }
         .onAppear {
+            // Ensure meal schedule is populated
+            if account.mealSchedule.isEmpty {
+                let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                account.mealSchedule = days.map { MealScheduleItem(day: $0, sessions: []) }
+                saveMealSchedule(account.mealSchedule)
+            }
+
             // Safely hydrate cravings from Firestore if needed without
             // overwriting local changes. When the account adopts remote
             // cravings, reflect that into this view's binding.
@@ -3769,7 +3776,8 @@ private struct MealScheduleSection: View {
 
                         Spacer()
                     }
-                    .padding(14)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .background(

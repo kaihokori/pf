@@ -59,6 +59,12 @@ struct WeeklyMealScheduleCard: View {
                                             } label: {
                                                 Label("View Details", systemImage: "info.circle")
                                             }
+
+                                            Button {
+                                                addMealToGroceryList(meal)
+                                            } label: {
+                                                Label("Add to Groceries", systemImage: "cart.badge.plus")
+                                            }
                                         }
                                     } label: {
                                         WeeklyMealSessionCard(
@@ -84,17 +90,6 @@ struct WeeklyMealScheduleCard: View {
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
             .padding(.horizontal, 4)
-
-            Button {
-                addIngredientsToGroceryList()
-            } label: {
-                Label("Add to Grocery List", systemImage: "cart.badge.plus")
-                    .font(.callout.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .glassEffect(in: .rect(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
 
             Button {
                 showCatalogSheet = true
@@ -141,7 +136,8 @@ struct WeeklyMealScheduleCard: View {
                     schedule = updatedSchedule
                     onSave(updatedSchedule)
                 },
-                onConsumeMeal: onConsumeMeal
+                onConsumeMeal: onConsumeMeal,
+                onAddToGroceryList: onAddToGroceryList
             )
         }
         .sheet(item: $selectedMealForDetail) { meal in
@@ -154,16 +150,10 @@ struct WeeklyMealScheduleCard: View {
         return themeManager.selectedTheme.accent(for: colorScheme)
     }
 
-    private func addIngredientsToGroceryList() {
+    private func addMealToGroceryList(_ meal: CatalogMeal) {
         var newItems: [GroceryItem] = []
-        for day in schedule {
-            for session in day.sessions {
-                if let meal = catalog.first(where: { $0.name == session.name }) {
-                    for ingredient in meal.ingredients {
-                        newItems.append(GroceryItem(title: ingredient.name, note: ingredient.quantity))
-                    }
-                }
-            }
+        for ingredient in meal.ingredients {
+            newItems.append(GroceryItem(title: ingredient.name, note: ingredient.quantity))
         }
         if !newItems.isEmpty {
             onAddToGroceryList(newItems)
@@ -226,7 +216,7 @@ struct MealScheduleEditorSheet: View {
                             Label("Build Your Schedule", systemImage: "calendar.badge.plus")
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(.primary)
-                            Text("Add meals from your catalog to plan your week. You can reorder meals or move them between days.")
+                            Text("Add meals your meal plan through the Catalog.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -279,7 +269,7 @@ struct MealScheduleEditorSheet: View {
                                                     Button {
                                                         guard themeManager.selectedTheme == .multiColour else { return }
                                                         colorPickerTarget = (dayIndex, sessionId)
-                                                        showColorPickerSheet = true
+                                                        // showColorPickerSheet = true
                                                     } label: {
                                                         let sessionColor: Color = themeManager.selectedTheme == .multiColour ? (Color(hex: binding.colorHex.wrappedValue) ?? accentColor) : themeManager.selectedTheme.accent(for: colorScheme)
 
@@ -296,7 +286,7 @@ struct MealScheduleEditorSheet: View {
                                                     .disabled(themeManager.selectedTheme != .multiColour)
 
                                                     VStack(alignment: .leading, spacing: 6) {
-                                                        TextField("Meal", text: binding.name)
+                                                        Text("Meal: \(binding.name.wrappedValue)")
                                                             .font(.subheadline.weight(.semibold))
 
                                                         HStack(spacing: 8) {

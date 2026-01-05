@@ -7,6 +7,7 @@ struct MealCatalogView: View {
     var onSave: ([CatalogMeal]) -> Void
     var onSaveSchedule: ([MealScheduleItem]) -> Void
     var onConsumeMeal: (CatalogMeal) -> Void
+    var onAddToGroceryList: ([GroceryItem]) -> Void
     
     @Environment(\.dismiss) private var dismiss
     @State private var editingMeal: CatalogMeal?
@@ -78,6 +79,12 @@ struct MealCatalogView: View {
                                                             selectedMealForDetail = meal
                                                         } label: {
                                                             Label("View Details", systemImage: "info.circle")
+                                                        }
+
+                                                        Button {
+                                                            addMealToGroceryList(meal)
+                                                        } label: {
+                                                            Label("Add to Groceries", systemImage: "cart.badge.plus")
                                                         }
                                                     } label: {
                                                         VStack(alignment: .leading, spacing: 4) {
@@ -187,7 +194,7 @@ struct MealCatalogView: View {
                     let newMeal = CatalogMeal(
                         name: recipe.title,
                         mealType: .snack,
-                        colorHex: "",
+                        colorHex: "#4A7BD0",
                         ingredients: recipe.ingredients.map { ing in
                             CatalogIngredient(name: ing.name, quantity: ing.quantity)
                         },
@@ -238,6 +245,16 @@ struct MealCatalogView: View {
         
         schedule[dayIndex].sessions.append(newSession)
         onSaveSchedule(schedule)
+    }
+
+    private func addMealToGroceryList(_ meal: CatalogMeal) {
+        var newItems: [GroceryItem] = []
+        for ingredient in meal.ingredients {
+            newItems.append(GroceryItem(title: ingredient.name, note: ingredient.quantity))
+        }
+        if !newItems.isEmpty {
+            onAddToGroceryList(newItems)
+        }
     }
 }
 
@@ -597,7 +614,7 @@ struct MealEditorView: View {
                         sanitizedMeal.mealType = selectedMealType ?? (isNew ? .snack : meal.mealType)
                         onSave(sanitizedMeal)
                     }
-                    .disabled(meal.name.isEmpty)
+                    .disabled(meal.name.isEmpty || (isNew && selectedMealType == nil))
                     .fontWeight(.semibold)
                 }
                 ToolbarItem(placement: .cancellationAction) {
@@ -725,36 +742,41 @@ struct MealDetailView: View {
                         Text("Nutrition Summary")
                             .font(.headline)
                         
-                        HStack(spacing: 20) {
-                            VStack(alignment: .leading) {
-                                Text("\(Int(totalCalories))")
-                                    .font(.title3.weight(.bold))
-                                Text("Calories")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
-                            Divider().frame(height: 30)
-                            
-                            ForEach(trackedMacros.prefix(3)) { macro in
-                                let total: Double = {
-                                    if let val = meal.macroValues[macro.id] { return val }
-                                    let name = macro.name.lowercased()
-                                    if name == "protein" { return meal.protein }
-                                    if name == "carbs" { return meal.carbs }
-                                    if name == "fats" { return meal.fats }
-                                    return 0
-                                }()
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 20) {
                                 VStack(alignment: .leading) {
-                                    Text("\(Int(total))\(macro.unit)")
+                                    Text("\(Int(totalCalories))")
                                         .font(.title3.weight(.bold))
-                                    Text(macro.name)
+                                    Text("Calories")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
+                                
+                                Divider().frame(height: 30)
+                                
+                                ForEach(trackedMacros) { macro in
+                                    let total: Double = {
+                                        if let val = meal.macroValues[macro.id] { return val }
+                                        let name = macro.name.lowercased()
+                                        if name == "protein" { return meal.protein }
+                                        if name == "carbs" { return meal.carbs }
+                                        if name == "fats" { return meal.fats }
+                                        return 0
+                                    }()
+                                    
+                                    if total > 0 {
+                                        VStack(alignment: .leading) {
+                                            Text("\(Int(total))\(macro.unit)")
+                                                .font(.title3.weight(.bold))
+                                            Text(macro.name)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
                             }
+                            .padding()
                         }
-                        .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
                     }
@@ -794,32 +816,7 @@ struct MealDetailView: View {
 
                             VStack(spacing: 10) {
                                 ForEach(Array(meal.methodSteps.enumerated()), id: \.element.id) { index, step in
-                                    HStack(alignment: .top, spacing: 12) {
-                                        Text("\(index + 1).")
-                                            .font(.callout.weight(.semibold))
-                                            .padding(6)
-                                            .background(effectiveAccent.opacity(0.12), in: Circle())
-
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            Text(step.text)
-                                                .font(.subheadline)
-                                                .lineSpacing(3)
-                                            if step.durationMinutes > 0 {
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: "clock")
-                                                        .font(.caption)
-                                                    Text("\(step.durationMinutes) min")
-                                                        .font(.caption.weight(.semibold))
-                                                }
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 4)
-                                                .background(Color.primary.opacity(0.05), in: Capsule())
-                                            }
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding()
-                                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+                                    MethodStepRow(index: index, step: step, accentColor: effectiveAccent)
                                 }
                             }
                         }

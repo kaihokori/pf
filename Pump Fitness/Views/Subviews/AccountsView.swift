@@ -1,6 +1,6 @@
 //
 //  AccountsView.swift
-//  Pump Fitness
+//  Trackerio
 //
 //  Created by Kyle Graham on 30/11/2025.
 //
@@ -330,13 +330,16 @@ struct AccountsView: View {
             .accentColor(currentAccent)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: handleBack) {
-                        Label("Back", systemImage: "chevron.left")
-                            .labelStyle(.iconOnly)
+                    if !isDeletingAccount && !isSigningOut {
+                        Button(action: handleBack) {
+                            Label("Back", systemImage: "chevron.left")
+                                .labelStyle(.iconOnly)
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
+                    if !isDeletingAccount && !isSigningOut {
+                        Button("Save") {
                             Task {
                                 if let error = viewModel.validationErrorMessage() {
                                     await MainActor.run {
@@ -421,7 +424,8 @@ struct AccountsView: View {
                                 }
                             }
                         }
-                    .disabled(!viewModel.hasChanges)
+                        .disabled(!viewModel.hasChanges)
+                    }
                 }
             }
             .alert("Discard changes?", isPresented: $showDiscardAlert) {
@@ -441,8 +445,30 @@ struct AccountsView: View {
         }
         .alert("Sign out of Trackerio?", isPresented: $showSignOutConfirmation) {
             Button("Sign Out", role: .destructive) {
-                withAnimation {
-                    isSigningOut = true
+                let container = modelContext.container
+                let vm = viewModel
+
+                // Trigger Main App Splash to cover the transition
+                NotificationCenter.default.post(name: .showSplash, object: nil)
+                
+                // Orchestrate the exit sequence
+                Task {
+                    // 1. Wait for splash fade-in (usually 0.35s in RootView, give it margin)
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+
+                    // 2. Dismiss this view (AccountsView) from the navigation stack
+                    await MainActor.run {
+                        dismiss()
+                    }
+
+                    // 3. Perform the actual data destruction and sign out in a detached task
+                    // so it survives the view's deallocation.
+                    Task.detached {
+                        // Wait for dismissal animation to clear and RootView to be steady
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        
+                        await vm.signOut(container: container)
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -476,18 +502,6 @@ struct AccountsView: View {
                 if !result.remoteAccountDeleted {
                     print("Warning: failed to delete remote account document; local data has been cleared.")
                 }
-                
-                await MainActor.run {
-                    dismiss()
-                }
-            }
-        }
-        .task(id: isSigningOut) {
-            if isSigningOut {
-                // Allow splash screen fade-in animation to complete
-                try? await Task.sleep(nanoseconds: 750_000_000)
-                
-                await viewModel.signOut(in: modelContext)
                 
                 await MainActor.run {
                     dismiss()
@@ -2348,8 +2362,30 @@ final class AccountsViewModel: ObservableObject {
                 print("Error signing out: \(error)")
             }
 
+            // Give the app time to detect the auth change and switch the RootView to the Welcome screen.
+            // This ensures AccountsView (and its bindings to Account) are deallocated before we destroy the data.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+
             self.clearUserDefaultsState()
             self.clearSwiftData(in: context)
+        }
+    }
+    
+    @MainActor
+    func signOut(container: ModelContainer) async {
+        await performDestructiveAction {
+            do {
+                try Auth.auth().signOut()
+            } catch {
+                print("Error signing out: \(error)")
+            }
+
+            // Give the app time to detect the auth change and switch the RootView to the Welcome screen.
+            // This ensures AccountsView (and its bindings to Account) are deallocated before we destroy the data.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+            self.clearUserDefaultsState()
+            self.clearSwiftData(container: container)
         }
     }
     
@@ -2358,9 +2394,12 @@ final class AccountsViewModel: ObservableObject {
             print("No ModelContext provided; skipping local SwiftData cleanup.")
             return
         }
+        clearSwiftData(container: ctx.container)
+    }
 
+    private func clearSwiftData(container: ModelContainer) {
         do {
-            let deleteContext = ModelContext(ctx.container)
+            let deleteContext = ModelContext(container)
             deleteContext.autosaveEnabled = false
 
             let dayReq = FetchDescriptor<Day>()

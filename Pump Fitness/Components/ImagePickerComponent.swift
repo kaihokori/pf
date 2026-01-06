@@ -1,6 +1,6 @@
 //
 //  ImagePickerComponent.swift
-//  Pump Fitness
+//  Trackerio
 //
 //  Created by Kyle Graham on 1/12/2025.
 //

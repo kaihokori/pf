@@ -16,8 +16,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DC9E79792EDB81DD00C57FEE"
-               BuildableName = "Pump Fitness.app"
-               BlueprintName = "Pump Fitness"
+               BuildableName = "Trackerio.app"
+               BlueprintName = "Trackerio"
                ReferencedContainer = "container:Pump Fitness.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -45,8 +45,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DC9E79792EDB81DD00C57FEE"
-            BuildableName = "Pump Fitness.app"
-            BlueprintName = "Pump Fitness"
+            BuildableName = "Trackerio.app"
+            BlueprintName = "Trackerio"
             ReferencedContainer = "container:Pump Fitness.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -77,8 +77,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "DC9E79792EDB81DD00C57FEE"
-            BuildableName = "Pump Fitness.app"
-            BlueprintName = "Pump Fitness"
+            BuildableName = "Trackerio.app"
+            BlueprintName = "Trackerio"
             ReferencedContainer = "container:Pump Fitness.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

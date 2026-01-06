@@ -1,6 +1,6 @@
 //
 //  SleepTrackingSection.swift
-//  Pump Fitness
+//  Trackerio
 //
 //  Created by GitHub Copilot on 2025-12-05.
 //

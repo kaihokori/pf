@@ -1,6 +1,6 @@
 //
 //  RootView.swift
-//  Pump Fitness
+//  Trackerio
 //
 //  Created by Kyle Graham on 30/11/2025.
 //
@@ -155,6 +155,11 @@ struct RootView: View {
                 }
                 .transition(.opacity)
                 .zIndex(2)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showSplash)) { _ in
+            withAnimation(.easeIn(duration: 0.35)) {
+                isShowingSplash = true
             }
         }
     }

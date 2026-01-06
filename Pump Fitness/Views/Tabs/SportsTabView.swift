@@ -1,6 +1,6 @@
 //
 //  SportsTabView.swift
-//  Pump Fitness
+//  Trackerio
 //
 //  Created by Kyle Graham on 8/12/2025.
 //

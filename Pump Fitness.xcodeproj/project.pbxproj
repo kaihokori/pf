@@ -17,7 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		DC9E797A2EDB81DD00C57FEE /* Pump Fitness.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pump Fitness.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC9E797A2EDB81DD00C57FEE /* Pump Fitness.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = "Pump Fitness.app"; path = Trackerio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DCDAD2682EFEDEEB0011838E /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Trackerio.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -76,9 +76,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		DC9E79792EDB81DD00C57FEE /* Pump Fitness */ = {
+		DC9E79792EDB81DD00C57FEE /* Trackerio */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = DC9E79852EDB81DF00C57FEE /* Build configuration list for PBXNativeTarget "Pump Fitness" */;
+			buildConfigurationList = DC9E79852EDB81DF00C57FEE /* Build configuration list for PBXNativeTarget "Trackerio" */;
 			buildPhases = (
 				DC9E79762EDB81DD00C57FEE /* Sources */,
 				DC9E79772EDB81DD00C57FEE /* Frameworks */,
@@ -91,7 +91,7 @@
 			fileSystemSynchronizedGroups = (
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
 			);
-			name = "Pump Fitness";
+			name = Trackerio;
 			packageProductDependencies = (
 				DCB003E22EE80CAC003D6BF9 /* FirebaseAuth */,
 				DCB003E42EE80CAC003D6BF9 /* FirebaseFirestore */,
@@ -99,7 +99,7 @@
 				DCB003F12EE813B0003D6BF9 /* GoogleSignIn */,
 				DCB003F32EE813B0003D6BF9 /* GoogleSignInSwift */,
 			);
-			productName = "Pump Fitness";
+			productName = Trackerio;
 			productReference = DC9E797A2EDB81DD00C57FEE /* Pump Fitness.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -136,7 +136,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				DC9E79792EDB81DD00C57FEE /* Pump Fitness */,
+				DC9E79792EDB81DD00C57FEE /* Trackerio */,
 			);
 		};
 /* End PBXProject section */
@@ -396,7 +396,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		DC9E79852EDB81DF00C57FEE /* Build configuration list for PBXNativeTarget "Pump Fitness" */ = {
+		DC9E79852EDB81DF00C57FEE /* Build configuration list for PBXNativeTarget "Trackerio" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DC9E79862EDB81DF00C57FEE /* Debug */,

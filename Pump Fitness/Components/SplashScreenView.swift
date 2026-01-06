@@ -1,6 +1,6 @@
 //
 //  SplashScreenView.swift
-//  Pump Fitness
+//  Trackerio
 //
 //  Created by Copilot on 06/01/2026.
 //

@@ -107,7 +107,7 @@ struct WelcomeView: View {
                         }
                     }
                     
-                    Link("Terms, Conditions & Privacy Policy", destination: URL(string: "https://kaihokori.github.io/trackerio-legal/")!)
+                    Link("Terms, Conditions & Privacy Policy", destination: URL(string: "https://ambreon.com/trackerio")!)
                         .font(.footnote)
                         .foregroundColor(footerTextColor)
                         .underline()

@@ -1100,7 +1100,7 @@ struct AccountsView: View {
     }
 
     private func openLegal() {
-        if let url = URL(string: "https://kaihokori.github.io/trackerio-legal/") {
+        if let url = URL(string: "https://ambreon.com/trackerio") {
             UIApplication.shared.open(url)
         }
     }

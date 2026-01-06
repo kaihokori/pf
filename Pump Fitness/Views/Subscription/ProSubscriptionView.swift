@@ -271,7 +271,7 @@ struct ProSubscriptionView: View {
                                 .foregroundStyle(.secondary)
 
                             Button(action: {
-                                if let url = URL(string: "https://kaihokori.github.io/trackerio-legal/") {
+                                if let url = URL(string: "https://ambreon.com/trackerio") {
                                     openURL(url)
                                 }
                             }) {

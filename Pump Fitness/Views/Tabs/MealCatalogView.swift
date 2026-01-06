@@ -1,9 +1,12 @@
 import SwiftUI
+import Combine
 
 struct MealCatalogView: View {
     @Binding var catalog: [CatalogMeal]
     @Binding var schedule: [MealScheduleItem]
     var trackedMacros: [TrackedMacro]
+    var groceryItems: [GroceryItem]
+    var consumedMeals: Set<String>
     var onSave: ([CatalogMeal]) -> Void
     var onSaveSchedule: ([MealScheduleItem]) -> Void
     var onConsumeMeal: (CatalogMeal) -> Void
@@ -69,22 +72,26 @@ struct MealCatalogView: View {
                                                     
                                                     // Meal Details
                                                     Menu {
+                                                        let isConsumed = consumedMeals.contains(meal.name)
                                                         Button {
                                                             onConsumeMeal(meal)
                                                         } label: {
-                                                            Label("Mark as Consumed", systemImage: "checkmark.circle")
+                                                            Label(isConsumed ? "Log in Intake (Again)" : "Log in Intake", systemImage: isConsumed ? "checkmark.circle.fill" : "checkmark.circle")
+                                                        }
+
+                                                        if !meal.ingredients.isEmpty {
+                                                            let inGrocery = isMealInGroceryList(meal)
+                                                            Button {
+                                                                addMealToGroceryList(meal)
+                                                            } label: {
+                                                                Label(inGrocery ? "Add to Groceries (Again)" : "Add to Groceries", systemImage: inGrocery ? "cart.fill" : "cart.badge.plus")
+                                                            }
                                                         }
                                                         
                                                         Button {
                                                             selectedMealForDetail = meal
                                                         } label: {
                                                             Label("View Details", systemImage: "info.circle")
-                                                        }
-
-                                                        Button {
-                                                            addMealToGroceryList(meal)
-                                                        } label: {
-                                                            Label("Add to Groceries", systemImage: "cart.badge.plus")
                                                         }
                                                     } label: {
                                                         VStack(alignment: .leading, spacing: 4) {
@@ -143,7 +150,7 @@ struct MealCatalogView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
             }
-            .navigationTitle("Meal Catalog")
+            .navigationTitle("Food Menu")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -181,13 +188,26 @@ struct MealCatalogView: View {
                     editingMeal = nil
                 } onDelete: {
                      if let index = catalog.firstIndex(where: { $0.id == meal.id }) {
-                        catalog.remove(at: index)
+                        let removed = catalog.remove(at: index)
+
+                        // Remove any scheduled sessions that reference this meal
+                        for dIdx in schedule.indices {
+                            schedule[dIdx].sessions.removeAll { $0.name == removed.name }
+                        }
+                        onSaveSchedule(schedule)
                     }
                     editingMeal = nil
                 }
             }
             .sheet(item: $selectedMealForDetail) { meal in
-                MealDetailView(meal: meal, trackedMacros: trackedMacros)
+                MealDetailView(
+                    meal: meal,
+                    trackedMacros: trackedMacros,
+                    groceryItems: groceryItems,
+                    consumedMeals: consumedMeals,
+                    onAddToGroceryList: onAddToGroceryList,
+                    onConsumeMeal: onConsumeMeal
+                )
             }
             .sheet(isPresented: $showCatalogRecipeLookup) {
                 RecipeLookupComponent(accentColor: effectiveAccent) { recipe in
@@ -211,7 +231,8 @@ struct MealCatalogView: View {
                             MethodStep(id: UUID(), text: text, durationMinutes: 0)
                         },
                         method: recipe.steps.enumerated().map { idx, text in "\(idx + 1). \(text)" }.joined(separator: "\n"),
-                        notes: ""
+                        notes: "",
+                        url: recipe.sourceURL?.absoluteString
                     )
                     editingMeal = newMeal
                     showCatalogRecipeLookup = false
@@ -221,7 +242,18 @@ struct MealCatalogView: View {
                 ColorPickerSheet { hex in
                     if let id = colorPickerTargetId,
                        let index = catalog.firstIndex(where: { $0.id == id }) {
+                        let mealName = catalog[index].name
                         catalog[index].colorHex = hex
+                        
+                        // Update schedule for consistency
+                        for dIdx in schedule.indices {
+                            for sIdx in schedule[dIdx].sessions.indices {
+                                if schedule[dIdx].sessions[sIdx].name == mealName {
+                                    schedule[dIdx].sessions[sIdx].colorHex = hex
+                                }
+                            }
+                        }
+                        onSaveSchedule(schedule)
                     }
                     showColorPickerSheet = false
                 } onCancel: {
@@ -255,6 +287,18 @@ struct MealCatalogView: View {
         if !newItems.isEmpty {
             onAddToGroceryList(newItems)
         }
+    }
+
+    private func isMealInGroceryList(_ meal: CatalogMeal) -> Bool {
+        guard !meal.ingredients.isEmpty else { return false }
+        let set = Set(groceryItems.map { "\($0.title)|\($0.note)" })
+        for ingredient in meal.ingredients {
+            let key = "\(ingredient.name)|\(ingredient.quantity)"
+            if !set.contains(key) {
+                return false
+            }
+        }
+        return true
     }
 }
 
@@ -339,14 +383,7 @@ struct MealEditorView: View {
                                 Text("Ingredients")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
-                                if meal.ingredients.isEmpty {
-                                    Text("No ingredients added.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .surfaceCard(16)
-                                } else {
+                                if !meal.ingredients.isEmpty {
                                     ForEach($meal.ingredients) { $ingredient in
                                         HStack(spacing: 12) {
                                             TextField("200g", text: $ingredient.quantity)
@@ -397,14 +434,7 @@ struct MealEditorView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 12) {
-                                if meal.methodSteps.isEmpty {
-                                    Text("No steps added.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .padding()
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .surfaceCard(16)
-                                } else {
+                                if !meal.methodSteps.isEmpty {
                                     ForEach(Array($meal.methodSteps.enumerated()), id: \.element.id) { index, $step in
                                         VStack(alignment: .leading, spacing: 12) {
                                             HStack {
@@ -412,30 +442,28 @@ struct MealEditorView: View {
                                                     .font(.headline)
                                                 Spacer()
                                                 HStack(spacing: 12) {
-                                                    Button {
+                                                    RepeatButton(action: {
                                                         step.durationMinutes = max(0, step.durationMinutes - 1)
-                                                    } label: {
+                                                    }) {
                                                         Image(systemName: "minus")
                                                             .font(.system(size: 14, weight: .bold))
                                                             .foregroundStyle(.primary)
                                                             .frame(width: 32, height: 32)
                                                             .background(Color.primary.opacity(0.08), in: Circle())
                                                     }
-                                                    .buttonStyle(.plain)
 
                                                     Text("\(step.durationMinutes) min")
                                                         .font(.footnote.weight(.semibold))
 
-                                                    Button {
+                                                    RepeatButton(action: {
                                                         step.durationMinutes += 1
-                                                    } label: {
+                                                    }) {
                                                         Image(systemName: "plus")
                                                             .font(.system(size: 14, weight: .bold))
                                                             .foregroundStyle(.primary)
                                                             .frame(width: 32, height: 32)
                                                             .background(Color.primary.opacity(0.08), in: Circle())
                                                     }
-                                                    .buttonStyle(.plain)
                                                 }
                                                 Spacer()
                                                 .frame(maxWidth: 40)
@@ -464,7 +492,7 @@ struct MealEditorView: View {
                                 }) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "plus.circle.fill")
-                                            .font(.title3)
+                                            .font(.subheadline.weight(.semibold))
                                         Text("Add Step")
                                             .font(.subheadline.weight(.semibold))
                                     }
@@ -474,6 +502,11 @@ struct MealEditorView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(
+                                    meal.methodSteps.last.map { last in
+                                        last.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && last.durationMinutes == 0
+                                    } ?? false
+                                )
                             }
 
                             HStack {
@@ -696,18 +729,87 @@ private struct MacroInput: View {
     }
 }
 
+// A button that performs `action` once on tap, and repeatedly while held.
+private struct RepeatButton<Label: View>: View {
+    var action: () -> Void
+    var repeatInterval: TimeInterval = 0.12
+    var initialDelay: TimeInterval = 0.35
+    @ViewBuilder var label: () -> Label
+
+    @State private var timer: Timer?
+    @State private var startWorkItem: DispatchWorkItem?
+
+    private func startRepeating() {
+        // Cancel any existing scheduled start
+        startWorkItem?.cancel()
+
+        let work = DispatchWorkItem {
+            // Fire once immediately when repeating begins
+            action()
+            // Then start a timer for continuous repeats
+            timer = Timer.scheduledTimer(withTimeInterval: repeatInterval, repeats: true) { _ in
+                action()
+            }
+        }
+        startWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + initialDelay, execute: work)
+    }
+
+    private func stopRepeating() {
+        startWorkItem?.cancel()
+        startWorkItem = nil
+        timer?.invalidate()
+        timer = nil
+    }
+
+    var body: some View {
+        label()
+            .onLongPressGesture(minimumDuration: 0.01, pressing: { pressing in
+                if pressing {
+                    startRepeating()
+                } else {
+                    stopRepeating()
+                }
+            }, perform: {})
+            .simultaneousGesture(TapGesture().onEnded {
+                // Single tap performs action once
+                action()
+            })
+    }
+}
+
 struct MealDetailView: View {
     let meal: CatalogMeal
     let trackedMacros: [TrackedMacro]
+    var groceryItems: [GroceryItem] = []
+    var consumedMeals: Set<String> = []
+    var onAddToGroceryList: (([GroceryItem]) -> Void)? = nil
+    var onConsumeMeal: ((CatalogMeal) -> Void)? = nil
+    
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
+
+    @State private var showSafari = false
+    @State private var safariURL: URL?
 
     private var effectiveAccent: Color {
         if themeManager.selectedTheme == .multiColour {
             return Color(hex: meal.colorHex) ?? themeManager.selectedTheme.accent(for: colorScheme)
         }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+    
+    private var areIngredientsInGroceryList: Bool {
+        guard !meal.ingredients.isEmpty else { return false }
+        let set = Set(groceryItems.map { "\($0.title)|\($0.note)" })
+        for ingredient in meal.ingredients {
+            let key = "\(ingredient.name)|\(ingredient.quantity)"
+            if !set.contains(key) {
+                return false
+            }
+        }
+        return true
     }
 
     var body: some View {
@@ -782,6 +884,23 @@ struct MealDetailView: View {
                     }
                     .padding(.horizontal)
 
+                    Button {
+                        onConsumeMeal?(meal)
+                    } label: {
+                        let isConsumed = consumedMeals.contains(meal.name)
+                        HStack {
+                            Image(systemName: isConsumed ? "checkmark.circle.fill" : "checkmark.circle")
+                            Text(isConsumed ? "Log in Intake (Again)" : "Log in Intake")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(effectiveAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                        .foregroundStyle(effectiveAccent)
+                        .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+
                     // Ingredients
                     if !meal.ingredients.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -805,6 +924,23 @@ struct MealDetailView: View {
                                 }
                             }
                         }
+                        .padding(.horizontal)
+                        
+                        Button {
+                            let items = meal.ingredients.map { GroceryItem(title: $0.name, note: $0.quantity) }
+                            onAddToGroceryList?(items)
+                        } label: {
+                            HStack {
+                                Image(systemName: areIngredientsInGroceryList ? "cart.fill" : "cart.badge.plus")
+                                Text(areIngredientsInGroceryList ? "Add to Groceries (Again)" : "Add to Groceries")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(effectiveAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                            .foregroundStyle(effectiveAccent)
+                            .fontWeight(.semibold)
+                        }
+                        .buttonStyle(.plain)
                         .padding(.horizontal)
                     }
 
@@ -843,6 +979,23 @@ struct MealDetailView: View {
                         }
                         .padding(.horizontal)
                     }
+
+                    // if let urlString = meal.url, let url = URL(string: urlString) {
+                    //     Button {
+                    //         safariURL = url
+                    //         showSafari = true
+                    //     } label: {
+                    //         HStack(spacing: 8) {
+                    //             Image(systemName: "link")
+                    //             Text("View Source")
+                    //         }
+                    //         .frame(maxWidth: .infinity, minHeight: 44)
+                    //     }
+                    //     .buttonStyle(.borderedProminent)
+                    //     .tint(effectiveAccent)
+                    //     .padding(.top, 6)
+                    //     .padding(.horizontal)
+                    // }
                 }
                 .padding(.vertical)
             }
@@ -853,6 +1006,99 @@ struct MealDetailView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showSafari) {
+                if let url = safariURL {
+                    SafariView(url: url)
+                        .ignoresSafeArea()
+                }
+            }
         }
+    }
+}
+
+struct MethodStepRow: View {
+    let index: Int
+    let step: MethodStep
+    let accentColor: Color
+    
+    @State private var timeRemaining: TimeInterval
+    @State private var isRunning = false
+    
+    init(index: Int, step: MethodStep, accentColor: Color) {
+        self.index = index
+        self.step = step
+        self.accentColor = accentColor
+        _timeRemaining = State(initialValue: TimeInterval(step.durationMinutes * 60))
+    }
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(index + 1).")
+                .font(.callout.weight(.semibold))
+                .padding(6)
+                .background(accentColor.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(step.text)
+                    .font(.subheadline)
+                    .lineSpacing(3)
+                
+                if step.durationMinutes > 0 {
+                    HStack(spacing: 12) {
+                        // Timer Badge
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.callout)
+                            Text(formatTime(timeRemaining))
+                                .font(.callout.weight(.semibold))
+                                .monospacedDigit()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.primary.opacity(0.05), in: Capsule())
+                        
+                        // Controls
+                        Button {
+                            isRunning.toggle()
+                        } label: {
+                            Image(systemName: isRunning ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if timeRemaining != TimeInterval(step.durationMinutes * 60) {
+                            Button {
+                                isRunning = false
+                                timeRemaining = TimeInterval(step.durationMinutes * 60)
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            Spacer()
+        }
+        .padding()
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            guard isRunning else { return }
+            if timeRemaining > 0 {
+                timeRemaining -= 1
+            } else {
+                isRunning = false
+            }
+        }
+    }
+    
+    private func formatTime(_ totalSeconds: TimeInterval) -> String {
+        let minutes = Int(totalSeconds) / 60
+        let seconds = Int(totalSeconds) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }

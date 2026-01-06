@@ -43,6 +43,7 @@ struct NutritionTabView: View {
     @State private var dayTakenSupplementIDs: Set<String> = []
     @State private var nutritionSearchText: String = ""
     @State private var weeklyEntries: [WeeklyProgressEntry] = []
+    @State private var dailyMealEntries: [MealIntakeEntry] = []
 
     @Binding var maintenanceCalories: Int
     var isPro: Bool
@@ -438,6 +439,8 @@ struct NutritionTabView: View {
                             schedule: $account.mealSchedule,
                             catalog: $account.mealCatalog,
                             trackedMacros: trackedMacros,
+                            groceryItems: groceryItems,
+                            consumedMeals: Set(dailyMealEntries.map { $0.itemName }),
                             accentColor: accentOverride ?? .accentColor,
                             onSave: { updated in
                                 saveMealSchedule(updated)
@@ -921,9 +924,25 @@ struct NutritionTabView: View {
         }
         .onAppear {
             updateWeeklyEntries()
+            refreshDailyMeals()
         }
         .onChange(of: account.weeklyProgress) { _, _ in
             updateWeeklyEntries()
+        }
+        .onChange(of: selectedDate) {
+            refreshDailyMeals()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .dayDataDidChange)) { note in
+            if let info = note.userInfo as? [String: Any], let date = info["date"] as? Date {
+                let localCal = Calendar.current
+                let compsA = localCal.dateComponents([.year, .month, .day], from: date)
+                let compsB = localCal.dateComponents([.year, .month, .day], from: selectedDate)
+                if compsA == compsB {
+                    refreshDailyMeals()
+                }
+            } else {
+                refreshDailyMeals()
+            }
         }
     }
 }
@@ -1073,6 +1092,20 @@ private extension NutritionTabView {
         // We trust the local cache for immediate feedback.
         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
         applyMealIntake(entry, to: day)
+        refreshDailyMeals()
+    }
+
+    private func refreshDailyMeals() {
+        let request = FetchDescriptor<Day>(predicate: #Predicate { $0.date == selectedDate })
+        do {
+            if let day = try modelContext.fetch(request).first {
+                self.dailyMealEntries = day.mealIntakes
+            } else {
+                self.dailyMealEntries = []
+            }
+        } catch {
+            print("NutritionTabView: failed to fetch daily meals: \(error)")
+        }
     }
 
     private func logCatalogMeal(_ meal: CatalogMeal) {
@@ -3769,6 +3802,8 @@ private struct MealScheduleSection: View {
                             Text(cell.mealType.displayName)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(checkedMeals.contains(cell.mealType.rawValue) ? tint : .primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                             Text(timeText(for: cell.mealType, fallback: cell.defaultTime))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -3779,6 +3814,7 @@ private struct MealScheduleSection: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
+                    .frame(height: 84)
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)

@@ -888,6 +888,7 @@ class Account: ObservableObject {
         }
 
         var avatarImage: Image? {
+            guard !isDeleted else { return nil }
             guard let data = profileImage, let uiImage = UIImage(data: data) else { return nil }
             return Image(uiImage: uiImage)
         }

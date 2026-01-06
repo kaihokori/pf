@@ -5,6 +5,8 @@ struct WeeklyMealScheduleCard: View {
     @Binding var schedule: [MealScheduleItem]
     @Binding var catalog: [CatalogMeal]
     var trackedMacros: [TrackedMacro]
+    var groceryItems: [GroceryItem]
+    var consumedMeals: Set<String>
     let accentColor: Color
     var onSave: ([MealScheduleItem]) -> Void
     var onSaveCatalog: ([CatalogMeal]) -> Void
@@ -34,6 +36,8 @@ struct WeeklyMealScheduleCard: View {
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.top, -8)
+            .padding(.bottom, -4)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 20) {
@@ -48,10 +52,11 @@ struct WeeklyMealScheduleCard: View {
                                 ForEach(day.sessions) { session in
                                     Menu {
                                         if let meal = catalog.first(where: { $0.name == session.name }) {
+                                            let isConsumed = consumedMeals.contains(meal.name)
                                             Button {
                                                 onConsumeMeal(meal)
                                             } label: {
-                                                Label("Mark as Consumed", systemImage: "checkmark.circle")
+                                                Label(isConsumed ? "Log in Intake (Again)" : "Log in Intake", systemImage: isConsumed ? "checkmark.circle.fill" : "checkmark.circle")
                                             }
                                             
                                             Button {
@@ -60,16 +65,21 @@ struct WeeklyMealScheduleCard: View {
                                                 Label("View Details", systemImage: "info.circle")
                                             }
 
-                                            Button {
-                                                addMealToGroceryList(meal)
-                                            } label: {
-                                                Label("Add to Groceries", systemImage: "cart.badge.plus")
+                                            if !meal.ingredients.isEmpty {
+                                                let inGrocery = isMealInGroceryList(meal)
+                                                Button {
+                                                    addMealToGroceryList(meal)
+                                                } label: {
+                                                    Label(inGrocery ? "Add to Groceries (Again)" : "Add to Groceries", systemImage: inGrocery ? "cart.fill" : "cart.badge.plus")
+                                                }
                                             }
                                         }
                                     } label: {
+                                        let mealColorHex = catalog.first(where: { $0.name == session.name })?.colorHex ?? session.colorHex
                                         WeeklyMealSessionCard(
                                             session: session,
-                                            accentColor: effectiveAccent
+                                            accentColor: effectiveAccent,
+                                            overrideColorHex: mealColorHex
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -94,21 +104,35 @@ struct WeeklyMealScheduleCard: View {
             Button {
                 showCatalogSheet = true
             } label: {
-                Label("Catalog", systemImage: "book")
+                Label("Food Menu", systemImage: "book")
                     .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 18)
                     .glassEffect(in: .rect(cornerRadius: 12))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Tap a meal to view options")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, -8)
+            .padding(.bottom, -8)
         }
         .padding(20)
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
-        .padding(.top, 28)
+        .padding(.top, 10)
         .sheet(isPresented: $showEditSheet) {
             MealScheduleEditorSheet(
                 schedule: $schedule,
+                catalog: $catalog,
                 accentColor: effectiveAccent,
                 onSave: { updated in
                     schedule = updated
@@ -128,6 +152,8 @@ struct WeeklyMealScheduleCard: View {
                 catalog: $catalog,
                 schedule: $schedule,
                 trackedMacros: trackedMacros,
+                groceryItems: groceryItems,
+                consumedMeals: consumedMeals,
                 onSave: { updatedCatalog in
                     catalog = updatedCatalog
                     onSaveCatalog(updatedCatalog)
@@ -141,7 +167,14 @@ struct WeeklyMealScheduleCard: View {
             )
         }
         .sheet(item: $selectedMealForDetail) { meal in
-            MealDetailView(meal: meal, trackedMacros: trackedMacros)
+            MealDetailView(
+                meal: meal,
+                trackedMacros: trackedMacros,
+                groceryItems: groceryItems,
+                consumedMeals: consumedMeals,
+                onAddToGroceryList: onAddToGroceryList,
+                onConsumeMeal: onConsumeMeal
+            )
         }
     }
 
@@ -159,18 +192,32 @@ struct WeeklyMealScheduleCard: View {
             onAddToGroceryList(newItems)
         }
     }
+
+    private func isMealInGroceryList(_ meal: CatalogMeal) -> Bool {
+        guard !meal.ingredients.isEmpty else { return false }
+        let set = Set(groceryItems.map { "\($0.title)|\($0.note)" })
+        for ingredient in meal.ingredients {
+            let key = "\(ingredient.name)|\(ingredient.quantity)"
+            if !set.contains(key) {
+                return false
+            }
+        }
+        return true
+    }
 }
 
 struct WeeklyMealSessionCard: View {
     let session: MealSession
     let accentColor: Color
+    var overrideColorHex: String? = nil
 
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
     private var resolvedColor: Color {
         if themeManager.selectedTheme == .multiColour {
-            return Color(hex: session.colorHex) ?? accentColor
+            let hex = overrideColorHex ?? session.colorHex
+            return Color(hex: hex) ?? accentColor
         }
         return themeManager.selectedTheme.accent(for: colorScheme)
     }
@@ -193,6 +240,7 @@ struct WeeklyMealSessionCard: View {
 struct MealScheduleEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var schedule: [MealScheduleItem]
+    @Binding var catalog: [CatalogMeal]
     var accentColor: Color
     var onSave: ([MealScheduleItem]) -> Void
     var onOpenCatalog: () -> Void
@@ -230,6 +278,7 @@ struct MealScheduleEditorSheet: View {
                                 .padding(.vertical, 8)
                                 .background(accentColor.opacity(0.1), in: Capsule())
                                 .foregroundStyle(accentColor)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -269,9 +318,10 @@ struct MealScheduleEditorSheet: View {
                                                     Button {
                                                         guard themeManager.selectedTheme == .multiColour else { return }
                                                         colorPickerTarget = (dayIndex, sessionId)
-                                                        // showColorPickerSheet = true
+                                                        showColorPickerSheet = true
                                                     } label: {
-                                                        let sessionColor: Color = themeManager.selectedTheme == .multiColour ? (Color(hex: binding.colorHex.wrappedValue) ?? accentColor) : themeManager.selectedTheme.accent(for: colorScheme)
+                                                        let mealColorHex = catalog.first(where: { $0.name == binding.name.wrappedValue })?.colorHex ?? binding.colorHex.wrappedValue
+                                                        let sessionColor: Color = themeManager.selectedTheme == .multiColour ? (Color(hex: mealColorHex) ?? accentColor) : themeManager.selectedTheme.accent(for: colorScheme)
 
                                                         Circle()
                                                             .fill(sessionColor.opacity(0.18))
@@ -286,8 +336,39 @@ struct MealScheduleEditorSheet: View {
                                                     .disabled(themeManager.selectedTheme != .multiColour)
 
                                                     VStack(alignment: .leading, spacing: 6) {
-                                                        Text("Meal: \(binding.name.wrappedValue)")
-                                                            .font(.subheadline.weight(.semibold))
+                                                        Menu {
+                                                            if !isFirst {
+                                                                Button("Move to Top") {
+                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: 0)
+                                                                }
+                                                                Button("Move Up") {
+                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: sessionIndex - 1)
+                                                                }
+                                                            }
+                                                            if !isLast {
+                                                                Button("Move Down") {
+                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: sessionIndex + 1)
+                                                                }
+                                                                Button("Move to Bottom") {
+                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: day.sessions.count - 1)
+                                                                }
+                                                            }
+                                                            
+                                                            Menu("Move to Day") {
+                                                                ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
+                                                                    if targetDayIndex != dayIndex {
+                                                                        Button(targetDay.day) {
+                                                                            moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        } label: {
+                                                            Text("\(binding.name.wrappedValue)")
+                                                                .font(.subheadline.weight(.semibold))
+                                                                .foregroundStyle(.primary)
+                                                        }
+                                                        .buttonStyle(.plain)
 
                                                         HStack(spacing: 8) {
                                                             Menu {
@@ -305,6 +386,16 @@ struct MealScheduleEditorSheet: View {
                                                                     }
                                                                     Button("Move to Bottom") {
                                                                         moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: day.sessions.count - 1)
+                                                                    }
+                                                                }
+                                                                
+                                                                Menu("Move to Day") {
+                                                                    ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
+                                                                        if targetDayIndex != dayIndex {
+                                                                            Button(targetDay.day) {
+                                                                                moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
+                                                                            }
+                                                                        }
                                                                     }
                                                                 }
                                                             } label: {
@@ -395,6 +486,15 @@ struct MealScheduleEditorSheet: View {
         working[dayIndex].sessions.insert(session, at: safeIndex)
     }
 
+    private func moveSessionToDay(fromDayIndex: Int, sessionIndex: Int, toDayIndex: Int) {
+        guard working.indices.contains(fromDayIndex),
+              working.indices.contains(toDayIndex),
+              working[fromDayIndex].sessions.indices.contains(sessionIndex) else { return }
+
+        let session = working[fromDayIndex].sessions.remove(at: sessionIndex)
+        working[toDayIndex].sessions.append(session)
+    }
+
     private func saveChanges() {
         schedule = working
         onSave(working)
@@ -406,6 +506,21 @@ struct MealScheduleEditorSheet: View {
               working.indices.contains(target.dayIndex),
               let sessionIndex = working[target.dayIndex].sessions.firstIndex(where: { $0.id == target.sessionId })
         else { return }
-        working[target.dayIndex].sessions[sessionIndex].colorHex = hex
+        
+        let sessionName = working[target.dayIndex].sessions[sessionIndex].name
+        
+        // Update ALL sessions in the working schedule with this name
+        for dIdx in working.indices {
+            for sIdx in working[dIdx].sessions.indices {
+                if working[dIdx].sessions[sIdx].name == sessionName {
+                    working[dIdx].sessions[sIdx].colorHex = hex
+                }
+            }
+        }
+        
+        // Also update catalog if a meal with this name exists
+        if let catalogIndex = catalog.firstIndex(where: { $0.name == sessionName }) {
+            catalog[catalogIndex].colorHex = hex
+        }
     }
 }

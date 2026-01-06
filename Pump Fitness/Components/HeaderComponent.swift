@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct HeaderComponent: View {
     @EnvironmentObject private var themeManager: ThemeManager
@@ -144,7 +145,7 @@ struct HeaderComponent: View {
             .fill(account.avatarGradient)
             .frame(width: 58, height: 58)
             .overlay {
-                if let avatarImage = account.avatarImage {
+                if !account.isDeleted, let avatarImage = account.avatarImage {
                     avatarImage
                         .resizable()
                         .scaledToFill()

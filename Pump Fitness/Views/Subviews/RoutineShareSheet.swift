@@ -335,7 +335,7 @@ private struct ExpensesShareSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "EXPENSES (USD)", icon: "chart.bar.fill", color: color)
+            SectionHeader(title: "EXPENSES", icon: "chart.bar.fill", color: color)
             GeometryReader { geo in
                 let maxValue = max(bars.map { $0.total }.max() ?? 0, 1)
                 let colCount = max(bars.count, 1)

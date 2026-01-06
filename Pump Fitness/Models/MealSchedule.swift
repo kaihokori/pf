@@ -224,6 +224,7 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
     var methodSteps: [MethodStep]
     var method: String
     var notes: String
+    var url: String?
 
     init(
         id: UUID = UUID(),
@@ -238,7 +239,8 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
         macroValues: [String: Double] = [:],
         methodSteps: [MethodStep] = [],
         method: String = "",
-        notes: String = ""
+        notes: String = "",
+        url: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -253,6 +255,7 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
         self.methodSteps = methodSteps
         self.method = method
         self.notes = notes
+        self.url = url
     }
 
     init?(dictionary: [String: Any]) {
@@ -272,6 +275,7 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
         let macroValues = dictionary["macroValues"] as? [String: Double]
         let method = dictionary["method"] as? String ?? ""
         let notes = dictionary["notes"] as? String ?? ""
+        let url = dictionary["url"] as? String
         let ingredientDicts = dictionary["ingredients"] as? [[String: Any]] ?? []
         let ingredients = ingredientDicts.compactMap { CatalogIngredient(dictionary: $0) }
         let stepDicts = dictionary["methodSteps"] as? [[String: Any]] ?? []
@@ -308,12 +312,13 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
             macroValues: derivedMacroValues,
             methodSteps: resolvedSteps,
             method: method,
-            notes: notes
+            notes: notes,
+            url: url
         )
     }
 
     var asDictionary: [String: Any] {
-        [
+        var dict: [String: Any] = [
             "id": id.uuidString,
             "name": name,
             "mealType": mealType.rawValue,
@@ -328,10 +333,12 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
             "method": methodStringForLegacy,
             "notes": notes
         ]
+        if let url { dict["url"] = url }
+        return dict
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, mealType, colorHex, ingredients, calories, protein, carbs, fats, macroValues, methodSteps, method, notes
+        case id, name, mealType, colorHex, ingredients, calories, protein, carbs, fats, macroValues, methodSteps, method, notes, url
     }
 
     init(from decoder: Decoder) throws {
@@ -360,6 +367,7 @@ struct CatalogMeal: Identifiable, Codable, Hashable {
             methodSteps = MethodStep.steps(from: method)
         }
         notes = try container.decode(String.self, forKey: .notes)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
     }
 
     private var methodStringForLegacy: String {

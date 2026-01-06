@@ -122,6 +122,7 @@ struct RecipeLookupComponent: View {
             .sheet(item: $detailItem) { item in
                 detailSheet(for: item)
                     .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.hidden)
             }
         }
     }
@@ -204,19 +205,19 @@ struct RecipeLookupComponent: View {
                           if let url = item.sourceURL,
                               let scheme = url.scheme?.lowercased(),
                               scheme == "http" || scheme == "https" {
-                        Button {
-                            safariURL = url
-                            showSafari = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "link")
-                                Text("View Source")
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(accentColor)
-                        .padding(.top, 6)
+                        // Button {
+                        //     safariURL = url
+                        //     showSafari = true
+                        // } label: {
+                        //     HStack(spacing: 8) {
+                        //         Image(systemName: "link")
+                        //         Text("View Source")
+                        //     }
+                        //     .frame(maxWidth: .infinity, minHeight: 44)
+                        // }
+                        // .buttonStyle(.borderedProminent)
+                        // .tint(accentColor)
+                        // .padding(.top, 6)
                     }
                 }
                 .padding()

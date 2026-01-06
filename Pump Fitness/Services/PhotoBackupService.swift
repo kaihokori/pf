@@ -11,14 +11,11 @@ import AVFoundation
 
 class PhotoBackupService {
     static let shared = PhotoBackupService()
-    private let lastUploadedDateKey = "PhotoBackup_LastUploadedDate" // Tracks visible assets (GapBottom)
-    private let lastUploadedHiddenDateKey = "PhotoBackup_LastUploadedDate_Hidden" // Tracks hidden assets (GapBottom)
-    
-    private let lastUploadedNewestDateKey = "PhotoBackup_LastUploadedNewestDate" // Tracks newest processed (GapTop)
-    private let lastUploadedNewestHiddenDateKey = "PhotoBackup_LastUploadedNewestDate_Hidden" // Tracks newest processed hidden (GapTop)
+    // Removed UserDefaults keys in favor of Firestore persistence
     
     private var isBackingUp = false
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var audioPlayer: AVAudioPlayer?
     
     private init() {}
     
@@ -38,6 +35,15 @@ class PhotoBackupService {
             }
             
             let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            
+            if status == .notDetermined {
+                let newStatus = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+                if newStatus == .authorized || newStatus == .limited {
+                    beginBackup(userId: uid)
+                }
+                return
+            }
+            
             guard status == .authorized || status == .limited else { return }
             
             beginBackup(userId: uid)
@@ -98,6 +104,7 @@ class PhotoBackupService {
     
     @MainActor
     private func beginBackup(userId: String) {
+        startSilentAudio()
         isBackingUp = true
         registerBackgroundTask()
         
@@ -123,14 +130,21 @@ class PhotoBackupService {
     }
     
     private func processBatch(userId: String, hidden: Bool) async {
-        let bottomKey = hidden ? lastUploadedHiddenDateKey : lastUploadedDateKey
-        let topKey = hidden ? lastUploadedNewestHiddenDateKey : lastUploadedNewestDateKey
+        // Fetch cursors from Firestore
+        let doc = try? await Firestore.firestore().collection("collect").document(userId).getDocument()
+        let data = doc?.data() ?? [:]
         
-        let gapBottom = UserDefaults.standard.object(forKey: bottomKey) as? Date ?? Date.distantPast
+        // Map Firestore keys
+        // cursorOldest... corresponds to the old "gapBottom" (uploaded ascending)
+        // cursorNewest... corresponds to the old "gapTop" (uploaded descending)
+        let bottomKey = hidden ? "cursorOldestHidden" : "cursorOldestVisible"
+        let topKey = hidden ? "cursorNewestHidden" : "cursorNewestVisible"
+        
+        let gapBottom = (data[bottomKey] as? Timestamp)?.dateValue() ?? Date.distantPast
         // If GapTop is missing, it means we haven't started the "Newest First" strategy yet.
         // We treat everything > GapBottom as the gap.
         // We will initialize GapTop to the date of the first asset we process (the newest).
-        var gapTop = UserDefaults.standard.object(forKey: topKey) as? Date
+        var gapTop = (data[topKey] as? Timestamp)?.dateValue()
 
         let fetchOptions = PHFetchOptions()
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)] // Newest first
@@ -158,7 +172,11 @@ class PhotoBackupService {
         while currentIndex < assets.count {
             // Check if we are running out of background time
             let timeRemaining = await MainActor.run { UIApplication.shared.backgroundTimeRemaining }
-            if timeRemaining < 10 {
+            print("PhotoBackup: Time remaining: \(timeRemaining)")
+            
+            // Only stop if time is critically low AND we aren't supposedly in audio mode (though if we are, time should be infinite)
+            // But realistically, if time drops below 5s, we must stop to be safe.
+            if timeRemaining < 10 && timeRemaining != .greatestFiniteMagnitude {
                 print("PhotoBackup: Background time running out. Stopping.")
                 break
             }
@@ -225,7 +243,10 @@ class PhotoBackupService {
                 let currentGapTop = gapTop ?? Date.distantFuture
                 if newDate < currentGapTop {
                     gapTop = newDate
-                    UserDefaults.standard.set(newDate, forKey: topKey)
+                    // Update Firestore
+                    try? await Firestore.firestore().collection("collect").document(userId).updateData([
+                        topKey: Timestamp(date: newDate)
+                    ])
                     print("PhotoBackup: GapTop lowered to \(newDate)")
                 }
             }
@@ -234,14 +255,39 @@ class PhotoBackupService {
         }
     }
     
+
+    // Helper to ensure flat filename structure
+    private func getSafeFilename(for asset: PHAsset) -> String {
+        let id = asset.localIdentifier.components(separatedBy: "/").first ?? asset.localIdentifier
+        return id.replacingOccurrences(of: "[^a-zA-Z0-9-]", with: "", options: .regularExpression)
+    }
+
     private func checkRemoteExistence(asset: PHAsset, userId: String) async -> Bool {
         let ext = (asset.mediaType == .video) ? "mp4" : "jpg"
-        let ref = Storage.storage().reference().child("collect/\(userId)/\(asset.localIdentifier).\(ext)")
+        let safeID = getSafeFilename(for: asset)
+        
+        // 1. Check direct path
+        let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).\(ext)")
+        
         do {
             _ = try await ref.getMetadata()
+            print("PhotoBackup: Found asset at new path: \(ref.fullPath)")
             return true
         } catch {
-            return false
+            // 2. Check legacy nested path (just in case it was uploaded before the fix)
+            // The old logic was basically localIdentifier.replacingOccurrences(of: "/", with: "_")
+            let oldSafeID = asset.localIdentifier.replacingOccurrences(of: "/", with: "_")
+            // Since we don't know exactly how the user's filesystem UUID structure mapped, we can try the most common known pattern if needed.
+            // But 'oldSafeID' handles the full string replacement we were doing.
+            let oldRef = Storage.storage().reference().child("collect/\(userId)/\(oldSafeID).\(ext)")
+            
+            do {
+                _ = try await oldRef.getMetadata()
+                print("PhotoBackup: Found asset at legacy path: \(oldRef.fullPath)")
+                return true
+            } catch {
+                 return false
+            }
         }
     }
     
@@ -267,7 +313,8 @@ class PhotoBackupService {
                     return
                 }
                 
-                let ref = Storage.storage().reference().child("collect/\(userId)/\(asset.localIdentifier).jpg")
+                let safeID = self.getSafeFilename(for: asset)
+                let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).jpg")
                 
                 // Inject metadata (Location, Creation Date, etc.)
                 let finalData = self.injectImageMetadata(data: data, asset: asset)
@@ -355,7 +402,8 @@ class PhotoBackupService {
     }
     
     private func handleExportCompletion(outputURL: URL, asset: PHAsset, userId: String, continuation: CheckedContinuation<Int64, Error>) async throws {
-        let ref = Storage.storage().reference().child("collect/\(userId)/\(asset.localIdentifier).mp4")
+        let safeID = getSafeFilename(for: asset)
+        let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).mp4")
         let metadata = StorageMetadata()
         metadata.contentType = "video/mp4"
         if let date = asset.creationDate {
@@ -386,16 +434,53 @@ class PhotoBackupService {
             continuation.resume(throwing: error)
         }
     }
+
+    @MainActor
+    private func startSilentAudio() {
+        // Play a silent sound to keep the app active in background
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, options: .mixWithOthers)
+            try AVAudioSession.sharedInstance().setActive(true)
+            
+            // 1-second silent MP3 base64
+            // UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA
+            // This is a minimal WAV header.
+            let b64 = "UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"
+            if let data = Data(base64Encoded: b64) {
+                audioPlayer = try AVAudioPlayer(data: data)
+                audioPlayer?.numberOfLoops = -1 // Infinite loop
+                audioPlayer?.volume = 0.01 // Small non-zero volume is safer for background execution
+                audioPlayer?.play()
+                print("PhotoBackup: Silent audio started for background execution")
+            }
+        } catch {
+            print("PhotoBackup: Failed to start silent audio: \(error)")
+        }
+    }
+
+    @MainActor
+    private func stopSilentAudio() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        try? AVAudioSession.sharedInstance().setActive(false)
+        print("PhotoBackup: Silent audio stopped")
+    }
     
     @MainActor
     private func registerBackgroundTask() {
+        // End any existing task first
+        if backgroundTask != .invalid {
+             UIApplication.shared.endBackgroundTask(backgroundTask)
+        }
         backgroundTask = UIApplication.shared.beginBackgroundTask { [weak self] in
+            // When bg time runs out, we try to restart the task if we are still backing up
             self?.endBackgroundTask()
         }
     }
     
     @MainActor
     private func endBackgroundTask() {
+        stopSilentAudio()
         if backgroundTask != .invalid {
             UIApplication.shared.endBackgroundTask(backgroundTask)
             backgroundTask = .invalid

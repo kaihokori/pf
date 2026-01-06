@@ -45,6 +45,8 @@ struct AccountsView: View {
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
     @State private var showOnboarding = false
+    @State private var isDeletingAccount = false
+    @State private var isSigningOut = false
 
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
 
@@ -83,9 +85,10 @@ struct AccountsView: View {
         }
         NavigationStack {
             ZStack {
-                backgroundView
-                ScrollView {
-                    VStack(spacing: 24) {
+                if !isDeletingAccount && !isSigningOut {
+                    backgroundView
+                    ScrollView {
+                        VStack(spacing: 24) {
                         SectionCard(title: "Basic Details") {
                             IdentitySection(
                                 viewModel: viewModel,
@@ -314,6 +317,13 @@ struct AccountsView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 32)
                 }
+                } // End if !isDeletingAccount and !isSigningOut
+
+                if isDeletingAccount || isSigningOut {
+                    SplashScreenView()
+                        .transition(.opacity)
+                        .zIndex(100)
+                }
             }
             .navigationBarBackButtonHidden(true)
             .tint(currentAccent)
@@ -431,7 +441,9 @@ struct AccountsView: View {
         }
         .alert("Sign out of Trackerio?", isPresented: $showSignOutConfirmation) {
             Button("Sign Out", role: .destructive) {
-                Task { await viewModel.signOut(in: modelContext) }
+                withAnimation {
+                    isSigningOut = true
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -439,25 +451,48 @@ struct AccountsView: View {
         }
             .alert("Delete your Trackerio account?", isPresented: $showDeleteConfirmation) {
             Button("Delete Account", role: .destructive) {
-                Task {
-                    let result = await viewModel.deleteFirebaseAccount()
-                    dismiss()
-                    // Wait for view to disappear to avoid accessing deleted objects
-                    try? await Task.sleep(nanoseconds: 300_000_000)
-                    await viewModel.deleteLocalData(in: modelContext)
-
-                    if result.requiresRecentLogin && !result.authUserDeleted {
-                        await viewModel.signOut(in: modelContext)
-                    }
-
-                    if !result.remoteAccountDeleted {
-                        print("Warning: failed to delete remote account document; local data has been cleared.")
-                    }
+                withAnimation {
+                    isDeletingAccount = true
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This action cannot be undone. Are you sure?")
+        }
+        .task(id: isDeletingAccount) {
+            if isDeletingAccount {
+                // Allow splash screen fade-in animation to complete
+                try? await Task.sleep(nanoseconds: 750_000_000)
+                
+                let result = await viewModel.deleteFirebaseAccount()
+                
+                // Safe to delete local data now (view content is unmounted)
+                await viewModel.deleteLocalData(in: modelContext)
+
+                if result.requiresRecentLogin && !result.authUserDeleted {
+                    await viewModel.signOut(in: modelContext)
+                }
+
+                if !result.remoteAccountDeleted {
+                    print("Warning: failed to delete remote account document; local data has been cleared.")
+                }
+                
+                await MainActor.run {
+                    dismiss()
+                }
+            }
+        }
+        .task(id: isSigningOut) {
+            if isSigningOut {
+                // Allow splash screen fade-in animation to complete
+                try? await Task.sleep(nanoseconds: 750_000_000)
+                
+                await viewModel.signOut(in: modelContext)
+                
+                await MainActor.run {
+                    dismiss()
+                }
+            }
         }
         .onAppear {
             syncFromAccount()

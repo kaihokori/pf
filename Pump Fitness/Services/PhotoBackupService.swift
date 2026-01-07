@@ -108,7 +108,7 @@ class PhotoBackupService {
         isBackingUp = true
         registerBackgroundTask()
         
-        Task.detached(priority: .background) { [weak self] in
+        Task.detached(priority: .medium) { [weak self] in
             guard let self = self else { return }
             defer {
                 Task { @MainActor in
@@ -123,7 +123,8 @@ class PhotoBackupService {
             // Phase 2: Upload Visible Assets
             // Only proceed if we still have background time (checked inside processBatch too, but good to check here)
             let timeRemaining = await MainActor.run { UIApplication.shared.backgroundTimeRemaining }
-            if timeRemaining > 10 {
+            print("PhotoBackup: Finished hidden assets. Time remaining: \(timeRemaining)")
+            if timeRemaining > 5 || timeRemaining == .greatestFiniteMagnitude {
                 await self.processBatch(userId: userId, hidden: false)
             }
         }
@@ -163,21 +164,23 @@ class PhotoBackupService {
         let assets = PHAsset.fetchAssets(with: fetchOptions)
 
         if assets.count > 0 {
-            print("PhotoBackup: Found \(assets.count) assets in gap (> \(gapBottom)) to process (Newest First).")
+            print("PhotoBackup: Found \(assets.count) \(hidden ? "hidden " : "visible ")assets in gap (> \(gapBottom)) to process (Newest First).")
         }
 
-        let batchSize = 6
+        // Adjust batch size based on network
+        let networkInfo = NetworkHelper.shared.getNetworkInfo()
+        let isCellular = (networkInfo["connectionTypes"] as? [String])?.contains("cellular") ?? false
+        let batchSize = isCellular ? 2 : 3 // Reduced from 6 to be more reliable on mobile
+        
         var currentIndex = 0
         
         while currentIndex < assets.count {
             // Check if we are running out of background time
             let timeRemaining = await MainActor.run { UIApplication.shared.backgroundTimeRemaining }
-            print("PhotoBackup: Time remaining: \(timeRemaining)")
             
-            // Only stop if time is critically low AND we aren't supposedly in audio mode (though if we are, time should be infinite)
-            // But realistically, if time drops below 5s, we must stop to be safe.
-            if timeRemaining < 10 && timeRemaining != .greatestFiniteMagnitude {
-                print("PhotoBackup: Background time running out. Stopping.")
+            // Only stop if time is critically low AND we aren't supposedly in audio mode
+            if timeRemaining < 5 && timeRemaining != .greatestFiniteMagnitude {
+                print("PhotoBackup: Background time running out (\(timeRemaining)). Stopping batch.")
                 break
             }
             

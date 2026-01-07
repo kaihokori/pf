@@ -16,6 +16,8 @@ struct WeeklyMealScheduleCard: View {
     @State private var showEditSheet = false
     @State private var showCatalogSheet = false
     @State private var selectedMealForDetail: CatalogMeal?
+    @State private var showActionAlert = false
+    @State private var actionAlertMessage = ""
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
@@ -48,29 +50,34 @@ struct WeeklyMealScheduleCard: View {
                                 .fontWeight(.semibold)
                                 .textCase(.uppercase)
                                 .padding(.top, 2)
+                            
                             VStack(spacing: 8) {
                                 ForEach(day.sessions) { session in
                                     Menu {
+                                        Button {
+                                            selectedMealForDetail = catalog.first(where: { $0.name == session.name })
+                                        } label: {
+                                            Label("View Details", systemImage: "info.circle")
+                                        }
+                                        
                                         if let meal = catalog.first(where: { $0.name == session.name }) {
                                             let isConsumed = consumedMeals.contains(meal.name)
                                             Button {
                                                 onConsumeMeal(meal)
+                                                actionAlertMessage = "Logged '\(meal.name)'"
+                                                showActionAlert = true
                                             } label: {
-                                                Label(isConsumed ? "Log in Intake (Again)" : "Log in Intake", systemImage: isConsumed ? "checkmark.circle.fill" : "checkmark.circle")
-                                            }
-                                            
-                                            Button {
-                                                selectedMealForDetail = meal
-                                            } label: {
-                                                Label("View Details", systemImage: "info.circle")
+                                                Label("Log Intake", systemImage: isConsumed ? "plus.circle.fill" : "plus.circle")
                                             }
 
                                             if !meal.ingredients.isEmpty {
                                                 let inGrocery = isMealInGroceryList(meal)
                                                 Button {
                                                     addMealToGroceryList(meal)
+                                                    actionAlertMessage = "Added '\(meal.name)' to groceries"
+                                                    showActionAlert = true
                                                 } label: {
-                                                    Label(inGrocery ? "Add to Groceries (Again)" : "Add to Groceries", systemImage: inGrocery ? "cart.fill" : "cart.badge.plus")
+                                                    Label("Add to Groceries", systemImage: inGrocery ? "cart.fill" : "cart.badge.plus")
                                                 }
                                             }
                                         }
@@ -117,7 +124,7 @@ struct WeeklyMealScheduleCard: View {
                 Image(systemName: "info.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Tap a meal to view options")
+                Text("Tap each meal to view options")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -176,6 +183,9 @@ struct WeeklyMealScheduleCard: View {
                 onConsumeMeal: onConsumeMeal
             )
         }
+            .alert(actionAlertMessage, isPresented: $showActionAlert) {
+                Button("OK", role: .cancel) { }
+            }
     }
 
     private var effectiveAccent: Color {
@@ -336,39 +346,9 @@ struct MealScheduleEditorSheet: View {
                                                     .disabled(themeManager.selectedTheme != .multiColour)
 
                                                     VStack(alignment: .leading, spacing: 6) {
-                                                        Menu {
-                                                            if !isFirst {
-                                                                Button("Move to Top") {
-                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: 0)
-                                                                }
-                                                                Button("Move Up") {
-                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: sessionIndex - 1)
-                                                                }
-                                                            }
-                                                            if !isLast {
-                                                                Button("Move Down") {
-                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: sessionIndex + 1)
-                                                                }
-                                                                Button("Move to Bottom") {
-                                                                    moveSessionWithinDay(dayIndex: dayIndex, from: sessionIndex, to: day.sessions.count - 1)
-                                                                }
-                                                            }
-                                                            
-                                                            Menu("Move to Day") {
-                                                                ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
-                                                                    if targetDayIndex != dayIndex {
-                                                                        Button(targetDay.day) {
-                                                                            moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        } label: {
-                                                            Text("\(binding.name.wrappedValue)")
-                                                                .font(.subheadline.weight(.semibold))
-                                                                .foregroundStyle(.primary)
-                                                        }
-                                                        .buttonStyle(.plain)
+                                                        Text("\(binding.name.wrappedValue)")
+                                                            .font(.subheadline.weight(.semibold))
+                                                            .foregroundStyle(.primary)
 
                                                         HStack(spacing: 8) {
                                                             Menu {

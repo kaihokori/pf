@@ -60,6 +60,7 @@ public struct CoachingInquiryCTA: View {
                         }
                     }
                     .padding(.vertical, 4)
+                    
                     Button(action: {
                         submitInquiry()
                     }) {

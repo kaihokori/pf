@@ -150,6 +150,7 @@ struct ProSubscriptionView: View {
                                 ProBenefitCategory(name: "Nutrition Tracking", image: "leaf.fill", color: .green, benefits: [
                                     ProBenefit(icon: "chart.pie.fill", title: "Macros", description: "Track unlimited macronutrients and calories."),
                                     ProBenefit(icon: "pills.fill", title: "Supplements", description: "Log unlimited supplements and vitamins."),
+                                    ProBenefit(icon: "fork.knife", title: "Meal Planning", description: "Access full meal planning features."),
                                     ProBenefit(icon: "heart.fill", title: "Cravings", description: "Monitor your cravings with full access."),
                                     ProBenefit(icon: "clock.fill", title: "Intermittent Fasting", description: "Access full intermittent fasting features.")
                                 ]),
@@ -233,13 +234,19 @@ struct ProSubscriptionView: View {
                                 }
                             }
 
-                            if let message = expirationMessage {
-                                Text(message)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                    .padding(.top, 8)
-                            }
+                            // if let message = expirationMessage {
+                            //     Text(message)
+                            //         .font(.caption2)
+                            //         .foregroundColor(.secondary)
+                            //         .padding(.top, 8)
+                            // }
                         }
+
+                        Text("By tapping Continue, you will be charged, your subscription will auto-renew for the same price and package length until you cancel via App Store Settings.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
                         
                         // Text("Debug Region: \(subscriptionManager.storefrontLocale.identifier) (Raw: \(subscriptionManager.storefrontCountryCode ?? "nil"))")
                         //     .font(.caption)
@@ -271,16 +278,32 @@ struct ProSubscriptionView: View {
                                 .foregroundStyle(.secondary)
 
                             Button(action: {
-                                if let url = URL(string: "https://ambreon.com/trackerio") {
+                                if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
                                     openURL(url)
                                 }
                             }) {
-                                Text("Terms, Conditions & Privacy")
+                                Text("Terms of Use (EULA)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            Text("•")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            Button(action: {
+                                if let url = URL(string: "https://ambreon.com/trackerio-privacy") {
+                                    openURL(url)
+                                }
+                            }) {
+                                Text("Privacy Policy")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
+                        .padding(.bottom, 6)
                         Spacer()
                     }
                     .padding(.horizontal)
@@ -480,10 +503,12 @@ struct SubscriptionOptionCard: View {
     }
 
     private func strippedProductName(_ name: String) -> String {
-        // Remove an App Store product title prefix like "Pro - " if present
-        let prefix = "Pro - "
-        if name.hasPrefix(prefix) {
-            return String(name.dropFirst(prefix.count))
+        // Remove common App Store product title prefixes like "Pro - " or "Pro Tier - "
+        let prefixes = ["Pro - ", "Pro Tier - "]
+        for prefix in prefixes {
+            if name.hasPrefix(prefix) {
+                return String(name.dropFirst(prefix.count))
+            }
         }
         return name
     }

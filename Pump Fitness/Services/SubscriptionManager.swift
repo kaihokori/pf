@@ -74,9 +74,9 @@ class SubscriptionManager: ObservableObject {
             self.products = products.sorted(by: { $0.price < $1.price })
             
             // Update currency code from products if storefront update didn't get it
-            if storefrontCurrencyCode == nil, let firstProduct = self.products.first {
-                storefrontCurrencyCode = firstProduct.priceFormatStyle.currencyCode
-            }
+            // if storefrontCurrencyCode == nil, let firstProduct = self.products.first {
+            //     storefrontCurrencyCode = firstProduct.priceFormatStyle.currencyCode
+            // }
             
             // Debug: log loaded products
             if !self.products.isEmpty {

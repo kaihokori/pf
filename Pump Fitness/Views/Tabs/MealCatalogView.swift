@@ -18,6 +18,8 @@ struct MealCatalogView: View {
     @State private var selectedMealForDetail: CatalogMeal?
     @State private var showColorPickerSheet = false
     @State private var colorPickerTargetId: UUID?
+    @State private var showActionAlert = false
+    @State private var actionAlertMessage = ""
     
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
@@ -74,24 +76,28 @@ struct MealCatalogView: View {
                                                     Menu {
                                                         let isConsumed = consumedMeals.contains(meal.name)
                                                         Button {
-                                                            onConsumeMeal(meal)
+                                                            selectedMealForDetail = meal
                                                         } label: {
-                                                            Label(isConsumed ? "Log in Intake (Again)" : "Log in Intake", systemImage: isConsumed ? "checkmark.circle.fill" : "checkmark.circle")
+                                                            Label("View Details", systemImage: "info.circle")
+                                                        }
+                                                        
+                                                        Button {
+                                                            onConsumeMeal(meal)
+                                                            actionAlertMessage = "Logged '\(meal.name)'"
+                                                            showActionAlert = true
+                                                        } label: {
+                                                            Label("Log Intake", systemImage: isConsumed ? "plus.circle.fill" : "plus.circle")
                                                         }
 
                                                         if !meal.ingredients.isEmpty {
                                                             let inGrocery = isMealInGroceryList(meal)
                                                             Button {
                                                                 addMealToGroceryList(meal)
+                                                                actionAlertMessage = "Added '\(meal.name)' to groceries"
+                                                                showActionAlert = true
                                                             } label: {
-                                                                Label(inGrocery ? "Add to Groceries (Again)" : "Add to Groceries", systemImage: inGrocery ? "cart.fill" : "cart.badge.plus")
+                                                                Label("Add to Groceries", systemImage: inGrocery ? "cart.fill" : "cart.badge.plus")
                                                             }
-                                                        }
-                                                        
-                                                        Button {
-                                                            selectedMealForDetail = meal
-                                                        } label: {
-                                                            Label("View Details", systemImage: "info.circle")
                                                         }
                                                     } label: {
                                                         VStack(alignment: .leading, spacing: 4) {
@@ -261,6 +267,9 @@ struct MealCatalogView: View {
                 }
                 .presentationDetents([.height(180)])
                 .presentationDragIndicator(.visible)
+            }
+            .alert(actionAlertMessage, isPresented: $showActionAlert) {
+                Button("OK", role: .cancel) { }
             }
         }
     }
@@ -792,6 +801,10 @@ struct MealDetailView: View {
 
     @State private var showSafari = false
     @State private var safariURL: URL?
+    @State private var isLogging = false
+    @State private var logCompleted = false
+    @State private var isAddingGroceries = false
+    @State private var addCompleted = false
 
     private var effectiveAccent: Color {
         if themeManager.selectedTheme == .multiColour {
@@ -885,21 +898,41 @@ struct MealDetailView: View {
                     .padding(.horizontal)
 
                     Button {
+                        guard !isLogging else { return }
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isLogging = true
+                            logCompleted = false
+                        }
                         onConsumeMeal?(meal)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isLogging = false
+                                logCompleted = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    logCompleted = false
+                                }
+                            }
+                        }
                     } label: {
                         let isConsumed = consumedMeals.contains(meal.name)
+                        let baseIcon = isConsumed ? "plus.circle.fill" : "plus.circle"
+                        let labelText = logCompleted ? "Logged!" : (isLogging ? "Logging…" : "Log Intake")
+                        let labelIcon = logCompleted ? "checkmark.circle.fill" : baseIcon
                         HStack {
-                            Image(systemName: isConsumed ? "checkmark.circle.fill" : "checkmark.circle")
-                            Text(isConsumed ? "Log in Intake (Again)" : "Log in Intake")
+                            Image(systemName: labelIcon)
+                            Text(labelText)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(effectiveAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
-                        .foregroundStyle(effectiveAccent)
+                        .background((logCompleted ? Color.green.opacity(0.18) : effectiveAccent.opacity(0.1)), in: RoundedRectangle(cornerRadius: 16))
+                        .foregroundStyle(logCompleted ? Color.green : effectiveAccent)
                         .fontWeight(.semibold)
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal)
+                    .disabled(isLogging)
 
                     // Ingredients
                     if !meal.ingredients.isEmpty {
@@ -927,21 +960,40 @@ struct MealDetailView: View {
                         .padding(.horizontal)
                         
                         Button {
+                            guard !isAddingGroceries else { return }
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                isAddingGroceries = true
+                                addCompleted = false
+                            }
                             let items = meal.ingredients.map { GroceryItem(title: $0.name, note: $0.quantity) }
                             onAddToGroceryList?(items)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isAddingGroceries = false
+                                    addCompleted = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        addCompleted = false
+                                    }
+                                }
+                            }
                         } label: {
+                            let labelText = addCompleted ? "Added!" : (isAddingGroceries ? "Adding…" : "Add to Groceries")
+                            let labelIcon = addCompleted ? "checkmark.circle.fill" : (areIngredientsInGroceryList ? "cart.fill" : "cart.badge.plus")
                             HStack {
-                                Image(systemName: areIngredientsInGroceryList ? "cart.fill" : "cart.badge.plus")
-                                Text(areIngredientsInGroceryList ? "Add to Groceries (Again)" : "Add to Groceries")
+                                Image(systemName: labelIcon)
+                                Text(labelText)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(effectiveAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
-                            .foregroundStyle(effectiveAccent)
+                            .background((addCompleted ? Color.green.opacity(0.18) : effectiveAccent.opacity(0.1)), in: RoundedRectangle(cornerRadius: 16))
+                            .foregroundStyle(addCompleted ? Color.green : effectiveAccent)
                             .fontWeight(.semibold)
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal)
+                        .disabled(isAddingGroceries)
                     }
 
                     // Method

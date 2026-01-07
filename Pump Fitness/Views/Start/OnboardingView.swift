@@ -678,6 +678,14 @@ private struct AccountSetupStepView: View {
                     range: PumpDateRange.birthdate,
                     isError: !viewModel.isValidBirthDate
                 )
+
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                    Text("Users must be at least 13 years old to continue.")
+                    Spacer()
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
 
             Text("Gender")

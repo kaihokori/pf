@@ -123,6 +123,14 @@ struct AccountsView: View {
                                     range: PumpDateRange.birthdate
                                 )
                                 .surfaceCard(12)
+                                
+                                HStack(spacing: 6) {
+                                    Image(systemName: "info.circle")
+                                    Text("Minimum age is 13 years.")
+                                    Spacer()
+                                }
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                             }
 
                             ActivityLevelPicker(selectedLevel: Binding(
@@ -224,8 +232,7 @@ struct AccountsView: View {
                         SectionCard(title: "Extras") {
                             ExtrasSection(
                                 retakeAssessmentAction: { showOnboarding = true },
-                                alertsAction: { showAlertsSheet = true },
-                                legalAction: openLegal
+                                alertsAction: { showAlertsSheet = true }
                             )
                         }
                         
@@ -233,8 +240,7 @@ struct AccountsView: View {
                         SectionCard(title: "Permissions") {
                             PermissionsSection(
                                 notificationsAction: openNotificationSettings,
-                                healthSyncAction: openHealthSyncSettings,
-                                legalAction: openLegal
+                                healthSyncAction: openHealthSyncSettings
                             )
                         }
                         
@@ -243,7 +249,9 @@ struct AccountsView: View {
                                 manageSubscriptionAction: openSubscriptionPortal,
                                 reportProblemAction: { showReportSheet = true },
                                 signOutAction: { showSignOutConfirmation = true },
-                                deleteAccountAction: { showDeleteConfirmation = true }
+                                deleteAccountAction: { showDeleteConfirmation = true },
+                                termsAction: openTerms,
+                                privacyAction: openPrivacy
                             )
 
                             // #if DEBUG
@@ -262,6 +270,7 @@ struct AccountsView: View {
                             // }
                             // .toggleStyle(.switch)
                             // .padding(.top, 6)
+                            // #endif
 
                             // Button {
                             //     subscriptionManager.resetTrialState()
@@ -1099,8 +1108,14 @@ struct AccountsView: View {
         }
     }
 
-    private func openLegal() {
-        if let url = URL(string: "https://ambreon.com/trackerio") {
+    private func openTerms() {
+        if let url = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/") {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func openPrivacy() {
+        if let url = URL(string: "https://ambreon.com/trackerio-privacy") {
             UIApplication.shared.open(url)
         }
     }
@@ -1353,9 +1368,25 @@ private struct AccountSection: View {
     var reportProblemAction: () -> Void
     var signOutAction: () -> Void
     var deleteAccountAction: () -> Void
+    var termsAction: () -> Void
+    var privacyAction: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
+            accountActionRow(
+                title: "Terms of Use (EULA)",
+                icon: "doc.text",
+                role: nil,
+                action: termsAction
+            )
+
+            accountActionRow(
+                title: "Privacy Policy",
+                icon: "doc.text",
+                role: nil,
+                action: privacyAction
+            )
+
             accountActionRow(
                 title: "Report a Problem",
                 icon: "exclamationmark.bubble",
@@ -1412,7 +1443,6 @@ private struct AccountSection: View {
 private struct PermissionsSection: View {
     var notificationsAction: () -> Void
     var healthSyncAction: () -> Void
-    var legalAction: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1428,13 +1458,6 @@ private struct PermissionsSection: View {
                 icon: "heart",
                 role: nil,
                 action: healthSyncAction
-            )
-
-            accountActionRow(
-                title: "Terms, Conditions & Privacy",
-                icon: "doc.text",
-                role: nil,
-                action: legalAction
             )
         }
     }
@@ -1472,7 +1495,6 @@ private struct PermissionsSection: View {
 private struct ExtrasSection: View {
     var retakeAssessmentAction: () -> Void
     var alertsAction: () -> Void = {}
-    var legalAction: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 12) {

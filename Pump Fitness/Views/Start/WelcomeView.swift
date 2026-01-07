@@ -107,10 +107,17 @@ struct WelcomeView: View {
                         }
                     }
                     
-                    Link("Terms, Conditions & Privacy Policy", destination: URL(string: "https://ambreon.com/trackerio")!)
-                        .font(.footnote)
-                        .foregroundColor(footerTextColor)
-                        .underline()
+                    HStack(spacing: 12) {
+                        Link("Terms of Use (EULA)", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                            .font(.footnote)
+                            .foregroundColor(footerTextColor)
+                            .underline()
+                        
+                        Link("Privacy Policy", destination: URL(string: "https://ambreon.com/trackerio-privacy")!)
+                          .font(.footnote)
+                          .foregroundColor(footerTextColor)
+                          .underline()
+                    }
                 }
                 .padding(32)
                 .glassEffect(in: .rect(cornerRadius: 16.0))

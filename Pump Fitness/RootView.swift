@@ -2385,6 +2385,8 @@ private extension RootView {
                 local.startWeekOn = fetched.startWeekOn
                 local.autoRestDayIndices = fetched.autoRestDayIndices
                 local.workoutSchedule = fetched.workoutSchedule
+                local.mealSchedule = fetched.mealSchedule
+                local.mealCatalog = fetched.mealCatalog
                 local.trackedMacros = fetched.trackedMacros
                 local.cravings = fetched.cravings
                 local.groceryItems = fetched.groceryItems
@@ -2443,6 +2445,9 @@ private extension RootView {
                     activityLevel: fetched.activityLevel,
                     startWeekOn: fetched.startWeekOn,
                     autoRestDayIndices: fetched.autoRestDayIndices,
+                    workoutSchedule: fetched.workoutSchedule,
+                    mealSchedule: fetched.mealSchedule,
+                    mealCatalog: fetched.mealCatalog,
                     trackedMacros: fetched.trackedMacros,
                     cravings: fetched.cravings,
                     groceryItems: fetched.groceryItems,

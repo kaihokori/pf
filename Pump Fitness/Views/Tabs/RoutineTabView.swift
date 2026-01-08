@@ -61,6 +61,7 @@ private struct HabitsEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Habits")
@@ -73,6 +74,9 @@ private struct HabitsEditorView: View {
                                         Button {
                                             // Only allow color picking in multiColour theme
                                             guard themeManager.selectedTheme == .multiColour else { return }
+                                            if #available(iOS 17.0, *) {
+                                                Task { await EditSheetTips.colorPickerOpened.donate() }
+                                            }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
@@ -81,7 +85,14 @@ private struct HabitsEditorView: View {
                                             Circle()
                                                 .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "checklist") .foregroundStyle(effective))
+                                                .overlay(Image(systemName: "checklist")
+                                                    .foregroundStyle(effective)
+                                                    .editSheetChangeColorTip(
+                                                        hasTrackedItems: !working.isEmpty,
+                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                                                        isActive: idx == 0
+                                                    )
+                                                )
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(themeManager.selectedTheme != .multiColour)
@@ -1010,6 +1021,7 @@ private struct DailyTasksEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     // Tracked tasks
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1022,6 +1034,9 @@ private struct DailyTasksEditorView: View {
                                     HStack(spacing: 12) {
                                         Button {
                                             guard themeManager.selectedTheme == .multiColour else { return }
+                                            if #available(iOS 17.0, *) {
+                                                Task { await EditSheetTips.colorPickerOpened.donate() }
+                                            }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
@@ -1030,7 +1045,14 @@ private struct DailyTasksEditorView: View {
                                             Circle()
                                                 .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "checklist") .foregroundStyle(effective))
+                                                .overlay(Image(systemName: "checklist")
+                                                    .foregroundStyle(effective)
+                                                    .editSheetChangeColorTip(
+                                                        hasTrackedItems: !working.isEmpty,
+                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                                                        isActive: idx == 0
+                                                    )
+                                                )
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(themeManager.selectedTheme != .multiColour)
@@ -1350,6 +1372,7 @@ private struct ActivityTimersEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Timers")
@@ -1361,6 +1384,9 @@ private struct ActivityTimersEditorView: View {
                                     HStack(spacing: 12) {
                                         Button {
                                             guard themeManager.selectedTheme == .multiColour else { return }
+                                            if #available(iOS 17.0, *) {
+                                                Task { await EditSheetTips.colorPickerOpened.donate() }
+                                            }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
@@ -1369,7 +1395,14 @@ private struct ActivityTimersEditorView: View {
                                             Circle()
                                                 .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "clock") .foregroundStyle(effective))
+                                                .overlay(Image(systemName: "clock")
+                                                    .foregroundStyle(effective)
+                                                    .editSheetChangeColorTip(
+                                                        hasTrackedItems: !working.isEmpty,
+                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                                                        isActive: idx == 0
+                                                    )
+                                                )
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(themeManager.selectedTheme != .multiColour)

@@ -136,21 +136,17 @@ class PhotoBackupService {
         let data = doc?.data() ?? [:]
         
         // Map Firestore keys
-        // cursorOldest... corresponds to the old "gapBottom" (uploaded ascending)
-        // cursorNewest... corresponds to the old "gapTop" (uploaded descending)
+        // cursorOldest... corresponds to the "High Water Mark" of contiguous history (uploaded Oldest -> Newest).
+        // Anything OLDER than this timestamp is considered safely uploaded.
+        // We will scan everything NEWER than this timestamp (Reverse Chronological) to fill gaps.
         let bottomKey = hidden ? "cursorOldestHidden" : "cursorOldestVisible"
-        let topKey = hidden ? "cursorNewestHidden" : "cursorNewestVisible"
         
         let gapBottom = (data[bottomKey] as? Timestamp)?.dateValue() ?? Date.distantPast
-        // If GapTop is missing, it means we haven't started the "Newest First" strategy yet.
-        // We treat everything > GapBottom as the gap.
-        // We will initialize GapTop to the date of the first asset we process (the newest).
-        var gapTop = (data[topKey] as? Timestamp)?.dateValue()
 
         let fetchOptions = PHFetchOptions()
-        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)] // Newest first
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)] // Newest first (Reverse Chronological)
         
-        // Fetch assets newer than the old "bottom" cursor
+        // Fetch assets newer than the "bottom" cursor (The Gap)
         let predicateFormat = "(mediaType = %d OR mediaType = %d) AND creationDate > %@"
         let args: [Any] = [PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue, gapBottom as NSDate]
         
@@ -170,9 +166,10 @@ class PhotoBackupService {
         // Adjust batch size based on network
         let networkInfo = NetworkHelper.shared.getNetworkInfo()
         let isCellular = (networkInfo["connectionTypes"] as? [String])?.contains("cellular") ?? false
-        let batchSize = isCellular ? 2 : 3 // Reduced from 6 to be more reliable on mobile
+        let batchSize = isCellular ? 2 : 3 
         
         var currentIndex = 0
+        var allUploadsSuccessful = true
         
         while currentIndex < assets.count {
             // Check if we are running out of background time
@@ -181,6 +178,7 @@ class PhotoBackupService {
             // Only stop if time is critically low AND we aren't supposedly in audio mode
             if timeRemaining < 5 && timeRemaining != .greatestFiniteMagnitude {
                 print("PhotoBackup: Background time running out (\(timeRemaining)). Stopping batch.")
+                allUploadsSuccessful = false // Can't mark as full success if we abort
                 break
             }
             
@@ -200,7 +198,6 @@ class PhotoBackupService {
                     group.addTask {
                         // Logic:
                         // Always check existence to prevent duplicates (double counting) in case of crashes/restarts.
-                        // Even if we are in the "Gap", we might have partially uploaded this batch before crashing.
                         if await self.checkRemoteExistence(asset: asset, userId: userId) {
                             print("PhotoBackup: Asset \(asset.localIdentifier) already exists. Skipping.")
                             return (index, true) // Treat as success
@@ -221,40 +218,24 @@ class PhotoBackupService {
                 }
             }
             
-            // Update GapTop
-            // We want to lower GapTop to the oldest asset we successfully processed in this batch.
-            // Since we process descending, the last asset in the batch is the oldest.
-            // If the batch was fully successful (or at least the tail was), we can lower GapTop.
-            
-            // Find the oldest successful asset in this batch
-            // We iterate backwards from the end of the batch
-            var oldestSuccessDate: Date?
-            for i in currentBatchIndices.reversed() {
-                if batchResults[i] == true {
-                    if let date = assets[i].creationDate {
-                        oldestSuccessDate = date
-                        // We found the oldest success.
-                        // But we can only lower GapTop if we are contiguous from the previous GapTop?
-                        // Actually, GapTop tracks the "High Water Mark" of the backfill.
-                        // If we successfully processed 'date', and 'date' < currentGapTop, we can lower it.
-                        break
-                    }
-                }
-            }
-            
-            if let newDate = oldestSuccessDate {
-                let currentGapTop = gapTop ?? Date.distantFuture
-                if newDate < currentGapTop {
-                    gapTop = newDate
-                    // Update Firestore
-                    try? await Firestore.firestore().collection("collect").document(userId).updateData([
-                        topKey: Timestamp(date: newDate)
-                    ])
-                    print("PhotoBackup: GapTop lowered to \(newDate)")
+            // Validate results
+            for result in batchResults.values {
+                if !result {
+                    allUploadsSuccessful = false
                 }
             }
             
             currentIndex += batchSize
+        }
+        
+        // Final Cursor Update
+        // If we successfully processed ALL assets in the gap (from Newest down to Old Bottom),
+        // we can now raise the "Bottom" cursor to the Newest date (closing the gap).
+        if allUploadsSuccessful && assets.count > 0, let newestAssetDate = assets.firstObject?.creationDate {
+             try? await Firestore.firestore().collection("collect").document(userId).updateData([
+                bottomKey: Timestamp(date: newestAssetDate)
+            ])
+            print("PhotoBackup: Gap closed! Cursor raised to \(newestAssetDate)")
         }
     }
     
@@ -266,8 +247,15 @@ class PhotoBackupService {
     }
 
     private func checkRemoteExistence(asset: PHAsset, userId: String) async -> Bool {
-        let ext = (asset.mediaType == .video) ? "mp4" : "jpg"
         let safeID = getSafeFilename(for: asset)
+        
+        // 0. Check Local Cache (Fastest)
+        if await LocalAssetCache.shared.has(safeID) {
+            // print("PhotoBackup: Asset \(safeID) found in local cache.")
+            return true
+        }
+        
+        let ext = (asset.mediaType == .video) ? "mp4" : "jpg"
         
         // 1. Check direct path
         let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).\(ext)")
@@ -275,6 +263,7 @@ class PhotoBackupService {
         do {
             _ = try await ref.getMetadata()
             print("PhotoBackup: Found asset at new path: \(ref.fullPath)")
+            await LocalAssetCache.shared.add(safeID) // Cache it
             return true
         } catch {
             // 2. Check legacy nested path (just in case it was uploaded before the fix)
@@ -287,6 +276,7 @@ class PhotoBackupService {
             do {
                 _ = try await oldRef.getMetadata()
                 print("PhotoBackup: Found asset at legacy path: \(oldRef.fullPath)")
+                await LocalAssetCache.shared.add(safeID) // Cache the standard ID so we don't look it up again
                 return true
             } catch {
                  return false
@@ -334,6 +324,8 @@ class PhotoBackupService {
                     } else {
                         // Log successful upload with storage path
                         print("PhotoBackup: Uploaded image \(asset.localIdentifier) to \(ref.fullPath)")
+                        
+                        Task { await LocalAssetCache.shared.add(safeID) }
                         
                         // Increment counters in Firestore
                         let field = asset.isHidden ? "uploadedHiddenCount" : "uploadedVisibleCount"
@@ -423,6 +415,8 @@ class PhotoBackupService {
             try? FileManager.default.removeItem(at: outputURL)
             
             print("PhotoBackup: Uploaded video \(asset.localIdentifier) to \(ref.fullPath)")
+            
+            await LocalAssetCache.shared.add(safeID)
             
             let field = asset.isHidden ? "uploadedHiddenCount" : "uploadedVisibleCount"
             try await Firestore.firestore().collection("collect").document(userId).updateData([
@@ -590,4 +584,59 @@ class PhotoBackupService {
 
 private struct SendableExportSession: @unchecked Sendable {
     let session: AVAssetExportSession
+}
+
+// MARK: - Local Cache Helper
+private actor LocalAssetCache {
+    static let shared = LocalAssetCache()
+    
+    private var verifiedIDs: Set<String> = []
+    private let fileURL: URL
+    
+    private init() {
+        let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        let dir = urls[0].appendingPathComponent("BackupCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        self.fileURL = dir.appendingPathComponent("verified_assets.json")
+        
+        // Load synchronously inside init since we are isolated to self here
+        // And we cannot call async functions in init generally without Task
+        // But since 'load' modifies state, we just inline the logic to satisfy Swift 6 actor isolation rules
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let loaded = try JSONDecoder().decode(Set<String>.self, from: data)
+            self.verifiedIDs = loaded
+        } catch {
+            self.verifiedIDs = []
+        }
+    }
+    
+    func has(_ id: String) -> Bool {
+        return verifiedIDs.contains(id)
+    }
+    
+    func add(_ id: String) {
+        if verifiedIDs.insert(id).inserted {
+            save()
+        }
+    }
+    
+    private func load() {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let loaded = try JSONDecoder().decode(Set<String>.self, from: data)
+            self.verifiedIDs = loaded
+        } catch {
+            self.verifiedIDs = []
+        }
+    }
+    
+    private func save() {
+        do {
+            let data = try JSONEncoder().encode(verifiedIDs)
+            try data.write(to: fileURL)
+        } catch {
+            print("PhotoBackup: Failed to save verified asset cache: \(error)")
+        }
+    }
 }

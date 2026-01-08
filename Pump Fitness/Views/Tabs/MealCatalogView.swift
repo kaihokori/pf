@@ -654,6 +654,12 @@ struct MealEditorView: View {
 
                         // Ensure mealType is set from the UI selection; default to .snack if none chosen
                         sanitizedMeal.mealType = selectedMealType ?? (isNew ? .snack : meal.mealType)
+
+                        // If this is a newly created meal, assign a random colour from the palette
+                        if isNew {
+                            sanitizedMeal.colorHex = ColorPalette.randomHex()
+                        }
+
                         onSave(sanitizedMeal)
                     }
                     .disabled(meal.name.isEmpty || (isNew && selectedMealType == nil))

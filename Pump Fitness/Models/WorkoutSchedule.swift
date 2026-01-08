@@ -6,19 +6,25 @@ struct WorkoutSession: Identifiable, Codable, Hashable {
     var colorHex: String
     var hour: Int
     var minute: Int
+    var description: String
+    var linkedWeightGroupIds: [UUID]
 
     init(
         id: UUID = UUID(),
         name: String,
         colorHex: String = "",
         hour: Int = 9,
-        minute: Int = 0
+        minute: Int = 0,
+        description: String = "",
+        linkedWeightGroupIds: [UUID] = []
     ) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
         self.hour = hour
         self.minute = minute
+        self.description = description
+        self.linkedWeightGroupIds = linkedWeightGroupIds
     }
 
     init?(dictionary: [String: Any]) {
@@ -27,13 +33,34 @@ struct WorkoutSession: Identifiable, Codable, Hashable {
         let colorHex = dictionary["colorHex"] as? String ?? ""
         let hour = (dictionary["hour"] as? NSNumber)?.intValue ?? 9
         let minute = (dictionary["minute"] as? NSNumber)?.intValue ?? 0
+        let description = dictionary["description"] as? String ?? ""
+        let linkedIdsRaw = dictionary["linkedWeightGroupIds"] as? [String] ?? []
         self.init(
             id: idRaw.flatMap(UUID.init(uuidString:)) ?? UUID(),
             name: name,
             colorHex: colorHex,
             hour: hour,
-            minute: minute
+            minute: minute,
+            description: description,
+            linkedWeightGroupIds: linkedIdsRaw.compactMap(UUID.init(uuidString:))
         )
+    }
+
+    // Manual Codable decoding for backward compatibility with older persisted data
+    enum CodingKeys: String, CodingKey {
+        case id, name, colorHex, hour, minute, description, linkedWeightGroupIds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        hour = try container.decode(Int.self, forKey: .hour)
+        minute = try container.decode(Int.self, forKey: .minute)
+        // Handle optional/missing fields for backward compatibility
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        linkedWeightGroupIds = try container.decodeIfPresent([UUID].self, forKey: .linkedWeightGroupIds) ?? []
     }
 
     var asDictionary: [String: Any] {
@@ -42,7 +69,9 @@ struct WorkoutSession: Identifiable, Codable, Hashable {
             "name": name,
             "colorHex": colorHex,
             "hour": hour,
-            "minute": minute
+            "minute": minute,
+            "description": description,
+            "linkedWeightGroupIds": linkedWeightGroupIds.map { $0.uuidString }
         ]
     }
 

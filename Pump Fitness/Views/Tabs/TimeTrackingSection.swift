@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import UserNotifications
+import TipKit
 
 struct TimeTrackingConfig: Equatable, Codable {
     var stopwatchName: String
@@ -395,11 +396,15 @@ struct TimeTrackingEditorSheet: View {
                                 colorHex: working.stopwatchColorHex,
                                 onColorTap: {
                                     guard themeManager.selectedTheme == .multiColour else { return }
+                                    if #available(iOS 17.0, *) {
+                                        Task { await EditSheetTips.colorPickerOpened.donate() }
+                                    }
                                     colorPickerTarget = .stopwatch
                                     showColorPickerSheet = true
                                 },
                                 minMinutes: minMinutes,
-                                maxMinutes: maxMinutes
+                                maxMinutes: maxMinutes,
+                                showTip: true
                             )
 
                             TrackedTimerRow(
@@ -410,6 +415,9 @@ struct TimeTrackingEditorSheet: View {
                                 colorHex: working.timerColorHex,
                                 onColorTap: {
                                     guard themeManager.selectedTheme == .multiColour else { return }
+                                    if #available(iOS 17.0, *) {
+                                        Task { await EditSheetTips.colorPickerOpened.donate() }
+                                    }
                                     colorPickerTarget = .timer
                                     showColorPickerSheet = true
                                 },
@@ -535,6 +543,7 @@ private struct TrackedTimerRow: View {
     var onColorTap: () -> Void
     let minMinutes: Int
     let maxMinutes: Int
+    var showTip: Bool = false
 
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
@@ -550,7 +559,14 @@ private struct TrackedTimerRow: View {
                 Circle()
                     .fill(displayColor.opacity(0.15))
                     .frame(width: 44, height: 44)
-                    .overlay(Image(systemName: "clock").foregroundStyle(displayColor))
+                    .overlay(Image(systemName: "clock")
+                        .foregroundStyle(displayColor)
+                        .editSheetChangeColorTip(
+                            hasTrackedItems: true,
+                            isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                            isActive: showTip
+                        )
+                    )
             }
             .buttonStyle(.plain)
             .disabled(themeManager.selectedTheme != .multiColour)

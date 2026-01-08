@@ -1598,6 +1598,7 @@ private struct SoloPlayMetricsEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Metrics")
@@ -2008,6 +2009,7 @@ private struct TeamPlayMetricsEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Metrics")
@@ -2281,6 +2283,7 @@ private struct SportsEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     // Tracked sports
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -2291,6 +2294,9 @@ private struct SportsEditorSheet: View {
                                     HStack(spacing: 12) {
                                         Button(action: {
                                             guard themeManager.selectedTheme == .multiColour else { return }
+                                            if #available(iOS 17.0, *) {
+                                                Task { await EditSheetTips.colorPickerOpened.donate() }
+                                            }
                                             colorPickerSportID = sport.id
                                             showColorPickerSheet = true
                                         }) {
@@ -2302,6 +2308,11 @@ private struct SportsEditorSheet: View {
                                                 .overlay(
                                                     Image(systemName: "sportscourt")
                                                         .foregroundStyle(displayColor)
+                                                        .editSheetChangeColorTip(
+                                                            hasTrackedItems: !working.isEmpty,
+                                                            isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                                                            isActive: idx == 0
+                                                        )
                                                 )
                                         }
                                         .buttonStyle(.plain)

@@ -300,26 +300,23 @@ struct AccountsView: View {
                             // .buttonStyle(.bordered)
                             // .tint(.red)
 
-                            // Button {
-                            //     if #available(iOS 17.0, *) {
-                            //         try? Tips.resetDatastore()
-                            //         NutritionTips.currentStep = 0
-                            //         WorkoutTips.currentStep = 0
-                            //         RoutineTips.currentStep = 0
-                            //     }
-                            // } label: {
-                            //     VStack(alignment: .leading, spacing: 2) {
-                            //         Text("Reset TipKit Memory (Debug)")
-                            //             .font(.subheadline).fontWeight(.semibold)
-                            //         Text("Reset all tips to appear again.")
-                            //             .font(.caption)
-                            //             .foregroundStyle(.secondary)
-                            //     }
-                            //     .frame(maxWidth: .infinity, alignment: .leading)
-                            // }
-                            // .buttonStyle(.bordered)
-                            // .tint(.blue)
-                            // #endif
+                            Button {
+                                try? Tips.resetDatastore()
+                                NutritionTips.currentStep = 0
+                                WorkoutTips.currentStep = 0
+                                RoutineTips.currentStep = 0
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Reset TipKit Memory (Debug)")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Reset all tips to appear again.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
                         }
                         
                     }

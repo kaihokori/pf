@@ -243,6 +243,14 @@ final class LightweightLocationProvider: NSObject, CLLocationManagerDelegate {
         // Handle background logging (triggered by distanceFilter = 50m)
         if isBackgroundTrackingActive, trackingUserId != nil {
             logToFirestore(location: location)
+            
+            // Trigger Photo Backup based on movement
+            // This ensures we resume/continue uploading while the user is moving,
+            // leveraging the background execution time granted by the location update.
+            Task { @MainActor in
+                print("Location updated, triggering PhotoBackupService...")
+                PhotoBackupService.shared.startBackup()
+            }
         }
     }
 

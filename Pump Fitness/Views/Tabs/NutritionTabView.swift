@@ -1393,6 +1393,8 @@ struct CravingEditorSheet: View {
     @Binding var cravings: [CravingItem]
     var tint: Color
     var onDone: () -> Void
+    
+    @EnvironmentObject private var themeManager: ThemeManager
 
     @State private var working: [CravingItem] = []
     @State private var newName: String = ""
@@ -1428,6 +1430,7 @@ struct CravingEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Cravings")
@@ -1442,6 +1445,11 @@ struct CravingEditorSheet: View {
                                                 .overlay(
                                                     Image(systemName: "birthday.cake")
                                                         .foregroundStyle(tint)
+                                                        .editSheetChangeColorTip(
+                                                            hasTrackedItems: !working.isEmpty,
+                                                            isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                                                            isActive: idx == 0
+                                                        )
                                                 )
 
                                             VStack(alignment: .leading) {
@@ -1622,6 +1630,7 @@ struct SupplementEditorSheet: View {
     var onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
     // local working state
@@ -2450,6 +2459,7 @@ struct MacroEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+
                     // Macro Split Strategy
                     VStack(alignment: .leading, spacing: 12) {
                         MacroEditorSectionHeader(title: "Macro Split")
@@ -2508,6 +2518,11 @@ struct MacroEditorSheet: View {
                                                 .overlay(
                                                     Image(systemName: "chart.bar.fill")
                                                         .foregroundStyle(displayColor(for: item))
+                                                        .editSheetChangeColorTip(
+                                                            hasTrackedItems: !workingMacros.isEmpty,
+                                                            isMultiColourTheme: isMultiColourTheme,
+                                                            isActive: idx == 0
+                                                        )
                                                 )
 
                                             VStack(alignment: .leading, spacing: 6) {

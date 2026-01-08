@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import TipKit
 
 struct WeeklyMealScheduleCard: View {
     @Binding var schedule: [MealScheduleItem]
@@ -268,6 +269,7 @@ struct MealScheduleEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    
                     // Explainer Section
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -327,6 +329,9 @@ struct MealScheduleEditorSheet: View {
                                                 HStack(spacing: 12) {
                                                     Button {
                                                         guard themeManager.selectedTheme == .multiColour else { return }
+                                                        if #available(iOS 17.0, *) {
+                                                            Task { await EditSheetTips.colorPickerOpened.donate() }
+                                                        }
                                                         colorPickerTarget = (dayIndex, sessionId)
                                                         showColorPickerSheet = true
                                                     } label: {
@@ -340,6 +345,11 @@ struct MealScheduleEditorSheet: View {
                                                                 Image(systemName: "fork.knife")
                                                                     .font(.system(size: 16, weight: .semibold))
                                                                     .foregroundStyle(sessionColor)
+                                                                    .editSheetChangeColorTip(
+                                                                        hasTrackedItems: working.contains { !$0.sessions.isEmpty },
+                                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
+                                                                        isActive: isFirst && dayIndex == (working.firstIndex(where: { !$0.sessions.isEmpty }) ?? 0)
+                                                                    )
                                                             )
                                                     }
                                                     .buttonStyle(.plain)

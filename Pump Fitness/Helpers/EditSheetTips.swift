@@ -10,6 +10,10 @@ struct EditSheetTips {
         var message: Text? { Text("Tap the icon to change the colour.") }
         var image: Image? { Image(systemName: "paintpalette") }
         
+        var options: [TipOption] {
+            Tips.MaxDisplayCount(3)
+        }
+        
         @Parameter
         static var hasTrackedItems: Bool = false
         

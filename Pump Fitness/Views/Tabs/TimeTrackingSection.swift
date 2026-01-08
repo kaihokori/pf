@@ -383,6 +383,13 @@ struct TimeTrackingEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Edit Time Tracking",
+                        icon: "hourglass",
+                        description: "Log how you spend your time to optimise your day.",
+                        accentColor: .accentColor
+                    )
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Tracked Timers")
                             .font(.subheadline.weight(.semibold))

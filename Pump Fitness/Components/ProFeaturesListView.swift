@@ -5,8 +5,6 @@ struct ProFeaturesListView: View {
     @State private var isExpanded = false
     @Environment(\.colorScheme) private var colorScheme
 
-    private let collapsedHeight: CGFloat = 260
-
     private var totalBenefitCount: Int {
         categories.reduce(into: 0) { partialResult, category in
             partialResult += category.benefits.count
@@ -88,9 +86,7 @@ struct ProFeaturesListView: View {
                 }
                 .padding(.top, 24)
                 .padding(.horizontal, 18)
-                .padding(.bottom, -12)
-                .frame(height: collapsedHeight, alignment: .top)
-                .clipped()
+                .padding(.bottom, 12)
             }
 
             if totalBenefitCount > 3 {

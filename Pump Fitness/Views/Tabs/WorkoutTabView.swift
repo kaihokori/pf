@@ -73,6 +73,12 @@ struct ExerciseSupplementEditorSheet: View {
             ZStack {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
+                        ExplainerCard(
+                            title: "Workout Supplements",
+                            icon: "bolt.fill",
+                            description: "Manage supplements specifically for your workout routine.",
+                            accentColor: effectiveTint
+                        )
 
                         // Tracked supplements
                         if !working.isEmpty {
@@ -1982,6 +1988,44 @@ private struct WorkoutScheduleEditorSheet: View {
                                                             .foregroundStyle(.secondary)
                                                             .focused($focusedField, equals: "desc-\(sessionId)")
 
+                                                        if !weightGroups.isEmpty {
+                                                            Menu {
+                                                                ForEach(weightGroups) { group in
+                                                                    Button {
+                                                                        var ids = binding.linkedWeightGroupIds.wrappedValue
+                                                                        if ids.contains(group.id) {
+                                                                            ids.removeAll(where: { $0 == group.id })
+                                                                        } else {
+                                                                            ids.append(group.id)
+                                                                        }
+                                                                        binding.linkedWeightGroupIds.wrappedValue = ids
+                                                                    } label: {
+                                                                        let isSelected = binding.linkedWeightGroupIds.wrappedValue.contains(group.id)
+                                                                        Label(group.name, systemImage: isSelected ? "checkmark.circle.fill" : "circle")
+                                                                    }
+                                                                }
+                                                            } label: {
+                                                                if binding.linkedWeightGroupIds.wrappedValue.isEmpty {
+                                                                    Label("Link", systemImage: "dumbbell.fill")
+                                                                        .font(.callout)
+                                                                        .fontWeight(.medium)
+                                                                        .padding(.horizontal, 12)
+                                                                        .padding(.vertical, 8)
+                                                                        .background(Color(uiColor: .secondarySystemFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                                                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                                } else {
+                                                                    Label("\(binding.linkedWeightGroupIds.wrappedValue.count) Linked", systemImage: "dumbbell.fill")
+                                                                        .font(.callout)
+                                                                        .fontWeight(.medium)
+                                                                        .padding(.horizontal, 12)
+                                                                        .padding(.vertical, 8)
+                                                                        .background(Color(uiColor: .secondarySystemFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                                                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                                }
+                                                            }
+                                                            .buttonStyle(.plain)
+                                                        }
+
                                                         HStack(spacing: 8) {
                                                             DatePicker(
                                                                 "",
@@ -2016,42 +2060,6 @@ private struct WorkoutScheduleEditorSheet: View {
                                                             .buttonStyle(.plain)
 
                                                             Spacer()
-
-                                                            if !weightGroups.isEmpty {
-                                                                Menu {
-                                                                    ForEach(weightGroups) { group in
-                                                                        Button {
-                                                                            var ids = binding.linkedWeightGroupIds.wrappedValue
-                                                                            if ids.contains(group.id) {
-                                                                                ids.removeAll(where: { $0 == group.id })
-                                                                            } else {
-                                                                                ids.append(group.id)
-                                                                            }
-                                                                            binding.linkedWeightGroupIds.wrappedValue = ids
-                                                                        } label: {
-                                                                            let isSelected = binding.linkedWeightGroupIds.wrappedValue.contains(group.id)
-                                                                            Label(group.name, systemImage: isSelected ? "checkmark.circle.fill" : "circle")
-                                                                        }
-                                                                    }
-                                                                } label: {
-                                                                    HStack(spacing: 4) {
-                                                                        Image(systemName: "dumbbell.fill")
-                                                                            .font(.caption)
-                                                                        if binding.linkedWeightGroupIds.wrappedValue.isEmpty {
-                                                                            Text("Link")
-                                                                                .font(.caption)
-                                                                        } else {
-                                                                            Text("\(binding.linkedWeightGroupIds.wrappedValue.count)")
-                                                                                .font(.caption)
-                                                                        }
-                                                                    }
-                                                                    .padding(.horizontal, 8)
-                                                                    .padding(.vertical, 4)
-                                                                    .background(effectiveAccent.opacity(0.1), in: Capsule())
-                                                                    .foregroundStyle(effectiveAccent)
-                                                                }
-                                                                .buttonStyle(.plain)
-                                                            }
                                                         }
                                                     }
 
@@ -2322,6 +2330,7 @@ private struct WorkoutSessionDetailView: View {
     var onUpdate: (WorkoutSession) -> Void
 
     @State private var description: String = ""
+    @State private var linkedGroupIds: Set<UUID> = []
 
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
@@ -2369,17 +2378,44 @@ private struct WorkoutSessionDetailView: View {
                     .padding(.vertical, 8)
                     
                     VStack(alignment: .leading, spacing: 12) {
-                        Label("Weights Tracking", systemImage: "dumbbell.fill")
-                            .font(.headline)
-                            .foregroundStyle(resolvedColor)
+                        HStack {
+                            Label("Weights Tracking", systemImage: "dumbbell.fill")
+                                .font(.headline)
+                                .foregroundStyle(resolvedColor)
+                            Spacer()
+                            
+                            Menu {
+                                ForEach(bodyParts) { group in
+                                    Button {
+                                        if linkedGroupIds.contains(group.id) {
+                                            linkedGroupIds.remove(group.id)
+                                        } else {
+                                            linkedGroupIds.insert(group.id)
+                                        }
+                                    } label: {
+                                        let isSelected = linkedGroupIds.contains(group.id)
+                                        Label(group.name, systemImage: isSelected ? "checkmark.circle.fill" : "circle")
+                                    }
+                                }
+                            } label: {
+                                Label("Link", systemImage: "link")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(resolvedColor)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            }
+                        }
                         
-                        if session.linkedWeightGroupIds.isEmpty {
+                        if linkedGroupIds.isEmpty {
                             Text("This session is not linked to any weight groups.")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach($bodyParts) { $part in
-                                if session.linkedWeightGroupIds.contains(part.id) {
+                                if linkedGroupIds.contains(part.id) {
                                     VStack(alignment: .leading, spacing: 12) {
                                         // Header row: editable body part name + edit toggle
                                         HStack {
@@ -2567,6 +2603,7 @@ private struct WorkoutSessionDetailView: View {
                     Button("Done") {
                         var updated = session
                         updated.description = description
+                        updated.linkedWeightGroupIds = Array(linkedGroupIds)
                         onUpdate(updated)
                         dismiss()
                     }
@@ -2588,9 +2625,11 @@ private struct WorkoutSessionDetailView: View {
             }
             .onAppear {
                 description = session.description
+                linkedGroupIds = Set(session.linkedWeightGroupIds)
             }
         }
     }
+    
     
     private var focusedExerciseUnit: String? {
         guard let id = focusedField else { return nil }
@@ -2853,6 +2892,13 @@ private struct RestDayPickerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    ExplainerCard(
+                        title: "Plan Rest Days",
+                        icon: "bed.double.fill",
+                        description: "Schedule rest days to ensure proper recovery.",
+                        accentColor: effectiveTint
+                    )
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Rest Days")
                             .font(.footnote)
@@ -3003,6 +3049,13 @@ private struct DailySummaryGoalSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    ExplainerCard(
+                        title: "Daily Workout Goals",
+                        icon: "target",
+                        description: "Set specific targets for today's workout.",
+                        accentColor: tint
+                    )
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Calorie Burn Goal")
                             .font(.footnote)
@@ -3101,12 +3154,20 @@ private struct WeightsGroupEditorSheet: View {
         if subscriptionManager.hasProAccess && !subscriptionManager.purchasedProductIDs.isEmpty { return true }
         return working.count < maxTracked
     }
+                    
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Weight Groups",
+                        icon: "dumbbell.fill",
+                        description: "Organise your exercises by muscle groups.",
+                        accentColor: .accentColor
+                    )
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Groups")

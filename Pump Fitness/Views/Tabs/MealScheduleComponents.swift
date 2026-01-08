@@ -379,12 +379,10 @@ struct MealScheduleEditorSheet: View {
                                                                     }
                                                                 }
                                                                 
-                                                                Menu("Move to Day") {
-                                                                    ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
-                                                                        if targetDayIndex != dayIndex {
-                                                                            Button(targetDay.day) {
-                                                                                moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
-                                                                            }
+                                                                ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
+                                                                    if targetDayIndex != dayIndex {
+                                                                        Button(targetDay.day) {
+                                                                            moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
                                                                         }
                                                                     }
                                                                 }

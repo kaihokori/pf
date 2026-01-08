@@ -96,6 +96,19 @@ struct ProSubscriptionView: View {
         }
         return nil
     }
+
+    private var continueButtonTitle: String {
+        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive {
+            return "You are a Pro Member"
+        } else if let product = selectedProduct {
+            let price = product.displayPrice
+                .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: "\u{00A0}", with: "")
+            return "Continue - \(price) Total"
+        } else {
+            return "Continue"
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -144,6 +157,12 @@ struct ProSubscriptionView: View {
                                 )
                         }
 
+                        Text("Get unlimited feature access with Trackerio Pro.")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
+
                         ZStack(alignment: .top) {
                             // 4. Features Summary (now a reusable component)
                             ProFeaturesListView(categories: [
@@ -155,7 +174,7 @@ struct ProSubscriptionView: View {
                                     ProBenefit(icon: "clock.fill", title: "Intermittent Fasting", description: "Access full intermittent fasting features.")
                                 ]),
                                 ProBenefitCategory(name: "Routine Management", image: "checklist.checked", color: .blue, benefits: [
-                                    ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organized."),
+                                    ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organised."),
                                     ProBenefit(icon: "timer", title: "Activity Timers", description: "Create unlimited activity timers for your routines."),
                                     ProBenefit(icon: "target", title: "Goals", description: "Set and track unlimited goals."),
                                     ProBenefit(icon: "repeat", title: "Habits", description: "Add unlimited habits to improve your lifestyle."),
@@ -329,14 +348,14 @@ struct ProSubscriptionView: View {
                             }
                         }
                     }) {
-                        Text((subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive) ? "You are a Pro Member" : "Continue")
+                        Text(continueButtonTitle)
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.blue)
+                            .background((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.accentColor)
                             .cornerRadius(16)
-                            .shadow(color: ((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.blue).opacity(0.3), radius: 8, x: 0, y: 4)
+                            .shadow(color: ((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                     .disabled(selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive))
                     .padding(.horizontal)
@@ -395,7 +414,7 @@ struct SubscriptionOptionCard: View {
                         Image(systemName: "checkmark")
                             .font(.title3)
                             .fontWeight(.bold)
-                            .foregroundColor(.blue)
+                            .foregroundColor(.accentColor)
                             .padding(.top, 24)
                             .padding(.trailing, 30)
                     }
@@ -415,27 +434,21 @@ struct SubscriptionOptionCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     // Price block (total + weekly) kept together for consistent spacing
-                    VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .center, spacing: 2) {
                         Text(weeklyPriceString(for: product))
-                            .font(.title2)
+                            .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-
-                        HStack(alignment: .center) {
-                                                        Text(formattedPrice(for: product))
-                              .font(.footnote)
-                              .foregroundStyle(.secondary.opacity(0.8))
-                            Spacer()
-                            if let savings {
-                                Text(savings)
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .glassEffect(in: .rect(cornerRadius: 12.0))
-                            }
+                        Spacer()
+                        if let savings {
+                            Text(savings)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .glassEffect(in: .rect(cornerRadius: 12.0))
                         }
                     }
                     .padding(.top, 8)
@@ -444,11 +457,11 @@ struct SubscriptionOptionCard: View {
                 .padding(.horizontal, 24)
             }
             .frame(width: 260)
-            .frame(minHeight: 160)
+            .frame(minHeight: 100)
             .glassEffect(in: .rect(cornerRadius: 16.0))
             .overlay(
                 RoundedRectangle(cornerRadius: 16.0)
-                    .stroke(isSelected ? Color.blue.opacity(0.85) : Color.clear, lineWidth: isSelected ? 2 : 0)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.85) : Color.clear, lineWidth: isSelected ? 2 : 0)
             )
             .contentShape(RoundedRectangle(cornerRadius: 16.0))
         }

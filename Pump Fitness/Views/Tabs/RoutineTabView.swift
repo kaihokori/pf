@@ -61,6 +61,11 @@ private struct HabitsEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Edit Habits",
+                        icon: "checklist", description: "Build consistent daily routines.",
+                        accentColor: themeManager.selectedTheme == .multiColour ? .accentColor : themeManager.selectedTheme.accent(for: colorScheme)
+                    )
 
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1021,6 +1026,12 @@ private struct DailyTasksEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Daily Tasks",
+                        icon: "checklist",
+                        description: "Manage your daily to-do list for habit building.",
+                        accentColor: themeManager.selectedTheme.accent(for: colorScheme)
+                    )
 
                     // Tracked tasks
                     if !working.isEmpty {
@@ -1372,6 +1383,11 @@ private struct ActivityTimersEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Edit Activity Timers",
+                        icon: "clock", description: "Create timers for your workouts or routines.",
+                        accentColor: themeManager.selectedTheme.accent(for: colorScheme)
+                    )
 
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1733,6 +1749,12 @@ private struct GoalsEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Edit Goals",
+                        icon: "target", description: "Set and track your daily or weekly goals.",
+                        accentColor: Color.accentColor
+                    )
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Goals")
@@ -1992,6 +2014,12 @@ private struct GroceryListEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Edit Grocery List",
+                        icon: "cart", description: "Manage your shopping list for meal prep.",
+                        accentColor: Color.accentColor
+                    )
+
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Items")
@@ -2222,6 +2250,13 @@ private struct ExpenseCategoriesEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
+                    ExplainerCard(
+                        title: "Track Expenses",
+                        icon: "dollarsign.circle.fill",
+                        description: "Monitor your fitness-related spending.",
+                        accentColor: Color.accentColor
+                    )
+
                     Text("Tracked Categories")
                         .font(.subheadline.weight(.semibold))
 

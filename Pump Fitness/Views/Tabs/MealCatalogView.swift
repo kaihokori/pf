@@ -34,6 +34,13 @@ struct MealCatalogView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    ExplainerCard(
+                        title: "Manage Food Menu",
+                        icon: "book.fill",
+                        description: "Create and organise your library of meals and recipes.",
+                        accentColor: effectiveAccent
+                    )
+
                     if catalog.isEmpty {
                         Text("No meals in catalog. Tap + to add one.")
                             .foregroundStyle(.secondary)

@@ -1,18 +1,24 @@
 import SwiftUI
 import TipKit
 
+enum EditSheetTipType {
+    case editMacrosColor
+    case editWeeklyScheduleColor
+    case editMealPlanningColor
+}
+
 extension View {
     @ViewBuilder
-    func editSheetChangeColorTip(hasTrackedItems: Bool, isMultiColourTheme: Bool, isActive: Bool = true) -> some View {
+    func editSheetTip(_ type: EditSheetTipType) -> some View {
         if #available(iOS 17.0, *) {
-            // Updating the parameters just before showing
-            self.onAppear {
-                if isActive {
-                    EditSheetTips.ChangeColorTip.hasTrackedItems = hasTrackedItems
-                    EditSheetTips.ChangeColorTip.isMultiColourTheme = isMultiColourTheme
-                }
+            switch type {
+            case .editMacrosColor:
+                self.popoverTip(EditSheetTips.EditMacrosColorTip())
+            case .editWeeklyScheduleColor:
+                self.popoverTip(EditSheetTips.EditWeeklyScheduleColorTip())
+            case .editMealPlanningColor:
+                self.popoverTip(EditSheetTips.EditMealPlanningColorTip())
             }
-            .popoverTip(isActive ? EditSheetTips.ChangeColorTip() : nil)
         } else {
             self
         }

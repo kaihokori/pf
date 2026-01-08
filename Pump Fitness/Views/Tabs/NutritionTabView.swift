@@ -1394,8 +1394,6 @@ struct CravingEditorSheet: View {
     @Binding var cravings: [CravingItem]
     var tint: Color
     var onDone: () -> Void
-    
-    @EnvironmentObject private var themeManager: ThemeManager
 
     @State private var working: [CravingItem] = []
     @State private var newName: String = ""
@@ -1431,13 +1429,6 @@ struct CravingEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Track Cravings",
-                        icon: "shield.fill",
-                        description: "Log cravings to understand your triggers and patterns.",
-                        accentColor: tint
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             MacroEditorSectionHeader(title: "Tracked Cravings")
@@ -1452,11 +1443,6 @@ struct CravingEditorSheet: View {
                                                 .overlay(
                                                     Image(systemName: "birthday.cake")
                                                         .foregroundStyle(tint)
-                                                        .editSheetChangeColorTip(
-                                                            hasTrackedItems: !working.isEmpty,
-                                                            isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                                                            isActive: idx == 0
-                                                        )
                                                 )
 
                                             VStack(alignment: .leading) {
@@ -1637,7 +1623,6 @@ struct SupplementEditorSheet: View {
     var onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var themeManager: ThemeManager
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
     // local working state
@@ -1677,13 +1662,6 @@ struct SupplementEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Manage Supplements",
-                        icon: "pills.fill",
-                        description: "Update your supplement stack and track daily intake.",
-                        accentColor: tint
-                    )
-
                     // Tracked supplements
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -2048,13 +2026,6 @@ private struct CalorieGoalEditorSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    ExplainerCard(
-                        title: "Set Your Calorie Goal",
-                        icon: "target",
-                        description: "Adjust your daily calorie target based on your health goals.",
-                        accentColor: tint
-                    )
-
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Weight Goal")
                             .font(.footnote)
@@ -2466,8 +2437,6 @@ struct MacroEditorSheet: View {
     @State private var showProSubscription = false
     @State private var selectedStrategy: MacroCalculator.MacroDistributionStrategy = .custom
     @State private var showMacroExplainer = false
-    @State private var showColorPickerSheet = false
-    @State private var colorPickerTargetId: UUID?
 
     private var canAddMoreMacros: Bool {
         if isPro { return true }
@@ -2482,13 +2451,6 @@ struct MacroEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Customise Macros",
-                        icon: "chart.pie.fill",
-                        description: "Set your macronutrient targets to balance your diet.",
-                        accentColor: tint
-                    )
-
                     // Macro Split Strategy
                     VStack(alignment: .leading, spacing: 12) {
                         MacroEditorSectionHeader(title: "Macro Split")
@@ -2541,29 +2503,14 @@ struct MacroEditorSheet: View {
                                     let binding = $workingMacros[idx]
                                     VStack(spacing: 8) {
                                         HStack(spacing: 12) {
-                                            Button {
-                                                guard isMultiColourTheme else { return }
-                                                if #available(iOS 17.0, *) {
-                                                    Task { await EditSheetTips.colorPickerOpened.donate() }
-                                                }
-                                                colorPickerTargetId = item.id
-                                                showColorPickerSheet = true
-                                            } label: {
-                                                Circle()
-                                                    .fill(displayColor(for: item).opacity(0.15))
-                                                    .frame(width: 44, height: 44)
-                                                    .overlay(
-                                                        Image(systemName: "chart.bar.fill")
-                                                            .foregroundStyle(displayColor(for: item))
-                                                            .editSheetChangeColorTip(
-                                                                hasTrackedItems: !workingMacros.isEmpty,
-                                                                isMultiColourTheme: isMultiColourTheme,
-                                                                isActive: idx == 0
-                                                            )
-                                                    )
-                                            }
-                                            .buttonStyle(.plain)
-                                            .disabled(!isMultiColourTheme)
+                                            Circle()
+                                                .fill(displayColor(for: item).opacity(0.15))
+                                                .frame(width: 44, height: 44)
+                                                .overlay(
+                                                    Image(systemName: "chart.bar.fill")
+                                                        .foregroundStyle(displayColor(for: item))
+                                                )
+                                                .editSheetTip(.editMacrosColor)
 
                                             VStack(alignment: .leading, spacing: 6) {
                                                 TextField("Name", text: binding.title)
@@ -2729,37 +2676,12 @@ struct MacroEditorSheet: View {
                         }
                 }
             }
-            .sheet(isPresented: $showColorPickerSheet) {
-                if isMultiColourTheme {
-                    ColorPickerSheet { hex in
-                        applyColor(hex: hex)
-                        showColorPickerSheet = false
-                    } onCancel: {
-                        showColorPickerSheet = false
-                    }
-                    .presentationDetents([.height(180)])
-                    .presentationDragIndicator(.visible)
-                } else {
-                    EmptyView()
-                }
-            }
         }
         .onAppear(perform: loadInitialState)
         .sheet(isPresented: $showProSubscription) {
             ProSubscriptionView()
                 .environmentObject(subscriptionManager)
         }
-    }
-
-    private func applyColor(hex: String) {
-        guard let targetId = colorPickerTargetId, 
-              let idx = workingMacros.firstIndex(where: { $0.id == targetId }),
-              let newColor = Color(hex: hex) 
-        else { return }
-        
-        var updated = workingMacros[idx]
-        updated.color = newColor
-        workingMacros[idx] = updated
     }
 
     private func loadInitialState() {
@@ -3151,13 +3073,6 @@ private struct MealIntakeSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    ExplainerCard(
-                        title: "Log Your Intake",
-                        icon: "fork.knife",
-                        description: "Add meals and snacks to track your daily nutrition.",
-                        accentColor: tint
-                    )
-
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Meal type")
                             .font(.footnote)
@@ -4585,13 +4500,6 @@ private struct FastingProtocolSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    ExplainerCard(
-                        title: "Fasting Protocol",
-                        icon: "timer",
-                        description: "Choose a fasting schedule or set a custom window.",
-                        accentColor: tint
-                    )
-
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Fasting Window")
                             .font(.footnote)

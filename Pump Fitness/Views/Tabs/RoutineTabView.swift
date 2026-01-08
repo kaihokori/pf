@@ -61,12 +61,6 @@ private struct HabitsEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Edit Habits",
-                        icon: "checklist", description: "Build consistent daily routines.",
-                        accentColor: themeManager.selectedTheme == .multiColour ? .accentColor : themeManager.selectedTheme.accent(for: colorScheme)
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Habits")
@@ -79,9 +73,6 @@ private struct HabitsEditorView: View {
                                         Button {
                                             // Only allow color picking in multiColour theme
                                             guard themeManager.selectedTheme == .multiColour else { return }
-                                            if #available(iOS 17.0, *) {
-                                                Task { await EditSheetTips.colorPickerOpened.donate() }
-                                            }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
@@ -90,14 +81,7 @@ private struct HabitsEditorView: View {
                                             Circle()
                                                 .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "checklist")
-                                                    .foregroundStyle(effective)
-                                                    .editSheetChangeColorTip(
-                                                        hasTrackedItems: !working.isEmpty,
-                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                                                        isActive: idx == 0
-                                                    )
-                                                )
+                                                .overlay(Image(systemName: "checklist") .foregroundStyle(effective))
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(themeManager.selectedTheme != .multiColour)
@@ -1026,13 +1010,6 @@ private struct DailyTasksEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Daily Tasks",
-                        icon: "checklist",
-                        description: "Manage your daily to-do list for habit building.",
-                        accentColor: themeManager.selectedTheme.accent(for: colorScheme)
-                    )
-
                     // Tracked tasks
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1045,9 +1022,6 @@ private struct DailyTasksEditorView: View {
                                     HStack(spacing: 12) {
                                         Button {
                                             guard themeManager.selectedTheme == .multiColour else { return }
-                                            if #available(iOS 17.0, *) {
-                                                Task { await EditSheetTips.colorPickerOpened.donate() }
-                                            }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
@@ -1056,14 +1030,7 @@ private struct DailyTasksEditorView: View {
                                             Circle()
                                                 .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "checklist")
-                                                    .foregroundStyle(effective)
-                                                    .editSheetChangeColorTip(
-                                                        hasTrackedItems: !working.isEmpty,
-                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                                                        isActive: idx == 0
-                                                    )
-                                                )
+                                                .overlay(Image(systemName: "checklist") .foregroundStyle(effective))
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(themeManager.selectedTheme != .multiColour)
@@ -1383,12 +1350,6 @@ private struct ActivityTimersEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Edit Activity Timers",
-                        icon: "clock", description: "Create timers for your workouts or routines.",
-                        accentColor: themeManager.selectedTheme.accent(for: colorScheme)
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Timers")
@@ -1400,9 +1361,6 @@ private struct ActivityTimersEditorView: View {
                                     HStack(spacing: 12) {
                                         Button {
                                             guard themeManager.selectedTheme == .multiColour else { return }
-                                            if #available(iOS 17.0, *) {
-                                                Task { await EditSheetTips.colorPickerOpened.donate() }
-                                            }
                                             colorPickerTargetId = working[idx].id
                                             showColorPickerSheet = true
                                         } label: {
@@ -1411,14 +1369,7 @@ private struct ActivityTimersEditorView: View {
                                             Circle()
                                                 .fill(effective.opacity(0.15))
                                                 .frame(width: 44, height: 44)
-                                                .overlay(Image(systemName: "clock")
-                                                    .foregroundStyle(effective)
-                                                    .editSheetChangeColorTip(
-                                                        hasTrackedItems: !working.isEmpty,
-                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                                                        isActive: idx == 0
-                                                    )
-                                                )
+                                                .overlay(Image(systemName: "clock") .foregroundStyle(effective))
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(themeManager.selectedTheme != .multiColour)
@@ -1749,12 +1700,6 @@ private struct GoalsEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Edit Goals",
-                        icon: "target", description: "Set and track your daily or weekly goals.",
-                        accentColor: Color.accentColor
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Goals")
@@ -2014,12 +1959,6 @@ private struct GroceryListEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Edit Grocery List",
-                        icon: "cart", description: "Manage your shopping list for meal prep.",
-                        accentColor: Color.accentColor
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Items")
@@ -2250,13 +2189,6 @@ private struct ExpenseCategoriesEditorView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    ExplainerCard(
-                        title: "Track Expenses",
-                        icon: "dollarsign.circle.fill",
-                        description: "Monitor your fitness-related spending.",
-                        accentColor: Color.accentColor
-                    )
-
                     Text("Tracked Categories")
                         .font(.subheadline.weight(.semibold))
 

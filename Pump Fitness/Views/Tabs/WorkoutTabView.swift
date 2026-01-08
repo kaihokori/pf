@@ -73,13 +73,6 @@ struct ExerciseSupplementEditorSheet: View {
             ZStack {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
-                        ExplainerCard(
-                            title: "Workout Supplements",
-                            icon: "bolt.fill",
-                            description: "Manage supplements specifically for your workout routine.",
-                            accentColor: effectiveTint
-                        )
-
                         // Tracked supplements
                         if !working.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
@@ -490,8 +483,6 @@ struct WorkoutTabView: View {
 
                     WeeklyWorkoutScheduleCard(
                         schedule: $workoutSchedule,
-                        weightGroups: weightGroups,
-                        bodyParts: $bodyParts,
                         accentColor: accentOverride ?? .accentColor,
                         onSave: { updated in
                             persistWorkoutSchedule(updated)
@@ -1747,13 +1738,10 @@ private let coachingDefaultSupplements: [Supplement] = [
 
 private struct WeeklyWorkoutScheduleCard: View {
     @Binding var schedule: [WorkoutScheduleItem]
-    let weightGroups: [WeightGroupDefinition]
-    @Binding var bodyParts: [BodyPartWeights]
     let accentColor: Color
     var onSave: ([WorkoutScheduleItem]) -> Void
 
     @State private var showEditSheet = false
-    @State private var selectedSession: WorkoutSession?
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1786,15 +1774,10 @@ private struct WeeklyWorkoutScheduleCard: View {
                                 .padding(.top, 2)
                             VStack(spacing: 8) {
                                 ForEach(day.sessions) { session in
-                                    Button {
-                                        selectedSession = session
-                                    } label: {
-                                        WeeklySessionCard(
-                                            session: session,
-                                            accentColor: effectiveAccent
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
+                                    WeeklySessionCard(
+                                        session: session,
+                                        accentColor: effectiveAccent
+                                    )
                                 }
                             }
                         }
@@ -1812,18 +1795,6 @@ private struct WeeklyWorkoutScheduleCard: View {
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
             .padding(.horizontal, 4)
-
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Tap each activity to view details")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, -8)
-            .padding(.bottom, -8)
         }
         .padding(20)
         .glassEffect(in: .rect(cornerRadius: 16.0))
@@ -1832,29 +1803,12 @@ private struct WeeklyWorkoutScheduleCard: View {
         .sheet(isPresented: $showEditSheet) {
             WorkoutScheduleEditorSheet(
                 schedule: $schedule,
-                weightGroups: weightGroups,
                 accentColor: effectiveAccent
             ) { updated in
                 schedule = updated
                 onSave(updated)
                 showEditSheet = false
             }
-        }
-        .sheet(item: $selectedSession) { session in
-            WorkoutSessionDetailView(
-                session: session,
-                bodyParts: $bodyParts,
-                accentColor: effectiveAccent,
-                onUpdate: { updatedSession in
-                    for (dayIndex, day) in schedule.enumerated() {
-                        if let sessionIndex = day.sessions.firstIndex(where: { $0.id == updatedSession.id }) {
-                            schedule[dayIndex].sessions[sessionIndex] = updatedSession
-                            onSave(schedule)
-                            return
-                        }
-                    }
-                }
-            )
         }
     }
 
@@ -1867,7 +1821,6 @@ private struct WeeklyWorkoutScheduleCard: View {
 private struct WorkoutScheduleEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var schedule: [WorkoutScheduleItem]
-    let weightGroups: [WeightGroupDefinition]
     var accentColor: Color
     var onSave: ([WorkoutScheduleItem]) -> Void
 
@@ -1883,7 +1836,6 @@ private struct WorkoutScheduleEditorSheet: View {
     @State private var colorPickerTarget: (dayIndex: Int, sessionId: UUID)? = nil
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var focusedField: String?
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -1908,22 +1860,6 @@ private struct WorkoutScheduleEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-
-                    // Explainer Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Build Your Schedule", systemImage: "calendar.badge.plus")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("Set up your weekly routine. You can link sessions to weight groups to track volume per body part.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 16))
-
                     // Current schedule by day
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(spacing: 14) {
@@ -1953,9 +1889,6 @@ private struct WorkoutScheduleEditorSheet: View {
                                                 HStack(spacing: 12) {
                                                     Button {
                                                         guard themeManager.selectedTheme == .multiColour else { return }
-                                                        if #available(iOS 17.0, *) {
-                                                            Task { await EditSheetTips.colorPickerOpened.donate() }
-                                                        }
                                                         colorPickerTarget = (dayIndex, sessionId)
                                                         showColorPickerSheet = true
                                                     } label: {
@@ -1968,63 +1901,15 @@ private struct WorkoutScheduleEditorSheet: View {
                                                                 Image(systemName: "figure.run")
                                                                     .font(.system(size: 16, weight: .semibold))
                                                                     .foregroundStyle(sessionColor)
-                                                                    .editSheetChangeColorTip(
-                                                                        hasTrackedItems: working.contains { !$0.sessions.isEmpty },
-                                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                                                                        isActive: sessionIndex == 0 && dayIndex == (working.firstIndex(where: { !$0.sessions.isEmpty }) ?? 0)
-                                                                    )
                                                             )
                                                     }
                                                     .buttonStyle(.plain)
                                                     .disabled(themeManager.selectedTheme != .multiColour)
+                                                    .editSheetTip(.editWeeklyScheduleColor)
 
                                                     VStack(alignment: .leading, spacing: 6) {
                                                         TextField("Activity", text: binding.name)
                                                             .font(.subheadline.weight(.semibold))
-                                                            .focused($focusedField, equals: "name-\(sessionId)")
-                                                        
-                                                        TextField("Description (optional)", text: binding.description, axis: .vertical)
-                                                            .font(.caption)
-                                                            .foregroundStyle(.secondary)
-                                                            .focused($focusedField, equals: "desc-\(sessionId)")
-
-                                                        if !weightGroups.isEmpty {
-                                                            Menu {
-                                                                ForEach(weightGroups) { group in
-                                                                    Button {
-                                                                        var ids = binding.linkedWeightGroupIds.wrappedValue
-                                                                        if ids.contains(group.id) {
-                                                                            ids.removeAll(where: { $0 == group.id })
-                                                                        } else {
-                                                                            ids.append(group.id)
-                                                                        }
-                                                                        binding.linkedWeightGroupIds.wrappedValue = ids
-                                                                    } label: {
-                                                                        let isSelected = binding.linkedWeightGroupIds.wrappedValue.contains(group.id)
-                                                                        Label(group.name, systemImage: isSelected ? "checkmark.circle.fill" : "circle")
-                                                                    }
-                                                                }
-                                                            } label: {
-                                                                if binding.linkedWeightGroupIds.wrappedValue.isEmpty {
-                                                                    Label("Link", systemImage: "dumbbell.fill")
-                                                                        .font(.callout)
-                                                                        .fontWeight(.medium)
-                                                                        .padding(.horizontal, 12)
-                                                                        .padding(.vertical, 8)
-                                                                        .background(Color(uiColor: .secondarySystemFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                                                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                                                } else {
-                                                                    Label("\(binding.linkedWeightGroupIds.wrappedValue.count) Linked", systemImage: "dumbbell.fill")
-                                                                        .font(.callout)
-                                                                        .fontWeight(.medium)
-                                                                        .padding(.horizontal, 12)
-                                                                        .padding(.vertical, 8)
-                                                                        .background(Color(uiColor: .secondarySystemFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                                                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                                                }
-                                                            }
-                                                            .buttonStyle(.plain)
-                                                        }
 
                                                         HStack(spacing: 8) {
                                                             DatePicker(
@@ -2140,7 +2025,6 @@ private struct WorkoutScheduleEditorSheet: View {
                                   .textInputAutocapitalization(.words)
                                   .padding()
                                   .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                                  .focused($focusedField, equals: "new-custom")
                                 
                                 Menu {
                                     ForEach(Array(daySymbols.enumerated()), id: \.0) { idx, label in
@@ -2194,15 +2078,6 @@ private struct WorkoutScheduleEditorSheet: View {
                         .fontWeight(.semibold)
                 }
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            KeyboardDismissBar(
-                isVisible: focusedField != nil,
-                showUnits: false,
-                tint: effectiveAccent,
-                onDismiss: { focusedField = nil },
-                onSelectUnit: { _ in }
-            )
         }
         .onAppear(perform: loadInitial)
         .sheet(isPresented: $showColorPickerSheet) {
@@ -2319,355 +2194,6 @@ private struct WeeklySessionCard: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
         .glassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
-    }
-}
-
-private struct WorkoutSessionDetailView: View {
-    @Environment(\.dismiss) private var dismiss
-    let session: WorkoutSession
-    @Binding var bodyParts: [BodyPartWeights]
-    let accentColor: Color
-    var onUpdate: (WorkoutSession) -> Void
-
-    @State private var description: String = ""
-    @State private var linkedGroupIds: Set<UUID> = []
-
-    @EnvironmentObject private var themeManager: ThemeManager
-    @Environment(\.colorScheme) private var colorScheme
-    @FocusState private var focusedField: UUID?
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Header
-                    HStack(spacing: 16) {
-                        Circle()
-                            .fill(resolvedColor.opacity(0.15))
-                            .frame(width: 60, height: 60)
-                            .overlay(
-                                Image(systemName: "figure.run")
-                                    .font(.title2.bold())
-                                    .foregroundStyle(resolvedColor)
-                            )
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(session.name)
-                                .font(.title3.bold())
-                            Text(session.formattedTime)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.bottom, 8)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Description", systemImage: "text.bubble.fill")
-                            .font(.headline)
-                            .foregroundStyle(resolvedColor)
-                        
-                        TextField("Add a description...", text: $description, axis: .vertical)
-                            .font(.body)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 12)
-                            .glassEffect(in: .rect(cornerRadius: 8.0))
-                            .focused($focusedField, equals: session.id)
-                    }
-                    .padding(.vertical, 8)
-                    
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Label("Weights Tracking", systemImage: "dumbbell.fill")
-                                .font(.headline)
-                                .foregroundStyle(resolvedColor)
-                            Spacer()
-                            
-                            Menu {
-                                ForEach(bodyParts) { group in
-                                    Button {
-                                        if linkedGroupIds.contains(group.id) {
-                                            linkedGroupIds.remove(group.id)
-                                        } else {
-                                            linkedGroupIds.insert(group.id)
-                                        }
-                                    } label: {
-                                        let isSelected = linkedGroupIds.contains(group.id)
-                                        Label(group.name, systemImage: isSelected ? "checkmark.circle.fill" : "circle")
-                                    }
-                                }
-                            } label: {
-                                Label("Link", systemImage: "link")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(resolvedColor)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            }
-                        }
-                        
-                        if linkedGroupIds.isEmpty {
-                            Text("This session is not linked to any weight groups.")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach($bodyParts) { $part in
-                                if linkedGroupIds.contains(part.id) {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        // Header row: editable body part name + edit toggle
-                                        HStack {
-                                            if part.isEditing {
-                                                TextField("Body Part", text: $part.name)
-                                                    .font(.headline)
-                                                    .fontWeight(.semibold)
-                                                    .textInputAutocapitalization(.words)
-                                                    .padding(.vertical, 6)
-                                                    .padding(.horizontal, 8)
-                                                    .glassEffect(in: .rect(cornerRadius: 8.0))
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                                    .frame(height: 40)
-                                                    .focused($focusedField, equals: part.id)
-                                                    .onSubmit {
-                                                        $part.isEditing.wrappedValue = false
-                                                    }
-                                            } else {
-                                                Text(part.name)
-                                                    .font(.headline)
-                                                    .fontWeight(.semibold)
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                                    .frame(height: 40)
-                                            }
-
-                                            Spacer()
-
-                                            Button {
-                                                $part.isEditing.wrappedValue.toggle()
-                                            } label: {
-                                                Group {
-                                                    if part.isEditing {
-                                                        Image(systemName: "checkmark")
-                                                            .font(.callout)
-                                                    } else {
-                                                        Image(systemName: "pencil")
-                                                            .font(.callout)
-                                                    }
-                                                }
-                                                .padding(10)
-                                                .glassEffect(in: .rect(cornerRadius: 18.0))
-                                                .contentShape(Rectangle())
-                                                .frame(minWidth: 44, minHeight: 44)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-
-                                        // Column labels
-                                        HStack(spacing: 4) {
-                                            Text("Exercise")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-                                            Text("Weight")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 90, alignment: .center)
-
-                                            Text("Sets")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 40, alignment: .center)
-
-                                            Text("x")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 15, alignment: .center)
-
-                                            Text("Reps")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 40, alignment: .center)
-                                            
-                                            if part.isEditing {
-                                                Color.clear.frame(width: 44)
-                                            }
-                                        }
-
-                                        // Exercise rows
-                                        VStack(spacing: 8) {
-                                            ForEach($part.exercises) { $exercise in
-                                                HStack(spacing: 4) {
-                                                    TextField("Name", text: $exercise.name)
-                                                        .textInputAutocapitalization(.words)
-                                                        .padding(.vertical, 6)
-                                                        .padding(.horizontal, 8)
-                                                        .glassEffect(in: .rect(cornerRadius: 8.0))
-                                                        .frame(minWidth: 0, maxWidth: .infinity)
-                                                        .focused($focusedField, equals: exercise.id)
-
-                                                    TextField(exercise.placeholderWeight.isEmpty ? "0" : exercise.placeholderWeight, text: $exercise.weight)
-                                                        .keyboardType(.decimalPad)
-                                                        .padding(.vertical, 6)
-                                                        .padding(.leading, 8)
-                                                        .padding(.trailing, 28)
-                                                        .glassEffect(in: .rect(cornerRadius: 8.0))
-                                                        .frame(width: 80)
-                                                        .focused($focusedField, equals: exercise.id)
-                                                        .overlay(alignment: .trailing) {
-                                                            Button {
-                                                                // Toggle unit for this exercise
-                                                                if exercise.unit.lowercased() == "kg" {
-                                                                    exercise.unit = "lbs"
-                                                                } else {
-                                                                    exercise.unit = "kg"
-                                                                }
-                                                                // If the user hasn't typed anything yet, also update the placeholder text logic here if desired, 
-                                                                // but usually placeholder follows last entry. 
-                                                                // For now just toggle the unit string.
-                                                            } label: {
-                                                                Text(exercise.unit.uppercased())
-                                                                    .font(.caption2)
-                                                                    .foregroundStyle(.secondary)
-                                                                    .padding(.trailing, 8)
-                                                            }
-                                                            .buttonStyle(.plain)
-                                                        }
-
-                                                    TextField(exercise.placeholderSets.isEmpty ? "0" : exercise.placeholderSets, text: $exercise.sets)
-                                                        .keyboardType(.numberPad)
-                                                        .padding(.vertical, 6)
-                                                        .padding(.horizontal, 8)
-                                                        .glassEffect(in: .rect(cornerRadius: 8.0))
-                                                        .frame(width: 40)
-                                                        .focused($focusedField, equals: exercise.id)
-
-                                                    Text("x")
-                                                        .frame(width: 15)
-
-                                                    TextField(exercise.placeholderReps.isEmpty ? "0" : exercise.placeholderReps, text: $exercise.reps)
-                                                        .keyboardType(.numberPad)
-                                                        .padding(.vertical, 6)
-                                                        .padding(.horizontal, 8)
-                                                        .glassEffect(in: .rect(cornerRadius: 8.0))
-                                                        .frame(width: 40)
-                                                        .focused($focusedField, equals: exercise.id)
-                                                    
-                                                    if part.isEditing {
-                                                        Button {
-                                                            deleteExercise(bodyPartId: part.id, exerciseId: exercise.id)
-                                                        } label: {
-                                                            Image(systemName: "trash")
-                                                                .font(.callout)
-                                                                .foregroundColor(.red)
-                                                                .padding(10)
-                                                                .glassEffect(in: .rect(cornerRadius: 18.0))
-                                                                .contentShape(Rectangle())
-                                                                .frame(minWidth: 44, minHeight: 44)
-                                                        }
-                                                        .buttonStyle(.plain)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        
-                                        Button {
-                                            addExercise(to: part.id)
-                                        } label: {
-                                            Label("Add Exercise", systemImage: "plus.circle")
-                                                .font(.callout)
-                                                .fontWeight(.medium)
-                                                .padding(10)
-                                                .glassEffect(in: .rect(cornerRadius: 18.0))
-                                                .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding()
-                                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-                                }
-                            }
-                        }
-                    }
-                    .padding(.top, 8)
-
-                    Spacer()
-                }
-                .padding(24)
-            }
-            .navigationTitle("Session Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        var updated = session
-                        updated.description = description
-                        updated.linkedWeightGroupIds = Array(linkedGroupIds)
-                        onUpdate(updated)
-                        dismiss()
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                KeyboardDismissBar(
-                    isVisible: focusedField != nil,
-                    showUnits: focusedExerciseUnit != nil,
-                    selectedUnit: focusedExerciseUnit,
-                    tint: resolvedColor,
-                    onDismiss: { focusedField = nil },
-                    onSelectUnit: { unit in
-                        if let id = focusedField {
-                            updateExerciseUnit(id: id, newUnit: unit)
-                        }
-                    }
-                )
-            }
-            .onAppear {
-                description = session.description
-                linkedGroupIds = Set(session.linkedWeightGroupIds)
-            }
-        }
-    }
-    
-    
-    private var focusedExerciseUnit: String? {
-        guard let id = focusedField else { return nil }
-        for part in bodyParts {
-            if let exercise = part.exercises.first(where: { $0.id == id }) {
-                return exercise.unit
-            }
-        }
-        return nil
-    }
-
-    private func updateExerciseUnit(id: UUID, newUnit: String) {
-        for i in bodyParts.indices {
-            if let j = bodyParts[i].exercises.firstIndex(where: { $0.id == id }) {
-                bodyParts[i].exercises[j].unit = newUnit
-                return
-            }
-        }
-    }
-    
-    private var resolvedColor: Color {
-        if themeManager.selectedTheme == .multiColour {
-            return Color(hex: session.colorHex) ?? accentColor
-        }
-        return themeManager.selectedTheme.accent(for: colorScheme)
-    }
-
-    private func addExercise(to bodyPartId: UUID) {
-        guard let index = bodyParts.firstIndex(where: { $0.id == bodyPartId }) else { return }
-        bodyParts[index].exercises.append(
-            WeightExercise(name: "", weight: "", sets: "", reps: "")
-        )
-    }
-
-    private func deleteExercise(bodyPartId: UUID, exerciseId: UUID) {
-        guard let partIndex = bodyParts.firstIndex(where: { $0.id == bodyPartId }) else { return }
-        guard let exerciseIndex = bodyParts[partIndex].exercises.firstIndex(where: { $0.id == exerciseId }) else { return }
-        bodyParts[partIndex].exercises.remove(at: exerciseIndex)
     }
 }
 
@@ -2892,13 +2418,6 @@ private struct RestDayPickerSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    ExplainerCard(
-                        title: "Plan Rest Days",
-                        icon: "bed.double.fill",
-                        description: "Schedule rest days to ensure proper recovery.",
-                        accentColor: effectiveTint
-                    )
-
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Rest Days")
                             .font(.footnote)
@@ -3049,13 +2568,6 @@ private struct DailySummaryGoalSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    ExplainerCard(
-                        title: "Daily Workout Goals",
-                        icon: "target",
-                        description: "Set specific targets for today's workout.",
-                        accentColor: tint
-                    )
-
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Calorie Burn Goal")
                             .font(.footnote)
@@ -3154,20 +2666,12 @@ private struct WeightsGroupEditorSheet: View {
         if subscriptionManager.hasProAccess && !subscriptionManager.purchasedProductIDs.isEmpty { return true }
         return working.count < maxTracked
     }
-                    
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    ExplainerCard(
-                        title: "Weight Groups",
-                        icon: "dumbbell.fill",
-                        description: "Organise your exercises by muscle groups.",
-                        accentColor: .accentColor
-                    )
-
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Groups")
@@ -3455,7 +2959,7 @@ private struct WeightsTrackingSection: View {
                                     }
                                 }
                                 .padding(10)
-                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
                                 .contentShape(Rectangle())
                                 .frame(minWidth: 44, minHeight: 44)
                             }
@@ -3505,7 +3009,7 @@ private struct WeightsTrackingSection: View {
                                     .textInputAutocapitalization(.words)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(minWidth: 0, maxWidth: .infinity)
                                         .focused(focusBinding, equals: exercise.id)
 
@@ -3514,7 +3018,7 @@ private struct WeightsTrackingSection: View {
                                     .padding(.vertical, 6)
                                     .padding(.leading, 8)
                                     .padding(.trailing, 28) // leave room for unit suffix
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 80)
                                     .focused(focusBinding, equals: exercise.id)
                                     // focus is handled by FocusState equals binding; no explicit tap handler needed
@@ -3529,7 +3033,7 @@ private struct WeightsTrackingSection: View {
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 40)
                                     .focused(focusBinding, equals: exercise.id)
 
@@ -3540,7 +3044,7 @@ private struct WeightsTrackingSection: View {
                                     .keyboardType(.numberPad)
                                     .padding(.vertical, 6)
                                     .padding(.horizontal, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 8.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8.0))
                                     .frame(width: 40)
                                     .focused(focusBinding, equals: exercise.id)
 
@@ -3552,7 +3056,7 @@ private struct WeightsTrackingSection: View {
                                             .font(.callout)
                                             .padding(.horizontal, 12)
                                             .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
                                             .accessibilityLabel("Delete")
                                     }
                                     .buttonStyle(.plain)
@@ -3572,7 +3076,7 @@ private struct WeightsTrackingSection: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
                             }
                             .buttonStyle(.plain)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -3626,7 +3130,6 @@ private struct WeightsTrackingSection: View {
 // Safe-area inset dismiss bar that naturally sits above the keyboard.
 private struct KeyboardDismissBar: View {
     var isVisible: Bool
-    var showUnits: Bool = true
     var selectedUnit: String?
     var tint: Color
     var onDismiss: () -> Void
@@ -3636,22 +3139,20 @@ private struct KeyboardDismissBar: View {
         Group {
             if isVisible {
                 HStack(spacing: 12) {
-                    if showUnits {
-                        ForEach(["kg", "lbs"], id: \.self) { unit in
-                            let isSelected = selectedUnit?.lowercased() == unit
-                            Button {
-                                onSelectUnit(unit)
-                            } label: {
-                                Text(unit.uppercased())
-                                    .font(.callout.weight(.semibold))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                                    .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
-                                    .foregroundStyle(isSelected ? tint : .primary)
-                            }
-                            .buttonStyle(.plain)
+                    ForEach(["kg", "lbs"], id: \.self) { unit in
+                        let isSelected = selectedUnit?.lowercased() == unit
+                        Button {
+                            onSelectUnit(unit)
+                        } label: {
+                            Text(unit.uppercased())
+                                .font(.callout.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                                .foregroundStyle(isSelected ? tint : .primary)
                         }
+                        .buttonStyle(.plain)
                     }
 
                     Spacer()

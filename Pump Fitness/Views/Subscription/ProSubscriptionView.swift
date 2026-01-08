@@ -158,7 +158,8 @@ struct ProSubscriptionView: View {
                         }
 
                         Text("Get unlimited feature access with Trackerio Pro.")
-                            .font(.headline)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)

@@ -301,10 +301,19 @@ struct AccountsView: View {
                             // .tint(.red)
 
                             Button {
-                                try? Tips.resetDatastore()
-                                NutritionTips.currentStep = 0
-                                WorkoutTips.currentStep = 0
-                                RoutineTips.currentStep = 0
+                                if #available(iOS 17.0, *) {
+                                    Task { @MainActor in
+                                        try? Tips.resetDatastore()
+                                        try? Tips.configure([
+                                            .displayFrequency(.immediate),
+                                            .datastoreLocation(.applicationDefault)
+                                        ])
+                                        
+                                        NutritionTips.currentStep = 0
+                                        WorkoutTips.currentStep = 0
+                                        RoutineTips.currentStep = 0
+                                    }
+                                }
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Reset TipKit Memory (Debug)")

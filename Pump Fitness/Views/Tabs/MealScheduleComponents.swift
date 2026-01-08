@@ -269,7 +269,6 @@ struct MealScheduleEditorSheet: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
-                    
                     // Explainer Section
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -329,9 +328,6 @@ struct MealScheduleEditorSheet: View {
                                                 HStack(spacing: 12) {
                                                     Button {
                                                         guard themeManager.selectedTheme == .multiColour else { return }
-                                                        if #available(iOS 17.0, *) {
-                                                            Task { await EditSheetTips.colorPickerOpened.donate() }
-                                                        }
                                                         colorPickerTarget = (dayIndex, sessionId)
                                                         showColorPickerSheet = true
                                                     } label: {
@@ -345,15 +341,11 @@ struct MealScheduleEditorSheet: View {
                                                                 Image(systemName: "fork.knife")
                                                                     .font(.system(size: 16, weight: .semibold))
                                                                     .foregroundStyle(sessionColor)
-                                                                    .editSheetChangeColorTip(
-                                                                        hasTrackedItems: working.contains { !$0.sessions.isEmpty },
-                                                                        isMultiColourTheme: themeManager.selectedTheme == .multiColour,
-                                                                        isActive: isFirst && dayIndex == (working.firstIndex(where: { !$0.sessions.isEmpty }) ?? 0)
-                                                                    )
                                                             )
                                                     }
                                                     .buttonStyle(.plain)
                                                     .disabled(themeManager.selectedTheme != .multiColour)
+                                                    .editSheetTip(.editMealPlanningColor)
 
                                                     VStack(alignment: .leading, spacing: 6) {
                                                         Text("\(binding.name.wrappedValue)")
@@ -379,10 +371,12 @@ struct MealScheduleEditorSheet: View {
                                                                     }
                                                                 }
                                                                 
-                                                                ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
-                                                                    if targetDayIndex != dayIndex {
-                                                                        Button(targetDay.day) {
-                                                                            moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
+                                                                Menu("Move to Day") {
+                                                                    ForEach(Array(working.enumerated()), id: \.element.id) { targetDayIndex, targetDay in
+                                                                        if targetDayIndex != dayIndex {
+                                                                            Button(targetDay.day) {
+                                                                                moveSessionToDay(fromDayIndex: dayIndex, sessionIndex: sessionIndex, toDayIndex: targetDayIndex)
+                                                                            }
                                                                         }
                                                                     }
                                                                 }

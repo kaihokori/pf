@@ -3,27 +3,22 @@ import TipKit
 
 @available(iOS 17.0, *)
 struct EditSheetTips {
-    static let colorPickerOpened = Tips.Event(id: "colorPickerOpened")
-
-    struct ChangeColorTip: Tip {
+    
+    struct EditMacrosColorTip: Tip {
         var title: Text { Text("Customise Colour") }
         var message: Text? { Text("Tap the icon to change the colour.") }
         var image: Image? { Image(systemName: "paintpalette") }
-        
-        var options: [TipOption] {
-            Tips.MaxDisplayCount(3)
-        }
-        
-        @Parameter
-        static var hasTrackedItems: Bool = false
-        
-        @Parameter
-        static var isMultiColourTheme: Bool = false
-
-        var rules: [Rule] {
-            #Rule(Self.$hasTrackedItems) { $0 == true }
-            #Rule(Self.$isMultiColourTheme) { $0 == true }
-            #Rule(EditSheetTips.colorPickerOpened) { $0.donations.count == 0 }
-        }
+    }
+    
+    struct EditWeeklyScheduleColorTip: Tip {
+        var title: Text { Text("Customise Colour") }
+        var message: Text? { Text("Tap the icon to change the colour.") }
+        var image: Image? { Image(systemName: "paintpalette") }
+    }
+    
+    struct EditMealPlanningColorTip: Tip {
+        var title: Text { Text("Customise Colour") }
+        var message: Text? { Text("Tap the icon to change the colour.") }
+        var image: Image? { Image(systemName: "paintpalette") }
     }
 }

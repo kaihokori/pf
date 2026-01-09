@@ -255,41 +255,61 @@ struct AccountsView: View {
                                 privacyAction: openPrivacy
                             )
 
-                            // Subscription Status Text
-
-                            #if DEBUG
-                            Toggle(isOn: Binding(get: {
-                                subscriptionManager.isDebugForcingNoSubscription
-                            }, set: { newVal in
-                                subscriptionManager.isDebugForcingNoSubscription = newVal
-                            })) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Force No Subscription (Debug)")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                    Text("Subscription time left: \(subscriptionTimeLeftText())")
-                                        .font(.caption)
+                            Group {
+                                if subscriptionManager.isInTrialPeriod {
+                                    Text("You're trialing Pro for \(subscriptionManager.trialDaysLeft) more days")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                } else if subscriptionManager.hasActiveSubscription {
+                                    Text("You're subscribed for \(subscriptionTimeLeftText())")
+                                        .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            .toggleStyle(.switch)
+                            .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 6)
 
-                            Button {
-                                Task { await clearTrialTimerDebug() }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Clear Trial Timer (Debug)")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                    Text("Trial time left: \(trialTimeLeftText())")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.orange)
-                            .disabled(isClearingTrialTimer)
-                            .padding(.top, 2)
+                            let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+                            let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+                            Text("App Version: \(shortVersion) (\(buildNumber))")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 2)
+
+                            // #if DEBUG
+                            // Toggle(isOn: Binding(get: {
+                            //     subscriptionManager.isDebugForcingNoSubscription
+                            // }, set: { newVal in
+                            //     subscriptionManager.isDebugForcingNoSubscription = newVal
+                            // })) {
+                            //     VStack(alignment: .leading, spacing: 2) {
+                            //         Text("Force No Subscription (Debug)")
+                            //             .font(.subheadline).fontWeight(.semibold)
+                            //         Text("Subscription time left: \(subscriptionTimeLeftText())")
+                            //             .font(.caption)
+                            //             .foregroundStyle(.secondary)
+                            //     }
+                            // }
+                            // .toggleStyle(.switch)
+                            // .padding(.top, 6)
+
+                            // Button {
+                            //     Task { await clearTrialTimerDebug() }
+                            // } label: {
+                            //     VStack(alignment: .leading, spacing: 2) {
+                            //         Text("Clear Trial Timer (Debug)")
+                            //             .font(.subheadline).fontWeight(.semibold)
+                            //         Text("Trial time left: \(trialTimeLeftText())")
+                            //             .font(.caption)
+                            //             .foregroundStyle(.secondary)
+                            //     }
+                            //     .frame(maxWidth: .infinity, alignment: .leading)
+                            // }
+                            // .buttonStyle(.bordered)
+                            // .tint(.orange)
+                            // .disabled(isClearingTrialTimer)
+                            // .padding(.top, 2)
 
                             // Button {
                             //     if #available(iOS 17.0, *) {
@@ -317,7 +337,7 @@ struct AccountsView: View {
                             // }
                             // .buttonStyle(.bordered)
                             // .tint(.blue)
-                            #endif
+                            // #endif
                         }
                         
                     }

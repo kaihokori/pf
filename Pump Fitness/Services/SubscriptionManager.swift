@@ -55,10 +55,10 @@ class SubscriptionManager: ObservableObject {
 
     /// Returns a human-readable subscription status string for telemetry/metadata writes.
     /// Examples: "free", "trial - 13 days remaining", "12 months - 25 days remaining".
-    func subscriptionStatusDescription(trialEndDate: Date?) -> String {
+    func subscriptionStatusDescription(trialEndDate: Date?, ignoreDebugOverride: Bool = false) -> String {
         let now = Date()
 
-        if isDebugForcingNoSubscription { return "free" }
+        if isDebugForcingNoSubscription && !ignoreDebugOverride { return "free" }
 
         let resolvedTrialEnd = trialEndDate ?? self.trialEndDate
         if let trialEnd = resolvedTrialEnd, trialEnd > now || isTrialActive {

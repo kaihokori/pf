@@ -24,136 +24,138 @@ struct TravelTabView: View {
                         HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
                             .environmentObject(account)
                         
-                        HStack {
-                            Text("Itinerary Tracking")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Button {
-                            editorSeedDate = selectedDate
-                            editingEvent = nil
-                            isShowingEditor = true
-                        } label: {
-                            Label("Add", systemImage: "plus")
-                                .font(.callout)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 18.0))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 38)
-                    .padding(.bottom, 8)
-
-                    MapSection(events: $itineraryEvents)
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 24)
-                        .travelTip(.map, isEnabled: isPro)
-
-                    ItineraryTrackingSection(
-                        events: itineraryEvents,
-                        onEdit: { event in
-                            editingEvent = event
-                            editorSeedDate = event.date
-                            isShowingEditor = true
-                        },
-                        onDelete: { event in
-                            deleteEvent(event)
-                        }
-                    )
-                        .padding(.horizontal, 18)
-                        .travelTip(.itineraryTracking, isEnabled: isPro)
-                    }
-                    .opacity(isPro ? 1 : 0.5)
-                    .blur(radius: isPro ? 0 : 4)
-                    .disabled(!isPro)
-                }
-                .padding(.bottom, 24)
-            }
-            .overlay {
-                if !isPro {
-                    ZStack {
-                        Color.black.opacity(0.001)
-                            .onTapGesture {}
-
-                        Button {
-                            showProSheet = true
-                        } label: {
-                            VStack(spacing: 8) {
-                                HStack {
-                                    let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
-
-                                    if let accent {
-                                        Image("logo")
-                                            .resizable()
-                                            .renderingMode(.template)
-                                            .foregroundStyle(accent)
-                                            .aspectRatio(contentMode: .fit)
-                                            .frame(height: 40)
-                                            .padding(.leading, 4)
-                                            .offset(y: 6)
-                                    } else {
-                                        Image("logo")
-                                            .resizable()
-                                            .renderingMode(.original)
-                                            .aspectRatio(contentMode: .fit)
-                                            .frame(height: 40)
-                                            .padding(.leading, 4)
-                                            .offset(y: 6)
-                                    }
-                                    
-                                    Text("PRO")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(Color.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .fill(
-                                                    accent.map {
-                                                        LinearGradient(
-                                                            gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        )
-                                                    } ?? LinearGradient(
-                                                        gradient: Gradient(colors: [
-                                                            Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                            Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                        ]),
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                                )
-                                        )
-                                        .offset(y: 6)
-                                }
-                                .padding(.bottom, 5)
-
-                                Text("Trackerio Pro")
-                                    .font(.headline)
+                        VStack {
+                            HStack {
+                                Text("Itinerary Tracking")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
                                     .foregroundStyle(.primary)
                                 
-                                Text("Upgrade to unlock the Travel tab + More")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                
+                                Button {
+                                    editorSeedDate = selectedDate
+                                    editingEvent = nil
+                                    isShowingEditor = true
+                                } label: {
+                                    Label("Add", systemImage: "plus")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .padding()
-                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18)
+                            .padding(.top, 38)
+                            .padding(.bottom, 8)
+                            
+                            MapSection(events: $itineraryEvents)
+                                .padding(.horizontal, 18)
+                                .padding(.bottom, 24)
+                                .travelTip(.map, isEnabled: isPro)
+                            
+                            ItineraryTrackingSection(
+                                events: itineraryEvents,
+                                onEdit: { event in
+                                    editingEvent = event
+                                    editorSeedDate = event.date
+                                    isShowingEditor = true
+                                },
+                                onDelete: { event in
+                                    deleteEvent(event)
+                                }
+                            )
+                            .padding(.horizontal, 18)
+                            .travelTip(.itineraryTracking, isEnabled: isPro)
                         }
-                        .buttonStyle(.plain)
-                        .sheet(isPresented: $showProSheet) {
-                            ProSubscriptionView()
+                        .opacity(isPro ? 1 : 0.5)
+                        .blur(radius: isPro ? 0 : 4)
+                        .disabled(!isPro)
+                        .overlay {
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001)
+                                        .onTapGesture {}
+
+                                    Button {
+                                        showProSheet = true
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Itinerary Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .sheet(isPresented: $showProSheet) {
+                                        ProSubscriptionView()
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+                .padding(.bottom, 24)
             }
 
             if showCalendar {

@@ -597,403 +597,638 @@ struct SportsTabView: View {
                                     })
                             }
 
-                            HStack {
-                                Text("Time Tracking")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
+                            VStack {
+                                HStack {
+                                    Text("Time Tracking")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
 
-                                Spacer()
+                                    Spacer()
 
-                                Button {
-                                    showTimeTrackingEditor = true
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    Button {
+                                        showTimeTrackingEditor = true
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 38)
-                            .padding(.bottom, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 18)
+                                .padding(.top, 38)
+                                .padding(.bottom, 8)
 
-                            TimeTrackingSection(
-                                accentColorOverride: accentOverride,
-                                config: $timeTrackingConfig
-                            )
-                            .padding(.horizontal, 18)
-                            .padding(.top, -45)
-                            .padding(.bottom, -40)
+                                TimeTrackingSection(
+                                    accentColorOverride: accentOverride,
+                                    config: $timeTrackingConfig
+                                )
+                                .padding(.horizontal, 18)
+                                .padding(.top, -45)
+                                .padding(.bottom, -40)
+                            }
+                            .opacity(isPro ? 1 : 0.5)
+                            .blur(radius: isPro ? 0 : 4)
+                            .disabled(!isPro)
+                            .overlay {
+                                if !isPro {
+                                    ZStack {
+                                        Color.black.opacity(0.001) // Capture taps
+                                            .onTapGesture {
+                                                // Optional: Trigger upgrade flow
+                                            }
+                                        
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                            
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Time Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
+                                }
+                            }
                             
-                            HStack {
-                                Text("Team Play Tracking")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
-                                    .sportsTip(.teamAndSoloPlay, isEnabled: isPro, onStepChange: { step in
-                                        if step == 2 {
+                            VStack {
+                                HStack {
+                                    Text("Team Play Tracking")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+                                        .sportsTip(.teamAndSoloPlay, isEnabled: isPro, onStepChange: { step in
+                                            if step == 2 {
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                    withAnimation {
+                                                        proxy.scrollTo("editPlays", anchor: .center)
+                                                    }
+                                                }
+                                            }
+                                        })
+                                        .id("teamPlay")
+
+                                    Spacer()
+
+                                    Button {
+                                        showTeamMetricsEditor = true
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    }
+                                    .sportsTip(.editPlays, isEnabled: isPro, onStepChange: { step in
+                                        if step == 3 {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                                 withAnimation {
-                                                    proxy.scrollTo("editPlays", anchor: .center)
+                                                    proxy.scrollTo("editSports", anchor: .center)
                                                 }
                                             }
                                         }
                                     })
-                                    .id("teamPlay")
-
-                                Spacer()
-
-                                Button {
-                                    showTeamMetricsEditor = true
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .id("editPlays")
+                                    .buttonStyle(.plain)
                                 }
-                                .sportsTip(.editPlays, isEnabled: isPro, onStepChange: { step in
-                                    if step == 3 {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                            withAnimation {
-                                                proxy.scrollTo("editSports", anchor: .center)
-                                            }
-                                        }
-                                    }
-                                })
-                                .id("editPlays")
-                                .buttonStyle(.plain)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 38)
-                            .padding(.bottom, 8)
-
-                            TeamPlaySection(
-                                selectedDate: selectedDate,
-                                metrics: $teamMetrics,
-                                metricValues: $teamMetricValuesStore,
-                                homeScore: $teamHomeScore,
-                                awayScore: $teamAwayScore,
-                                focusBinding: $teamInputsFocused,
-                                onValueChange: handleTeamMetricValueChange,
-                                onScoreChange: handleTeamScoreChange
-                            )
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 18)
+                                .padding(.top, 38)
+                                .padding(.bottom, 8)
 
-                            HStack {
-                                Text("Solo Play Tracking")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                Button {
-                                    showSoloMetricsEditor = true
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                }
-                                .buttonStyle(.plain)
+                                TeamPlaySection(
+                                    selectedDate: selectedDate,
+                                    metrics: $teamMetrics,
+                                    metricValues: $teamMetricValuesStore,
+                                    homeScore: $teamHomeScore,
+                                    awayScore: $teamAwayScore,
+                                    focusBinding: $teamInputsFocused,
+                                    onValueChange: handleTeamMetricValueChange,
+                                    onScoreChange: handleTeamScoreChange
+                                )
+                                .padding(.horizontal, 18)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 38)
-                            .padding(.bottom, 8)
-
-                           SoloPlaySection(
-                               selectedDate: selectedDate,
-                               metrics: $soloMetrics,
-                               metricValues: $soloMetricValuesStore,
-                               focusBinding: $soloInputsFocused,
-                               onValueChange: handleSoloMetricValueChange
-                           )
-                               .padding(.horizontal, 18)
-
-                            HStack {
-                                Text("Sports Tracking")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                Button {
-                                    showSportsEditor = true
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                }
-                                .sportsTip(.editSports, isEnabled: isPro, onStepChange: { step in
-                                    if step == 4 {
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                            withAnimation {
-                                                proxy.scrollTo("sportsTracking", anchor: .center)
+                            .opacity(isPro ? 1 : 0.5)
+                            .blur(radius: isPro ? 0 : 4)
+                            .disabled(!isPro)
+                            .overlay {
+                                if !isPro {
+                                    ZStack {
+                                        Color.black.opacity(0.001) // Capture taps
+                                            .onTapGesture {
+                                                // Optional: Trigger upgrade flow
                                             }
+                                        
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                            
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Team Play Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
                                         }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
                                     }
-                                })
-                                .id("editSports")
-                                .buttonStyle(.plain)
+                                }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 38)
-                            .padding(.bottom, 8)
 
-                            if sports.isEmpty {
-                                sportsEmptyState
-                                    .padding(.horizontal, 18)
-                            } else {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
-                                        let displayColor: Color = themeManager.selectedTheme == .multiColour ? sport.color : themeManager.selectedTheme.accent(for: colorScheme)
-                                        VStack(alignment: .leading, spacing: 10) {
-                                        HStack(spacing: 10) {
-                                            Circle()
-                                                .fill(displayColor)
-                                                .frame(width: 16, height: 16)
+                            VStack {
+                                HStack {
+                                    Text("Solo Play Tracking")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
 
-                                            Text(sport.name)
-                                                .font(.callout.weight(.semibold))
-                                                .multilineTextAlignment(.leading)
+                                    Spacer()
 
-                                            Spacer()
+                                    Button {
+                                        showSoloMetricsEditor = true
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 18)
+                                .padding(.top, 38)
+                                .padding(.bottom, 8)
 
-                                            Button {
-                                                metricsEditorSportIndex = idx
-                                            } label: {
-                                                Image(systemName: "pencil")
-                                                    .font(.callout.weight(.semibold))
-                                                    .padding(.horizontal, 10)
-                                                    .padding(.vertical, 6)
-                                                    .glassEffect(in: .rect(cornerRadius: 14.0))
-                                                    .accessibilityLabel("Edit sport metrics")
+                               SoloPlaySection(
+                                   selectedDate: selectedDate,
+                                   metrics: $soloMetrics,
+                                   metricValues: $soloMetricValuesStore,
+                                   focusBinding: $soloInputsFocused,
+                                   onValueChange: handleSoloMetricValueChange
+                               )
+                                .padding(.horizontal, 18)
+                            }
+                            .opacity(isPro ? 1 : 0.5)
+                            .blur(radius: isPro ? 0 : 4)
+                            .disabled(!isPro)
+                            .overlay {
+                                if !isPro {
+                                    ZStack {
+                                        Color.black.opacity(0.001) // Capture taps
+                                            .onTapGesture {
+                                                // Optional: Trigger upgrade flow
                                             }
-                                            .buttonStyle(.plain)
+                                        
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
 
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                            
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Solo Play Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
                                         }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
+                                }
+                            }
 
-                                        ForEach(sport.metrics) { metric in
-                                            SportMetricGraph(
-                                                metric: metric,
-                                                activities: sport.activities,
-                                                historyDays: historyDays,
-                                                anchorDate: selectedDate,
-                                                accentOverride: themeManager.selectedTheme == .multiColour ? nil : displayColor
-                                            )
-                                            .frame(height: 140)
-                                            .padding(.bottom, 8)
+                            VStack {
+                                HStack {
+                                    Text("Sports Tracking")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+
+                                    Spacer()
+
+                                    Button {
+                                        showSportsEditor = true
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    }
+                                    .sportsTip(.editSports, isEnabled: isPro, onStepChange: { step in
+                                        if step == 4 {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                withAnimation {
+                                                    proxy.scrollTo("sportsTracking", anchor: .center)
+                                                }
+                                            }
                                         }
+                                    })
+                                    .id("editSports")
+                                    .buttonStyle(.plain)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 18)
+                                .padding(.top, 38)
+                                .padding(.bottom, 8)
 
-                                        let weekDates = sportWeekDates(anchor: selectedDate)
-                                        let sportRecords = sportActivities.filter { $0.sportName.lowercased() == sport.name.lowercased() }
+                                if sports.isEmpty {
+                                    sportsEmptyState
+                                        .padding(.horizontal, 18)
+                                } else {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        ForEach(Array(sports.enumerated()), id: \.offset) { idx, sport in
+                                            let displayColor: Color = themeManager.selectedTheme == .multiColour ? sport.color : themeManager.selectedTheme.accent(for: colorScheme)
+                                            VStack(alignment: .leading, spacing: 10) {
+                                            HStack(spacing: 10) {
+                                                Circle()
+                                                    .fill(displayColor)
+                                                    .frame(width: 16, height: 16)
 
-                                        // Only include days that actually have records
-                                        let daysWithRecords = weekDates.filter { d in
-                                            sportRecords.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: d) })
-                                        }
+                                                Text(sport.name)
+                                                    .font(.callout.weight(.semibold))
+                                                    .multilineTextAlignment(.leading)
 
-                                        VStack(spacing: 0) {
-                                            ForEach(daysWithRecords, id: \.self) { day in
-                                                let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+                                                Spacer()
 
-                                                Section(header:
-                                                    HStack {
-                                                        VStack(alignment: .leading, spacing: 2) {
-                                                            Text(DateFormatter.sportWeekdayFull.string(from: day))
-                                                                .font(.subheadline.weight(.semibold))
-                                                            Text(DateFormatter.sportLongDate.string(from: day))
-                                                                .font(.caption2)
-                                                                .foregroundStyle(.secondary)
-                                                        }
-                                                        Spacer()
-                                                    }
-                                                    .padding(.vertical, 8)
-                                                ) {
-                                                    ForEach(dayRecords, id: \.id) { record in
-                                                        HStack(alignment: .top, spacing: 12) {
-                                                            VStack(alignment: .leading, spacing: 6) {
-                                                                ForEach(record.values, id: \.id) { val in
-                                                                    HStack(spacing: 6) {
-                                                                        Text(val.label)
-                                                                            .font(.caption.weight(.semibold))
-                                                                            .foregroundStyle(.secondary)
-                                                                        Text(formatMetricValue(val))
-                                                                            .font(.caption)
-                                                                    }
-                                                                }
+                                                Button {
+                                                    metricsEditorSportIndex = idx
+                                                } label: {
+                                                    Image(systemName: "pencil")
+                                                        .font(.callout.weight(.semibold))
+                                                        .padding(.horizontal, 10)
+                                                        .padding(.vertical, 6)
+                                                        .glassEffect(in: .rect(cornerRadius: 14.0))
+                                                        .accessibilityLabel("Edit sport metrics")
+                                                }
+                                                .buttonStyle(.plain)
+
+                                            }
+
+                                            ForEach(sport.metrics) { metric in
+                                                SportMetricGraph(
+                                                    metric: metric,
+                                                    activities: sport.activities,
+                                                    historyDays: historyDays,
+                                                    anchorDate: selectedDate,
+                                                    accentOverride: themeManager.selectedTheme == .multiColour ? nil : displayColor
+                                                )
+                                                .frame(height: 140)
+                                                .padding(.bottom, 8)
+                                            }
+
+                                            let weekDates = sportWeekDates(anchor: selectedDate)
+                                            let sportRecords = sportActivities.filter { $0.sportName.lowercased() == sport.name.lowercased() }
+
+                                            // Only include days that actually have records
+                                            let daysWithRecords = weekDates.filter { d in
+                                                sportRecords.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: d) })
+                                            }
+
+                                            VStack(spacing: 0) {
+                                                ForEach(daysWithRecords, id: \.self) { day in
+                                                    let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+
+                                                    Section(header:
+                                                        HStack {
+                                                            VStack(alignment: .leading, spacing: 2) {
+                                                                Text(DateFormatter.sportWeekdayFull.string(from: day))
+                                                                    .font(.subheadline.weight(.semibold))
+                                                                Text(DateFormatter.sportLongDate.string(from: day))
+                                                                    .font(.caption2)
+                                                                    .foregroundStyle(.secondary)
                                                             }
-
                                                             Spacer()
-
-                                                            Menu {
-                                                                Button("Edit") {
-                                                                    editingSportRecord = record
-                                                                    dataEntrySportIndex = idx
-                                                                    dataEntryDefaultDate = record.date
-                                                                }
-                                                                Button("Delete", role: .destructive) {
-                                                                    sportActivities.removeAll { $0.id == record.id }
-                                                                    rebuildSports()
-                                                                }
-                                                            } label: {
-                                                                Image(systemName: "ellipsis.circle")
-                                                                    .font(.callout)
-                                                                    .foregroundStyle(.primary)
-                                                            }
-                                                            .menuStyle(.borderlessButton)
                                                         }
                                                         .padding(.vertical, 8)
-                                                        if record.id != dayRecords.last?.id {
-                                                            Divider()
+                                                    ) {
+                                                        ForEach(dayRecords, id: \.id) { record in
+                                                            HStack(alignment: .top, spacing: 12) {
+                                                                VStack(alignment: .leading, spacing: 6) {
+                                                                    ForEach(record.values, id: \.id) { val in
+                                                                        HStack(spacing: 6) {
+                                                                            Text(val.label)
+                                                                                .font(.caption.weight(.semibold))
+                                                                                .foregroundStyle(.secondary)
+                                                                            Text(formatMetricValue(val))
+                                                                                .font(.caption)
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                Spacer()
+
+                                                                Menu {
+                                                                    Button("Edit") {
+                                                                        editingSportRecord = record
+                                                                        dataEntrySportIndex = idx
+                                                                        dataEntryDefaultDate = record.date
+                                                                    }
+                                                                    Button("Delete", role: .destructive) {
+                                                                        sportActivities.removeAll { $0.id == record.id }
+                                                                        rebuildSports()
+                                                                    }
+                                                                } label: {
+                                                                    Image(systemName: "ellipsis.circle")
+                                                                        .font(.callout)
+                                                                        .foregroundStyle(.primary)
+                                                                }
+                                                                .menuStyle(.borderlessButton)
+                                                            }
+                                                            .padding(.vertical, 8)
+                                                            if record.id != dayRecords.last?.id {
+                                                                Divider()
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
-                                        }
-                                        .padding(.horizontal, 8)
+                                            .padding(.horizontal, 8)
 
-                                        if idx == 0 {
-                                            Button {
-                                                dataEntrySportIndex = idx
-                                                editingSportRecord = nil
-                                                dataEntryDefaultDate = selectedDate
-                                            } label: {
-                                                Label("Submit Data", systemImage: "paperplane.fill")
-                                                    .font(.callout.weight(.semibold))
-                                                    .padding(.vertical, 18)
-                                                    .frame(maxWidth: .infinity, minHeight: 52)
-                                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            if idx == 0 {
+                                                Button {
+                                                    dataEntrySportIndex = idx
+                                                    editingSportRecord = nil
+                                                    dataEntryDefaultDate = selectedDate
+                                                } label: {
+                                                    Label("Submit Data", systemImage: "paperplane.fill")
+                                                        .font(.callout.weight(.semibold))
+                                                        .padding(.vertical, 18)
+                                                        .frame(maxWidth: .infinity, minHeight: 52)
+                                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                                }
+                                                .sportsTip(.sportsTracking, isEnabled: isPro)
+                                                .id("sportsTracking")
+                                                .padding(.horizontal, 8)
+                                                .buttonStyle(.plain)
+                                            } else {
+                                                Button {
+                                                    dataEntrySportIndex = idx
+                                                    editingSportRecord = nil
+                                                    dataEntryDefaultDate = selectedDate
+                                                } label: {
+                                                    Label("Submit Data", systemImage: "paperplane.fill")
+                                                        .font(.callout.weight(.semibold))
+                                                        .padding(.vertical, 18)
+                                                        .frame(maxWidth: .infinity, minHeight: 52)
+                                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                                }
+                                                .padding(.horizontal, 8)
+                                                .buttonStyle(.plain)
                                             }
-                                            .sportsTip(.sportsTracking, isEnabled: isPro)
-                                            .id("sportsTracking")
-                                            .padding(.horizontal, 8)
-                                            .buttonStyle(.plain)
-                                        } else {
-                                            Button {
-                                                dataEntrySportIndex = idx
-                                                editingSportRecord = nil
-                                                dataEntryDefaultDate = selectedDate
-                                            } label: {
-                                                Label("Submit Data", systemImage: "paperplane.fill")
-                                                    .font(.callout.weight(.semibold))
-                                                    .padding(.vertical, 18)
-                                                    .frame(maxWidth: .infinity, minHeight: 52)
-                                                    .glassEffect(in: .rect(cornerRadius: 16.0))
-                                            }
-                                            .padding(.horizontal, 8)
-                                            .buttonStyle(.plain)
                                         }
+                                        .padding(20)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .padding(.horizontal, 18)
+                                        .padding(.top, 12)
                                     }
-                                    .padding(20)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                    .glassEffect(in: .rect(cornerRadius: 16.0))
-                                    .padding(.horizontal, 18)
-                                    .padding(.top, 12)
+                                    }
+                                    .padding(.top, -12)
                                 }
+                            }
+                            .opacity(isPro ? 1 : 0.5)
+                            .blur(radius: isPro ? 0 : 4)
+                            .disabled(!isPro)
+                            .overlay {
+                                if !isPro {
+                                    ZStack {
+                                        Color.black.opacity(0.001) // Capture taps
+                                            .onTapGesture {
+                                                // Optional: Trigger upgrade flow
+                                            }
+                                        
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                            
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Sports Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
                                 }
-                                .padding(.top, -12)
                             }
                         }
                       }
                       .padding(.bottom, 24)
-                      .opacity(isPro ? 1 : 0.5)
-                      .blur(radius: isPro ? 0 : 4)
-                      .disabled(!isPro)
                     }
                   }
-                    .overlay {
-                        if !isPro {
-                            ZStack {
-                                Color.black.opacity(0.001) // Capture taps
-                                    .onTapGesture {
-                                        // Optional: Trigger upgrade flow
-                                    }
-                                
-                                VStack(spacing: 8) {
-                                    HStack {
-                                        let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
-
-                                        if let accent {
-                                            Image("logo")
-                                                .resizable()
-                                                .renderingMode(.template)
-                                                .foregroundStyle(accent)
-                                                .aspectRatio(contentMode: .fit)
-                                                .frame(height: 40)
-                                                .padding(.leading, 4)
-                                                .offset(y: 6)
-                                        } else {
-                                            Image("logo")
-                                                .resizable()
-                                                .renderingMode(.original)
-                                                .aspectRatio(contentMode: .fit)
-                                                .frame(height: 40)
-                                                .padding(.leading, 4)
-                                                .offset(y: 6)
-                                        }
-                                        
-                                        Text("PRO")
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(Color.white)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                    .fill(
-                                                        accent.map {
-                                                            LinearGradient(
-                                                                gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                                startPoint: .topLeading,
-                                                                endPoint: .bottomTrailing
-                                                            )
-                                                        } ?? LinearGradient(
-                                                            gradient: Gradient(colors: [
-                                                                Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                            ]),
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        )
-                                                    )
-                                            )
-                                            .offset(y: 6)
-                                    }
-                                    .padding(.bottom, 5)
-                                    
-                                    Text("Trackerio Pro")
-                                        .font(.headline)
-                                        .foregroundStyle(.primary)
-                                    
-                                    Text("Upgrade to unlock the Sports tab + More")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding()
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
-                            }
-                        }
-                    }
-
-                    Spacer()
+                  Spacer()
                 }
                 if showCalendar {
                     Color.black.opacity(0.2)

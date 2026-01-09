@@ -446,6 +446,21 @@ struct OnboardingView: View {
 
         accountService.saveAccount(account, forceOverwrite: true) { accountSuccess in
             dayService.saveDay(day, forceWrite: true) { daySuccess in
+                // Ensure SubscriptionManager immediately reflects the saved trial end
+                    if let end = account.trialPeriodEnd {
+                        Task { @MainActor in
+                            subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
+                        }
+
+                        // Persist a lightweight subscription status metadata for analytics immediately
+                        if let uid = Auth.auth().currentUser?.uid {
+                            Task {
+                                let status = subscriptionManager.subscriptionStatusDescription(trialEndDate: account.trialPeriodEnd, ignoreDebugOverride: true)
+                                await accountService.updateSubscriptionStatus(for: uid, status: status)
+                            }
+                        }
+                    }
+
                 DispatchQueue.main.async {
                     completion(accountSuccess && daySuccess)
                 }

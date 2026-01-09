@@ -837,7 +837,7 @@ private struct WelcomeVideoSplashView: View {
 
     var body: some View {
         ZStack {
-            let background: Color = colorScheme == .dark ? .black : .white
+            let background: Color = colorScheme == .dark ? Color.black : Color(red: 0.9843137255, green: 0.9843137255, blue: 0.9843137255)
             background.ignoresSafeArea()
 
             GeometryReader { proxy in

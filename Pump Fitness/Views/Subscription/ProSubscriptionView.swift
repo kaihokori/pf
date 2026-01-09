@@ -21,6 +21,7 @@ struct ProSubscriptionView: View {
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.openURL) var openURL
+    @Environment(\.offerCodeRedemption) private var offerCodeRedemption
     
     @State private var selectedProduct: Product?
     
@@ -100,11 +101,6 @@ struct ProSubscriptionView: View {
     private var continueButtonTitle: String {
         if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive {
             return "You are a Pro Member"
-        } else if let product = selectedProduct {
-            let price = product.displayPrice
-                .replacingOccurrences(of: " ", with: "")
-                .replacingOccurrences(of: "\u{00A0}", with: "")
-            return "Continue - \(price) Total"
         } else {
             return "Continue"
         }
@@ -369,6 +365,14 @@ struct ProSubscriptionView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        offerCodeRedemption()
+                    } label: {
+                        Text("Redeem")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismiss()
@@ -434,22 +438,27 @@ struct SubscriptionOptionCard: View {
                         .padding(.top, tag != nil ? 0 : 16)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    // Price block (total + weekly) kept together for consistent spacing
-                    HStack(alignment: .center, spacing: 2) {
-                        Text(weeklyPriceString(for: product))
-                            .font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(formattedPrice(for: product))
+                            .font(.title2)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
-                        Spacer()
-                        if let savings {
-                            Text(savings)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+
+                        HStack(alignment: .center) {
+                            Text(weeklyPriceString(for: product))
+                              .font(.footnote)
+                              .foregroundStyle(.secondary.opacity(0.8))
+                            Spacer()
+                            if let savings {
+                                Text(savings)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .glassEffect(in: .rect(cornerRadius: 12.0))
+                            }
                         }
                     }
                     .padding(.top, 8)

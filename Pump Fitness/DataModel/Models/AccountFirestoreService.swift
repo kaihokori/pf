@@ -162,6 +162,26 @@ class AccountFirestoreService {
         }
     }
 
+    /// Persist a lightweight subscription status string for analytics/metadata.
+    func updateSubscriptionStatus(for id: String, status: String, completion: ((Bool) -> Void)? = nil) async {
+        let payload: [String: Any] = [
+            "subscriptionStatus": status,
+            "subscriptionStatusUpdatedAt": Timestamp(date: Date())
+        ]
+
+        await withCheckedContinuation { continuation in
+            db.collection(collection).document(id).setData(payload, merge: true) { error in
+                if let error {
+                    print("AccountFirestoreService.updateSubscriptionStatus error: \(error.localizedDescription)")
+                    completion?(false)
+                } else {
+                    completion?(true)
+                }
+                continuation.resume()
+            }
+        }
+    }
+
     /// Overload for backward compatibility
     func saveAccount(_ account: Account, includeCravings: Bool = false, forceOverwrite: Bool = false, completion: @escaping (Bool) -> Void) {
         saveAccount(account, includeCravings: includeCravings, forceOverwrite: forceOverwrite) { success, _ in

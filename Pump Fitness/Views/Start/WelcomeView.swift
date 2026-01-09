@@ -287,6 +287,7 @@ struct AppleSignInButton: UIViewRepresentable {
         let onRequest: (ASAuthorizationAppleIDRequest) -> Void
         let onCompletion: (Result<ASAuthorization, Error>) -> Void
         weak var currentButton: ASAuthorizationAppleIDButton?
+        private var isAuthInProgress: Bool = false
 
         init(onRequest: @escaping (ASAuthorizationAppleIDRequest) -> Void, onCompletion: @escaping (Result<ASAuthorization, Error>) -> Void) {
             self.onRequest = onRequest
@@ -294,6 +295,10 @@ struct AppleSignInButton: UIViewRepresentable {
         }
 
         @objc func handleTap(_ sender: Any) {
+            // Prevent multiple rapid/automatic invocations (fixes repeated simulator/Xcode prompt)
+            guard !isAuthInProgress else { return }
+            isAuthInProgress = true
+
             let provider = ASAuthorizationAppleIDProvider()
             let request = provider.createRequest()
             onRequest(request)
@@ -305,10 +310,12 @@ struct AppleSignInButton: UIViewRepresentable {
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+            isAuthInProgress = false
             onCompletion(.success(authorization))
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+            isAuthInProgress = false
             onCompletion(.failure(error))
         }
 

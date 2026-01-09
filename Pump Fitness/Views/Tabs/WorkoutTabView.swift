@@ -1841,18 +1841,18 @@ private struct WorkoutScheduleEditorSheet: View {
 
     private var presets: [WorkoutSession] {
         [
-            WorkoutSession(name: "Chest"),
-            WorkoutSession(name: "Back"),
-            WorkoutSession(name: "Shoulder"),
-            WorkoutSession(name: "Legs"),
-            WorkoutSession(name: "Core"),
-            WorkoutSession(name: "Yoga"),
-            WorkoutSession(name: "Pilates"),
-            WorkoutSession(name: "Hyrox"),
-            WorkoutSession(name: "Crossfit"),
-            WorkoutSession(name: "Meditate"),
-            WorkoutSession(name: "Cardio"),
-            WorkoutSession(name: "Run")
+            WorkoutSession(name: "Chest", colorHex: "#D84A4A"),
+            WorkoutSession(name: "Back", colorHex: "#4A7BD0"),
+            WorkoutSession(name: "Shoulder", colorHex: "#E39A3B"),
+            WorkoutSession(name: "Legs", colorHex: "#7A5FD1"),
+            WorkoutSession(name: "Core", colorHex: "#4CAF6A"),
+            WorkoutSession(name: "Yoga", colorHex: "#4FB6C6"),
+            WorkoutSession(name: "Pilates", colorHex: "#C85FA8"),
+            WorkoutSession(name: "Hyrox", colorHex: "#7A5FD1"),
+            WorkoutSession(name: "Crossfit", colorHex: "#D84A4A"),
+            WorkoutSession(name: "Meditate", colorHex: "#E6C84F"),
+            WorkoutSession(name: "Cardio", colorHex: "#E39A3B"),
+            WorkoutSession(name: "Run", colorHex: "#4CAF6A")
         ]
     }
 

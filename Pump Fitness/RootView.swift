@@ -750,6 +750,9 @@ struct RootView: View {
                         }
                     }
 
+                    let effectiveTrialEnd = trialPeriodEnd ?? fetched.trialPeriodEnd
+                    updateSubscriptionStatusMetadata(trialEndDate: effectiveTrialEnd)
+
                     // Daily summary goals with defaults
                     caloriesBurnGoal = fetched.caloriesBurnGoal == 0 ? 800 : fetched.caloriesBurnGoal
                     stepsGoal = fetched.stepsGoal == 0 ? 10_000 : fetched.stepsGoal
@@ -918,6 +921,16 @@ private struct PlayerLayerView: UIViewRepresentable {
     }
 
 private extension RootView {
+    func updateSubscriptionStatusMetadata(trialEndDate: Date?) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        Task {
+            await subscriptionManager.refreshSubscriptionStatus()
+            let status = subscriptionManager.subscriptionStatusDescription(trialEndDate: trialEndDate)
+            await accountFirestoreService.updateSubscriptionStatus(for: uid, status: status)
+        }
+    }
+
     func ensureAccountExists() {
         do {
             let request = FetchDescriptor<Account>()

@@ -36,11 +36,47 @@ class SubscriptionManager: ObservableObject {
         return Calendar.current.date(byAdding: .day, value: 14, to: start)
     }
 
+    /// Convenience mirrors for view code that expects explicit flags.
+    var hasActiveSubscription: Bool { hasProAccess && !isTrialActive }
+    var isInTrialPeriod: Bool { isTrialActive }
+    var trialDaysLeft: Int {
+        guard let end = trialEndDate else { return 0 }
+        let days = Int(ceil(end.timeIntervalSinceNow / 86_400))
+        return max(0, days)
+    }
+    var subscriptionExpiryDate: Date? { latestSubscriptionExpiration }
+
     var isTrialActive: Bool {
         guard let start = trialStartDate,
               UserDefaults.standard.bool(forKey: Self.trialActivatedKey),
               let end = Calendar.current.date(byAdding: .day, value: 14, to: start) else { return false }
         return Date() < end
+    }
+
+    /// Returns a human-readable subscription status string for telemetry/metadata writes.
+    /// Examples: "free", "trial - 13 days remaining", "12 months - 25 days remaining".
+    func subscriptionStatusDescription(trialEndDate: Date?) -> String {
+        let now = Date()
+
+        if isDebugForcingNoSubscription { return "free" }
+
+        let resolvedTrialEnd = trialEndDate ?? self.trialEndDate
+        if let trialEnd = resolvedTrialEnd, trialEnd > now || isTrialActive {
+            if let remaining = Self.remainingString(to: trialEnd) {
+                return "trial - \(remaining) remaining"
+            }
+            return "trial - active"
+        }
+
+        if hasProAccess {
+            let planLabel = planLabelForCurrentPurchase() ?? "pro"
+            if let expiration = latestSubscriptionExpiration, let remaining = Self.remainingString(to: expiration) {
+                return "\(planLabel) - \(remaining) remaining"
+            }
+            return "\(planLabel) - active"
+        }
+
+        return "free"
     }
 
     // TODO: Replace with your actual product IDs from App Store Connect
@@ -145,8 +181,12 @@ class SubscriptionManager: ObservableObject {
     /// Debug helper to wipe trial flags and start date so the trial can be re-triggered.
     func resetTrialState() {
         trialStartDate = nil
+        // Remove any persisted trial flags and overwrite with safe defaults to survive restarts.
         UserDefaults.standard.removeObject(forKey: Self.trialStartDateKey)
+        UserDefaults.standard.set(0, forKey: Self.trialStartDateKey)
+        UserDefaults.standard.removeObject(forKey: Self.trialActivatedKey)
         UserDefaults.standard.set(false, forKey: Self.trialActivatedKey)
+        UserDefaults.standard.synchronize()
     }
 
     func refreshSubscriptionStatus() async {
@@ -229,6 +269,23 @@ class SubscriptionManager: ObservableObject {
 }
 
 private extension SubscriptionManager {
+    static func remainingString(to date: Date) -> String? {
+        guard date > Date() else { return nil }
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.year, .month, .day]
+        formatter.unitsStyle = .full
+        formatter.maximumUnitCount = 1
+        return formatter.string(from: Date(), to: date)
+    }
+
+    func planLabelForCurrentPurchase() -> String? {
+        guard let id = purchasedProductIDs.first else { return nil }
+        if id.contains("12month") || id.contains("12months") { return "12 months" }
+        if id.contains("6month") || id.contains("6months") { return "6 months" }
+        if id.contains("1month") { return "1 month" }
+        return "pro"
+    }
+
     func updateStorefront() async {
         guard let storefront = await Storefront.current else { return }
         storefrontCurrencyCode = SubscriptionManager.currencyCode(for: storefront)

@@ -681,7 +681,7 @@ private struct AccountSetupStepView: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
-                    Text("Users must be at least 13 years old to continue.")
+                    Text("You must be at least 13 years old to continue.")
                     Spacer()
                 }
                 .font(.footnote)
@@ -2245,12 +2245,15 @@ private struct MetricToggleView: View {
                         .fontWeight(.semibold)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
-                        .surfaceCard(12)
+                        .surfaceCard(
+                            12,
+                            fill: system == unitSystem ? Color.accentColor.opacity(0.18) : Color(.secondarySystemBackground)
+                        )
+                        .foregroundColor(system == unitSystem ? Color.accentColor : Color.primary)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(system == unitSystem ? Color.accentColor : Color.clear, lineWidth: 1)
                         )
-                        .foregroundColor(system == unitSystem ? Color.accentColor : Color.primary)
                         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)

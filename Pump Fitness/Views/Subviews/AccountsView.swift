@@ -47,6 +47,7 @@ struct AccountsView: View {
     @State private var showOnboarding = false
     @State private var isDeletingAccount = false
     @State private var isSigningOut = false
+    @State private var isClearingTrialTimer = false
 
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
 
@@ -254,78 +255,69 @@ struct AccountsView: View {
                                 privacyAction: openPrivacy
                             )
 
-                            // #if DEBUG
-                            // Toggle(isOn: Binding(get: {
-                            //     subscriptionManager.isDebugForcingNoSubscription
-                            // }, set: { newVal in
-                            //     subscriptionManager.isDebugForcingNoSubscription = newVal
-                            // })) {
-                            //     VStack(alignment: .leading, spacing: 2) {
-                            //         Text("Force No Subscription (Debug)")
-                            //             .font(.subheadline).fontWeight(.semibold)
-                            //         Text("Treat this device as unsubscribed for testing")
-                            //             .font(.caption)
-                            //             .foregroundStyle(.secondary)
-                            //     }
-                            // }
-                            // .toggleStyle(.switch)
-                            // .padding(.top, 6)
-                            // #endif
+                            // Subscription Status Text
 
-                            // Button {
-                            //     subscriptionManager.resetTrialState()
-                            //     account.trialPeriodEnd = nil
-                            //     do {
-                            //         try modelContext.save()
-                            //     } catch {
-                            //         print("AccountsView: failed to clear trial locally: \(error)")
-                            //     }
-
-                            //     Task {
-                            //         let success = await viewModel.saveAccountToFirestore(account)
-                            //         if !success {
-                            //             print("AccountsView: failed to clear trial in Firestore")
-                            //         }
-                            //     }
-                            // } label: {
-                            //     VStack(alignment: .leading, spacing: 2) {
-                            //         Text("Clear Trial Timer (Debug)")
-                            //             .font(.subheadline).fontWeight(.semibold)
-                            //         Text("Remove trial flags so StoreKit behaves like a fresh install.")
-                            //             .font(.caption)
-                            //             .foregroundStyle(.secondary)
-                            //     }
-                            //     .frame(maxWidth: .infinity, alignment: .leading)
-                            // }
-                            // .buttonStyle(.bordered)
-                            // .tint(.red)
+                            #if DEBUG
+                            Toggle(isOn: Binding(get: {
+                                subscriptionManager.isDebugForcingNoSubscription
+                            }, set: { newVal in
+                                subscriptionManager.isDebugForcingNoSubscription = newVal
+                            })) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Force No Subscription (Debug)")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Text("Subscription time left: \(subscriptionTimeLeftText())")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
+                            .padding(.top, 6)
 
                             Button {
-                                if #available(iOS 17.0, *) {
-                                    Task { @MainActor in
-                                        try? Tips.resetDatastore()
-                                        try? Tips.configure([
-                                            .displayFrequency(.immediate),
-                                            .datastoreLocation(.applicationDefault)
-                                        ])
-                                        
-                                        NutritionTips.currentStep = 0
-                                        WorkoutTips.currentStep = 0
-                                        RoutineTips.currentStep = 0
-                                    }
-                                }
+                                Task { await clearTrialTimerDebug() }
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Reset TipKit Memory (Debug)")
+                                    Text("Clear Trial Timer (Debug)")
                                         .font(.subheadline).fontWeight(.semibold)
-                                    Text("Reset all tips to appear again.")
+                                    Text("Trial time left: \(trialTimeLeftText())")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .buttonStyle(.bordered)
-                            .tint(.blue)
+                            .tint(.orange)
+                            .disabled(isClearingTrialTimer)
+                            .padding(.top, 2)
+
+                            // Button {
+                            //     if #available(iOS 17.0, *) {
+                            //         Task { @MainActor in
+                            //             try? Tips.resetDatastore()
+                            //             try? Tips.configure([
+                            //                 .displayFrequency(.immediate),
+                            //                 .datastoreLocation(.applicationDefault)
+                            //             ])
+                                        
+                            //             NutritionTips.currentStep = 0
+                            //             WorkoutTips.currentStep = 0
+                            //             RoutineTips.currentStep = 0
+                            //         }
+                            //     }
+                            // } label: {
+                            //     VStack(alignment: .leading, spacing: 2) {
+                            //         Text("Reset TipKit Memory (Debug)")
+                            //             .font(.subheadline).fontWeight(.semibold)
+                            //         Text("Reset all tips to appear again.")
+                            //             .font(.caption)
+                            //             .foregroundStyle(.secondary)
+                            //     }
+                            //     .frame(maxWidth: .infinity, alignment: .leading)
+                            // }
+                            // .buttonStyle(.bordered)
+                            // .tint(.blue)
+                            #endif
                         }
                         
                     }
@@ -1344,6 +1336,76 @@ private extension AccountsView {
             return .accentColor
         }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    func subscriptionTimeLeftText(now: Date = Date()) -> String {
+        if let expiry = subscriptionManager.latestSubscriptionExpiration {
+            return countdownString(now: now, until: expiry)
+        }
+
+        if subscriptionManager.purchasedProductIDs.isEmpty {
+            return "No active subscription"
+        }
+
+        return "No expiration date"
+    }
+
+    func trialTimeLeftText(now: Date = Date()) -> String {
+        guard let end = subscriptionManager.trialEndDate else {
+            return "No active trial"
+        }
+
+        if end > now {
+            return countdownString(now: now, until: end)
+        }
+
+        return "Expired"
+    }
+
+    func countdownString(now: Date = Date(), until end: Date) -> String {
+        let remaining = max(0, Int(end.timeIntervalSince(now)))
+        let days = remaining / 86_400
+        let hours = (remaining % 86_400) / 3_600
+        let minutes = (remaining % 3_600) / 60
+        let seconds = remaining % 60
+        return String(format: "%dd %02dh %02dm %02ds", days, hours, minutes, seconds)
+    }
+
+    @MainActor
+    func clearTrialTimerDebug() async {
+        guard !isClearingTrialTimer else { return }
+        isClearingTrialTimer = true
+        defer { isClearingTrialTimer = false }
+
+        subscriptionManager.resetTrialState()
+
+        // Set trialPeriodEnd to a distant past date so the backend sees the trial as expired
+        // instead of missing (which would recreate a trial on next fetch).
+        let expiredDate = Date(timeIntervalSince1970: 0)
+        account.trialPeriodEnd = expiredDate
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("AccountsView: failed to persist cleared trial locally: \(error)")
+        }
+
+        await clearRemoteTrialPeriodEnd()
+    }
+
+    @MainActor
+    private func clearRemoteTrialPeriodEnd() async {
+        let service = AccountFirestoreService()
+        guard let id = (Auth.auth().currentUser?.uid ?? account.id) else { return }
+
+        await withCheckedContinuation { continuation in
+            service.saveAccount(account, forceOverwrite: true) { success in
+                if !success {
+                    print("AccountsView: failed to clear trialPeriodEnd in Firestore for id \(id)")
+                }
+                continuation.resume()
+            }
+        }
     }
 }
 

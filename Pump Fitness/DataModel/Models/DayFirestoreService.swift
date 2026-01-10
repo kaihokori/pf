@@ -816,7 +816,9 @@ class DayFirestoreService {
 
         var merged: [WeightExerciseValue] = []
         var seenExercises: Set<UUID> = []
-        let localByExercise = Dictionary(uniqueKeysWithValues: local.map { ($0.exerciseId, $0) })
+        let localByExercise = Dictionary(local.map { ($0.exerciseId, $0) }, uniquingKeysWith: { (first, second) in
+            return first.hasContent ? first : second
+        })
 
         for remoteEntry in remote {
             seenExercises.insert(remoteEntry.exerciseId)

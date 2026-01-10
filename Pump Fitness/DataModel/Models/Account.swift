@@ -207,10 +207,16 @@ struct SportMetricConfig: Codable, Hashable, Identifiable {
 struct WeightExerciseDefinition: Codable, Hashable, Identifiable {
     var id: UUID
     var name: String
+    var targetWeight: String?
+    var targetSets: String?
+    var targetReps: String?
 
-    init(id: UUID = UUID(), name: String) {
+    init(id: UUID = UUID(), name: String, targetWeight: String? = nil, targetSets: String? = nil, targetReps: String? = nil) {
         self.id = id
         self.name = name
+        self.targetWeight = targetWeight
+        self.targetSets = targetSets
+        self.targetReps = targetReps
     }
 
     init?(dictionary: [String: Any]) {
@@ -218,13 +224,20 @@ struct WeightExerciseDefinition: Codable, Hashable, Identifiable {
         let idRaw = dictionary["id"] as? String
         self.id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
         self.name = name
+        self.targetWeight = dictionary["targetWeight"] as? String
+        self.targetSets = dictionary["targetSets"] as? String
+        self.targetReps = dictionary["targetReps"] as? String
     }
 
     var asDictionary: [String: Any] {
-        [
+        var dict: [String: Any] = [
             "id": id.uuidString,
             "name": name
         ]
+        if let targetWeight { dict["targetWeight"] = targetWeight }
+        if let targetSets { dict["targetSets"] = targetSets }
+        if let targetReps { dict["targetReps"] = targetReps }
+        return dict
     }
 }
 

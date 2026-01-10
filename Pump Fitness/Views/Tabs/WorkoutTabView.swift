@@ -1344,7 +1344,7 @@ struct WorkoutTabView: View {
 
                 if !remoteProgress.isEmpty {
                     // Merge remote with any richer local entries (e.g., local photo present when remote upload failed).
-                    let localById = Dictionary(uniqueKeysWithValues: localProgress.map { ($0.id, $0) })
+                    let localById = Dictionary(localProgress.map { ($0.id, $0) }, uniquingKeysWith: { (first, _) in first })
                     let merged: [WeeklyProgressRecord] = remoteProgress.map { remote in
                         if let local = localById[remote.id] {
                             let photoData = local.photoData ?? remote.photoData
@@ -1525,8 +1525,8 @@ private extension WorkoutTabView {
         // Use the stored weight groups exactly as-is so an explicit empty
         // value isn't silently replaced by defaults.
         let resolvedGroups = weightGroups
-        let entriesByExercise = Dictionary(uniqueKeysWithValues: weightEntries.map { ($0.exerciseId, $0) })
-        let editingStates = Dictionary(uniqueKeysWithValues: bodyParts.map { ($0.id, $0.isEditing) })
+        let entriesByExercise = Dictionary(weightEntries.map { ($0.exerciseId, $0) }, uniquingKeysWith: { (first, _) in first })
+        let editingStates = Dictionary(bodyParts.map { ($0.id, $0.isEditing) }, uniquingKeysWith: { (first, _) in first })
 
         bodyParts = resolvedGroups.map { group in
             let exercises = group.exercises.map { def -> WeightExercise in

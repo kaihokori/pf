@@ -445,6 +445,9 @@ struct OnboardingView: View {
         let dayService = DayFirestoreService()
 
         accountService.saveAccount(account, forceOverwrite: true) { accountSuccess in
+            if let uid = account.id {
+                accountService.updateTrialPeriodEnd(for: uid, date: account.trialPeriodEnd)
+            }
             dayService.saveDay(day, forceWrite: true) { daySuccess in
                 // Ensure SubscriptionManager immediately reflects the saved trial end
                     if let end = account.trialPeriodEnd {

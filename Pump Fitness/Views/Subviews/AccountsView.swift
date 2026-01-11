@@ -255,27 +255,23 @@ struct AccountsView: View {
                                 privacyAction: openPrivacy
                             )
 
-                            Group {
-                                if subscriptionManager.isInTrialPeriod {
-                                    Text("You're trialing Pro for \(subscriptionManager.trialDaysLeft) more days")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                } else if subscriptionManager.hasActiveSubscription {
-                                    Text("You're subscribed for \(subscriptionTimeLeftText())")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 6)
-
-                            let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-                            let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
-                            Text("App Version: \(shortVersion) (\(buildNumber))")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 2)
+//                             Group {
+//                                 if subscriptionManager.isInTrialPeriod {
+//                                     Text("You're trialing Pro for \(subscriptionManager.trialDaysLeft) more days")
+//                                         .font(.footnote)
+//                                         .foregroundStyle(.secondary)
+//                                 }
+//                             }
+//                             .frame(maxWidth: .infinity, alignment: .center)
+//                             .padding(.top, 6)
+//
+//                             let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+//                             let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+//                             Text("App Version: \(shortVersion) (\(buildNumber))")
+//                                 .font(.footnote)
+//                                 .foregroundStyle(.secondary)
+//                                 .frame(maxWidth: .infinity, alignment: .center)
+//                                 .padding(.top, 2)
 
                             // #if DEBUG
                             // Toggle(isOn: Binding(get: {
@@ -339,7 +335,6 @@ struct AccountsView: View {
                             // .tint(.blue)
                             // #endif
                         }
-                        
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 32)
@@ -1419,9 +1414,9 @@ private extension AccountsView {
         guard let id = (Auth.auth().currentUser?.uid ?? account.id) else { return }
 
         await withCheckedContinuation { continuation in
-            service.saveAccount(account, forceOverwrite: true) { success in
+            service.updateTrialPeriodEnd(for: id, date: account.trialPeriodEnd) { success in
                 if !success {
-                    print("AccountsView: failed to clear trialPeriodEnd in Firestore for id \(id)")
+                    print("AccountsView: failed to update trialPeriodEnd in Firestore for id \(id)")
                 }
                 continuation.resume()
             }

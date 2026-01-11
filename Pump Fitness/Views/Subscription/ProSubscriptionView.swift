@@ -97,14 +97,6 @@ struct ProSubscriptionView: View {
         }
         return nil
     }
-
-    private var continueButtonTitle: String {
-        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive {
-            return "You are a Pro Member"
-        } else {
-            return "Continue"
-        }
-    }
     
     var body: some View {
         NavigationStack {
@@ -324,12 +316,6 @@ struct ProSubscriptionView: View {
                     }
                     .padding(.horizontal)
                     Button(action: {
-                        // Prevent attempting to purchase only if the user already owns Pro
-                        // and is not currently within a free trial period.
-                        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive {
-                            return
-                        }
-
                         if let product = selectedProduct {
                             Task {
                                 do {
@@ -345,16 +331,15 @@ struct ProSubscriptionView: View {
                             }
                         }
                     }) {
-                        Text(continueButtonTitle)
+                        Text("Continue")
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.accentColor)
+                            .background(Color.accentColor)
                             .cornerRadius(16)
-                            .shadow(color: ((selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive)) ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
+                            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
-                    .disabled(selectedProduct == nil || (subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive))
                     .padding(.horizontal)
                     .padding(.bottom, 10)
                     .background(
@@ -449,7 +434,7 @@ struct SubscriptionOptionCard: View {
                         HStack(alignment: .center) {
                             Text(weeklyPriceString(for: product))
                               .font(.footnote)
-                              .foregroundStyle(.secondary.opacity(0.8))
+                              .foregroundStyle(.primary)
                             Spacer()
                             if let savings {
                                 Text(savings)

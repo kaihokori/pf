@@ -174,7 +174,7 @@ struct ExerciseSupplementEditorSheet: View {
                                             .font(.subheadline)
                                             .fontWeight(.semibold)
 
-                                        Text("Unlock more supplement slots + benefits")
+                                        Text("Unlock unlimited supplement slots + benefits")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -485,6 +485,7 @@ struct WorkoutTabView: View {
                         schedule: $workoutSchedule,
                         weightGroups: $weightGroups,
                         accentColor: accentOverride ?? .accentColor,
+                        isPro: isPro,
                         onSave: { updated in
                             persistWorkoutSchedule(updated)
                         }
@@ -978,7 +979,7 @@ struct WorkoutTabView: View {
             .presentationDetents([.medium])
         }
         .sheet(isPresented: $showWeightsEditor) {
-            WeightsGroupEditorSheet(bodyParts: $bodyParts) { updated in
+            WeightsGroupEditorSheet(bodyParts: $bodyParts, isPro: isPro) { updated in
                 bodyParts = updated
                 showWeightsEditor = false
             }
@@ -1741,6 +1742,7 @@ private struct WeeklyWorkoutScheduleCard: View {
     @Binding var schedule: [WorkoutScheduleItem]
     @Binding var weightGroups: [WeightGroupDefinition]
     let accentColor: Color
+    var isPro: Bool
     var onSave: ([WorkoutScheduleItem]) -> Void
 
     @State private var showEditSheet = false
@@ -1814,7 +1816,8 @@ private struct WeeklyWorkoutScheduleCard: View {
             WorkoutScheduleEditorSheet(
                 schedule: $schedule,
                 availableGroups: weightGroups,
-                accentColor: effectiveAccent
+                accentColor: effectiveAccent,
+                isPro: isPro
             ) { updated in
                 schedule = updated
                 onSave(updated)
@@ -1856,9 +1859,11 @@ private struct WeeklyWorkoutScheduleCard: View {
 
 private struct WorkoutScheduleEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Binding var schedule: [WorkoutScheduleItem]
     var availableGroups: [WeightGroupDefinition] = []
     var accentColor: Color
+    var isPro: Bool
     var onSave: ([WorkoutScheduleItem]) -> Void
 
     @State private var working: [WorkoutScheduleItem] = []
@@ -1871,11 +1876,20 @@ private struct WorkoutScheduleEditorSheet: View {
 
     @State private var showColorPickerSheet = false
     @State private var colorPickerTarget: (dayIndex: Int, sessionId: UUID)? = nil
+    @State private var showProSubscription = false
     @FocusState private var focusedDescriptionID: UUID?
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
     private let daySymbols = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    
+    // Limits
+    private let freeSessionsLimit = 8
+    private var canAddMore: Bool {
+        if isPro { return true }
+        let totalSessions = working.flatMap { $0.sessions }.count
+        return totalSessions < freeSessionsLimit
+    }
 
     private var presets: [WorkoutSession] {
         [
@@ -2083,7 +2097,9 @@ private struct WorkoutScheduleEditorSheet: View {
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 28, weight: .semibold))
                                                 .foregroundStyle(effectiveAccent)
+                                                .opacity(!canAddMore ? 0.3 : 1.0)
                                         }
+                                        .disabled(!canAddMore)
                                         .buttonStyle(.plain)
                                     }
                                     .padding(.horizontal, 14)
@@ -2092,6 +2108,36 @@ private struct WorkoutScheduleEditorSheet: View {
                                 }
                             }
                         }
+                    }
+
+                    if !isPro {
+                        Button(action: { showProSubscription = true }) {
+                            HStack(alignment: .center) {
+                                Image(systemName: "sparkles")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.trailing, 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Upgrade to Pro")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+
+                                    Text("Unlock unlimited sessions + benefits")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .surfaceCard(16)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // Custom activity composer
@@ -2138,9 +2184,15 @@ private struct WorkoutScheduleEditorSheet: View {
                                 .disabled(!canAddCustom)
                             }
 
-                            Text("You can add activities to any day.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            if !isPro {
+                                Text("You can add up to \(freeSessionsLimit) sessions.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("You can add activities to any day.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -2177,6 +2229,10 @@ private struct WorkoutScheduleEditorSheet: View {
             .presentationDetents([.height(180)])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showProSubscription) {
+            ProSubscriptionView()
+                .environmentObject(subscriptionManager)
+        }
     }
 
     private var effectiveAccent: Color {
@@ -2185,7 +2241,7 @@ private struct WorkoutScheduleEditorSheet: View {
     }
 
     private var canAddCustom: Bool {
-        !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedDayIndex < working.count
+        canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedDayIndex < working.count
     }
 
     private var newActivityDate: Date {
@@ -2200,6 +2256,7 @@ private struct WorkoutScheduleEditorSheet: View {
     }
 
     private func addPreset(_ preset: WorkoutSession, to dayIndex: Int) {
+        guard canAddMore else { return }
         guard working.indices.contains(dayIndex) else { return }
         working[dayIndex].sessions.append(preset)
     }
@@ -2987,6 +3044,7 @@ private struct WeightsGroupEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Binding var bodyParts: [BodyPartWeights]
+    var isPro: Bool
     var onSave: ([BodyPartWeights]) -> Void
 
     @State private var working: [BodyPartWeights] = []
@@ -2995,10 +3053,10 @@ private struct WeightsGroupEditorSheet: View {
     @State private var showProSubscription = false
 
     private let presets: [String] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"]
-    private let maxTracked = 12
+    private let maxTracked = 6
 
     private var canAddMore: Bool {
-        if subscriptionManager.hasProAccess && !subscriptionManager.purchasedProductIDs.isEmpty { return true }
+        if isPro { return true }
         return working.count < maxTracked
     }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -3101,7 +3159,7 @@ private struct WeightsGroupEditorSheet: View {
                         }
                     }
 
-                    if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                    if !isPro {
                         Button(action: { showProSubscription = true }) {
                             HStack(alignment: .center) {
                                 Image(systemName: "sparkles")
@@ -3114,7 +3172,7 @@ private struct WeightsGroupEditorSheet: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more group slots + benefits")
+                                    Text("Unlock unlimited group slots + benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -3152,7 +3210,7 @@ private struct WeightsGroupEditorSheet: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                            if !isPro {
                                 Text("You can track up to \(maxTracked) groups.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)

@@ -29,6 +29,19 @@ struct RootView: View {
         // Debug override to force free experience regardless of trial or purchases.
         if subscriptionManager.isDebugForcingNoSubscription { return false }
 
+        // Local override from account (Admin/Support grant)
+        // If proPeriodEnd is set, it overrides EVERYTHING (both granting and revoking).
+        if let account = accounts.first {
+            if let proEnd = account.proPeriodEnd {
+                return proEnd > Date()
+            }
+        }
+        
+        // Check fetched account if local query was empty (fallback safety)
+        if let fetchedAccount = fetchAccount(), let fetchedPro = fetchedAccount.proPeriodEnd {
+            return fetchedPro > Date()
+        }
+        
         // Primary: entitlements or locally restored trial flags
         if subscriptionManager.hasProAccess || subscriptionManager.isTrialActive { return true }
 
@@ -122,6 +135,24 @@ struct RootView: View {
             .onChange(of: trackedMacros) { _, newValue in handleTrackedMacrosChange(newValue) }
             .onChange(of: macroConsumptions) { _, newValue in handleMacroConsumptionsChange(newValue) }
             .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
+            // If the user purchases a subscription, clear any stuck proPeriodEnd overrides
+            .onChange(of: subscriptionManager.purchasedProductIDs) { _, ids in
+                if !ids.isEmpty, let uid = Auth.auth().currentUser?.uid {
+                    // Check if we have a lingering override
+                    if let account = accounts.first, account.proPeriodEnd != nil {
+                         print("RootView: Subscription detected, clearing valid proPeriodEnd override.")
+                         accountFirestoreService.updateProPeriodEnd(for: uid, date: nil) { _ in
+                             // Also update local so UI reflects it immediately if needed
+                             // (though upsert usually handles this via listeners, manual update is safer UI-wise)
+                             account.proPeriodEnd = nil
+                         }
+                    } else if let fetched = fetchAccount(), fetched.proPeriodEnd != nil {
+                        // Fallback check against fetched account
+                        print("RootView: Subscription detected (fallback), clearing valid proPeriodEnd override.")
+                        accountFirestoreService.updateProPeriodEnd(for: uid, date: nil)
+                    }
+                }
+            }
     }
 
     var body: some View {
@@ -236,6 +267,10 @@ struct RootView: View {
                 withAnimation { isShowingSplash = true }
                 Task { await prepareLogDocumentIfNeeded() }
                 Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .launch) }
+                
+                // Ensure proPeriodEnd is initialized for admin visibility
+                accountFirestoreService.ensureProPeriodFieldExists(for: user.uid)
+                
                 checkOnboardingStatus()
                 // Upload any days that were created locally while the user was unauthenticated.
                 Task {
@@ -740,7 +775,12 @@ struct RootView: View {
 
                         accountFirestoreService.saveAccount(fetched, forceOverwrite: true) { success in
                             if !success {
-                                print("RootView: failed to persist trialPeriodEnd when missing on fetch")
+                                print("RootView: failed to persist account defaults")
+                            }
+                        }
+                        accountFirestoreService.updateTrialPeriodEnd(for: uid, date: newTrialEnd) { success in
+                            if !success {
+                                print("RootView: failed to persist trialPeriodEnd")
                             }
                         }
                     } else {
@@ -781,6 +821,9 @@ struct RootView: View {
                     fetched.cravings = cravings
 
                     upsertLocalAccount(with: fetched)
+                    Task { @MainActor in
+                        try? modelContext.save()
+                    }
                     autoRestDayIndices = Set(fetched.autoRestDayIndices)
                     // Use the fetched maintenance calories from the account on app load
                     maintenanceCalories = fetched.maintenanceCalories
@@ -2423,6 +2466,9 @@ private extension RootView {
                     local.distanceGoal = fetched.distanceGoal
                 local.activityTimers = fetched.activityTimers
                 local.trialPeriodEnd = fetched.trialPeriodEnd
+                local.proPeriodEnd = fetched.proPeriodEnd
+                local.subscriptionStatus = fetched.subscriptionStatus
+                local.subscriptionStatusUpdatedAt = fetched.subscriptionStatusUpdatedAt
                 local.didCompleteOnboarding = fetched.didCompleteOnboarding
                 local.weightGroups = fetched.weightGroups
                 try modelContext.save()

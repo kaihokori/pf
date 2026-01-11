@@ -145,12 +145,50 @@ struct HeaderComponent: View {
             .fill(account.avatarGradient)
             .frame(width: 58, height: 58)
             .overlay {
-                if !account.isDeleted, let avatarImage = account.avatarImage {
-                    avatarImage
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 58, height: 58)
-                        .clipShape(Circle())
+                if !account.isDeleted {
+                    if let avatarImage = account.avatarImage {
+                        avatarImage
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 58, height: 58)
+                            .clipShape(Circle())
+                    } else if let avatarUrl = account.profileAvatar,
+                              let url = URL(string: avatarUrl),
+                              avatarUrl.hasPrefix("http") {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 58, height: 58)
+                                    .clipShape(Circle())
+                            case .empty:
+                                ZStack {
+                                    Circle()
+                                        .fill(account.avatarGradient)
+                                        .frame(width: 58, height: 58)
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                            case .failure:
+                                Text(account.avatarInitials)
+                                    .font(.title3)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                            @unknown default:
+                                Text(account.avatarInitials)
+                                    .font(.title3)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                    } else {
+                        Text(account.avatarInitials)
+                            .font(.title3)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                    }
                 } else {
                     Text(account.avatarInitials)
                         .font(.title3)

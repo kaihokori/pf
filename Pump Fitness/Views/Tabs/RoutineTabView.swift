@@ -160,7 +160,7 @@ private struct HabitsEditorView: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more habit slots + benefits")
+                                    Text("Unlock unlimited habit slots + benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -649,7 +649,7 @@ struct RoutineTabView: View {
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         HStack(spacing: 12) {
                                             let cal = Calendar.current
-                                            let today = Date()
+                                            let today = selectedDate
                                             let weekday = cal.component(.weekday, from: today) // 1 = Sunday
                                             let startIndex = weekStartsOnMonday ? 2 : 1
                                             let offsetToStart = (weekday - startIndex + 7) % 7
@@ -1477,7 +1477,7 @@ private struct ActivityTimersEditorView: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more grocery slots + other benefits")
+                                    Text("Unlock unlimited grocery slots + other benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -1804,7 +1804,7 @@ private struct GoalsEditorView: View {
                                             .font(.subheadline)
                                             .fontWeight(.semibold)
 
-                                        Text("Unlock more goal slots + other benefits")
+                                        Text("Unlock unlimited goal slots + other benefits")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
@@ -1932,7 +1932,6 @@ private struct GoalsEditorView: View {
 
 private struct GroceryListEditorView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var subscriptionManager: SubscriptionManager
     @Binding var items: [GroceryItem]
     var onSave: ([GroceryItem]) -> Void
 
@@ -1940,9 +1939,6 @@ private struct GroceryListEditorView: View {
     @State private var newName: String = ""
     @State private var newNote: String = ""
     @State private var hasLoaded: Bool = false
-    @State private var showProSubscription: Bool = false
-
-    private let maxItems: Int = 8
 
     private var presets: [GroceryItem] {
         [
@@ -1952,8 +1948,7 @@ private struct GroceryListEditorView: View {
         ]
     }
 
-    private var canAddMore: Bool { working.count < maxItems }
-    private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canAddCustom: Bool { !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         NavigationStack {
@@ -2030,8 +2025,6 @@ private struct GroceryListEditorView: View {
                                                 .foregroundStyle(Color.accentColor)
                                         }
                                         .buttonStyle(.plain)
-                                        .disabled(!canAddMore)
-                                        .opacity(!canAddMore ? 0.3 : 1)
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 14)
@@ -2039,36 +2032,6 @@ private struct GroceryListEditorView: View {
                                 }
                             }
                         }
-                    }
-
-                    if !subscriptionManager.hasProAccess {
-                        Button(action: { showProSubscription = true }) {
-                            HStack(alignment: .center) {
-                                Image(systemName: "sparkles")
-                                    .font(.title3)
-                                    .foregroundStyle(Color.accentColor)
-                                    .padding(.trailing, 8)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Upgrade to Pro")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-
-                                    Text("Unlock more grocery slots + benefits")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.right")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(12)
-                            .surfaceCard(16)
-                        }
-                        .buttonStyle(.plain)
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -2097,10 +2060,6 @@ private struct GroceryListEditorView: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
                         }
-                        Text("You can create up to \(maxItems) items.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -2121,10 +2080,6 @@ private struct GroceryListEditorView: View {
             }
         }
         .onAppear(perform: loadInitial)
-        .sheet(isPresented: $showProSubscription) {
-            ProSubscriptionView()
-                .environmentObject(subscriptionManager)
-        }
     }
 
     private func loadInitial() {
@@ -2150,7 +2105,7 @@ private struct GroceryListEditorView: View {
     private func togglePreset(_ preset: GroceryItem) {
         if isPresetSelected(preset) {
             working.removeAll { $0.title == preset.title }
-        } else if canAddMore {
+        } else {
             var new = preset
             new = GroceryItem(title: new.title, note: new.note, isChecked: false)
             working.append(new)
@@ -2162,7 +2117,7 @@ private struct GroceryListEditorView: View {
     }
 
     private func donePressed() {
-        onSave(Array(working.prefix(maxItems)))
+        onSave(working)
         dismiss()
     }
 }

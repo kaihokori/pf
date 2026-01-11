@@ -954,7 +954,11 @@ class Account: ObservableObject {
     var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     var trialPeriodEnd: Date? = nil
+    var proPeriodEnd: Date? = nil
+    var subscriptionStatus: String? = nil
+    var subscriptionStatusUpdatedAt: Date? = nil
     var didCompleteOnboarding: Bool = false
+    var googleRefreshToken: String? = nil
 
     init(
         id: String? = UUID().uuidString,
@@ -1000,7 +1004,11 @@ class Account: ObservableObject {
         weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults,
         activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers,
         trialPeriodEnd: Date? = nil,
-        didCompleteOnboarding: Bool = false
+        proPeriodEnd: Date? = nil,
+        subscriptionStatus: String? = nil,
+        subscriptionStatusUpdatedAt: Date? = nil,
+        didCompleteOnboarding: Bool = false,
+        googleRefreshToken: String? = nil
     ) {
         self.id = id
         self.profileImage = profileImage
@@ -1045,7 +1053,11 @@ class Account: ObservableObject {
         self.weightGroups = weightGroups
         self.activityTimers = activityTimers
         self.trialPeriodEnd = trialPeriodEnd
+        self.proPeriodEnd = proPeriodEnd
+        self.subscriptionStatus = subscriptionStatus
+        self.subscriptionStatusUpdatedAt = subscriptionStatusUpdatedAt
         self.didCompleteOnboarding = didCompleteOnboarding
+        self.googleRefreshToken = googleRefreshToken
     }
 
     /// Safely sync cravings from Firestore on first appear. This will only
@@ -1056,7 +1068,6 @@ class Account: ObservableObject {
         guard let id = self.id, !id.isEmpty else {
             completion?(false)
             return
-        self.trialPeriodEnd = trialPeriodEnd
         }
 
         service.fetchCravings(withId: id) { remote in

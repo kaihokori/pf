@@ -4,6 +4,7 @@ import AuthenticationServices
 import GoogleSignIn
 import Combine
 import FirebaseCore
+import FirebaseFirestore
 
 class AuthViewModel: ObservableObject {
     @Published var errorMessage: String?
@@ -16,6 +17,9 @@ class AuthViewModel: ObservableObject {
             completion(false)
             return
         }
+        
+        self.isLoading = true
+        
         // Use the correct Swift API for OAuthProvider credential
         let firebaseCredential = OAuthProvider.appleCredential(
             withIDToken: tokenString,
@@ -24,6 +28,7 @@ class AuthViewModel: ObservableObject {
         )
         Auth.auth().signIn(with: firebaseCredential) { result, error in
             DispatchQueue.main.async {
+                self.isLoading = false
                 if let user = result?.user {
                     UserDefaults.standard.set(user.uid, forKey: "currentUserID")
                     if let displayName = user.displayName {
@@ -43,33 +48,38 @@ class AuthViewModel: ObservableObject {
     // Google Sign-In
     func signInWithGoogle(presenting: UIViewController, completion: @escaping (Bool) -> Void) {
         guard FirebaseApp.app()?.options.clientID != nil else { completion(false); return }
+        
+        self.isLoading = true
+        
+        // 1. Initial Sign In (Basic Profile)
         GIDSignIn.sharedInstance.signIn(withPresenting: presenting) { result, error in
-            if let user = result?.user {
-                let idToken = user.idToken?.tokenString ?? ""
-                let accessToken = user.accessToken.tokenString
-                let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
-                Auth.auth().signIn(with: credential) { result, error in
-                    DispatchQueue.main.async {
-                        if let user = result?.user {
-                            UserDefaults.standard.set(user.uid, forKey: "currentUserID")
-                            if let displayName = user.displayName {
-                                UserDefaults.standard.set(displayName, forKey: "currentUserName")
-                            }
-                            print("Signed in with Google:")
-                            print("UID: \(user.uid)")
-                            print("Email: \(user.email ?? "N/A")")
-                            print("Display Name: \(user.displayName ?? "N/A")")
-                            print("Provider: Google")
-                        }
-                        completion(error == nil)
-                    }
-                }
-            } else {
+            guard let googleUser = result?.user, error == nil else {
+                DispatchQueue.main.async { self.isLoading = false }
                 completion(false)
+                return
+            }
+            
+            // 2. Sign in to Firebase first to identify the user (get their Firebase UID)
+            let idToken = googleUser.idToken?.tokenString ?? ""
+            let accessToken = googleUser.accessToken.tokenString
+            let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
+            
+            Auth.auth().signIn(with: credential) { authResult, error in
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    if let user = authResult?.user {
+                        UserDefaults.standard.set(user.uid, forKey: "currentUserID")
+                        if let displayName = user.displayName {
+                            UserDefaults.standard.set(displayName, forKey: "currentUserName")
+                        }
+                        print("Signed in with Google (Firebase UID: \(user.uid))")
+                    }
+                    completion(authResult?.user != nil && error == nil)
+                }
             }
         }
     }
-
+    
     // Email/Password
     func signInWithEmail(email: String, password: String, completion: @escaping (Bool) -> Void) {
         Auth.auth().signIn(withEmail: email, password: password) { result, error in

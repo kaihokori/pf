@@ -61,14 +61,14 @@ class SubscriptionManager: ObservableObject {
         if isDebugForcingNoSubscription && !ignoreDebugOverride { return "free" }
 
         let resolvedTrialEnd = trialEndDate ?? self.trialEndDate
-        if let trialEnd = resolvedTrialEnd, trialEnd > now || isTrialActive {
+        if let trialEnd = resolvedTrialEnd, trialEnd > now {
             if let remaining = Self.remainingString(to: trialEnd) {
                 return "trial - \(remaining) remaining"
             }
             return "trial - active"
         }
 
-        if hasProAccess {
+        if !purchasedProductIDs.isEmpty {
             let planLabel = planLabelForCurrentPurchase() ?? "pro"
             if let expiration = latestSubscriptionExpiration, let remaining = Self.remainingString(to: expiration) {
                 return "\(planLabel) - \(remaining) remaining"
@@ -162,16 +162,22 @@ class SubscriptionManager: ObservableObject {
         return true
     }
 
-    /// Restores trial state from a known trial end date (e.g., persisted on the Account) when local flags were cleared.
-    /// Only activates if the provided end date is in the future.
+    /// Restores trial state from a known trial end date (e.g., persisted on the Account).
+    /// Updates local state even if the trial is expired, ensuring we respect the server's record.
     func restoreTrialIfNeeded(trialEnd: Date) {
-        guard trialEnd > Date() else { return }
-
         let expectedStart = Calendar.current.date(byAdding: .day, value: -14, to: trialEnd) ?? Date()
-        let alreadyActivated = UserDefaults.standard.bool(forKey: Self.trialActivatedKey)
+        
+        // If the calculated start date differs significantly (>1s) from our local record, sync it.
+        // This handles both "future trial from server" and "past/expired trial from server".
+        let needsUpdate: Bool
+        if let currentStart = trialStartDate {
+            needsUpdate = abs(currentStart.timeIntervalSince(expectedStart)) > 1
+        } else {
+            needsUpdate = true
+        }
 
-        // If activation flags are missing or the stored start date differs, refresh them.
-        if !alreadyActivated || trialStartDate == nil {
+        if needsUpdate {
+            print("SubscriptionManager: Syncing local trial state to server end date: \(trialEnd)")
             trialStartDate = expectedStart
             UserDefaults.standard.set(expectedStart.timeIntervalSince1970, forKey: Self.trialStartDateKey)
             UserDefaults.standard.set(true, forKey: Self.trialActivatedKey)

@@ -33,9 +33,14 @@ class AccountFirestoreService {
                 return
             }
 
-            let profileAvatar = data["profileAvatar"] as? String
+            let profileAvatar = (data["profileAvatar"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             
             func finish(with imageData: Data?) {
+                if let data = imageData {
+                    print("AccountFirestoreService: Finishing fetchAccount with image data attached. Size: \(data.count)")
+                } else {
+                    print("AccountFirestoreService: Finishing fetchAccount with NIL image data.")
+                }
                 let soloMetricDefs = (data["soloMetrics"] as? [[String: Any]] ?? []).compactMap { SoloMetric(dictionary: $0) }
                 let teamMetricDefs = (data["teamMetrics"] as? [[String: Any]] ?? []).compactMap { TeamMetric(dictionary: $0) }
 
@@ -107,24 +112,60 @@ class AccountFirestoreService {
                     // Preserve empty remote activity timers arrays rather than substituting defaults.
                     activityTimers: remoteActivityTimers,
                     trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue(),
-                    didCompleteOnboarding: data["didCompleteOnboarding"] as? Bool ?? false
+                    proPeriodEnd: (data["proPeriodEnd"] as? Timestamp)?.dateValue(),
+                    subscriptionStatus: data["subscriptionStatus"] as? String,
+                    subscriptionStatusUpdatedAt: (data["subscriptionStatusUpdatedAt"] as? Timestamp)?.dateValue(),
+                    didCompleteOnboarding: data["didCompleteOnboarding"] as? Bool ?? false,
+                    googleRefreshToken: data["googleRefreshToken"] as? String
                 )
 
                 completion(account)
             }
 
-            if let avatarString = profileAvatar, avatarString.hasPrefix("http") {
-                let storageRef = Storage.storage().reference(forURL: avatarString)
-                // Max size 5MB
-                storageRef.getData(maxSize: 5 * 1024 * 1024) { data, error in
-                    if let error = error {
-                        print("AccountFirestoreService: Error downloading profile image: \(error)")
-                        finish(with: nil)
-                    } else {
-                        finish(with: data)
+            if let avatarString = profileAvatar, !avatarString.isEmpty {
+                print("AccountFirestoreService: Found avatar string: \(avatarString)")
+                // If it's a Firebase Storage URL (gs:// or firebasestorage domain), use the Storage SDK
+                // so it handles auth if the rules invoke it, though usually public URLs work with URLSession too.
+                if avatarString.hasPrefix("gs://") || (avatarString.hasPrefix("http") && avatarString.contains("firebasestorage.googleapis.com")) {
+                    print("AccountFirestoreService: Attempting Firebase Storage download")
+                    let storageRef = Storage.storage().reference(forURL: avatarString)
+                    // Max size 5MB
+                    storageRef.getData(maxSize: 5 * 1024 * 1024) { data, error in
+                        if let error = error {
+                            print("AccountFirestoreService: Error downloading profile image: \(error)")
+                            // Fallback to simpler URL download if it was http, or just fail
+                            if avatarString.hasPrefix("http"), let url = URL(string: avatarString) {
+                                print("AccountFirestoreService: Falling back to standard URL download")
+                                URLSession.shared.dataTask(with: url) { data, _, _ in
+                                    finish(with: data)
+                                }.resume()
+                            } else {
+                                finish(with: nil)
+                            }
+                        } else {
+                            print("AccountFirestoreService: Successfully downloaded image via Storage SDK. Size: \(data?.count ?? 0) bytes")
+                            finish(with: data)
+                        }
                     }
+                } else if avatarString.hasPrefix("http"), let url = URL(string: avatarString) {
+                    // External URL (e.g. Google auth image, unrelated host)
+                    print("AccountFirestoreService: Attempting external URL download: \(url)")
+                    URLSession.shared.dataTask(with: url) { data, response, error in
+                        if let data = data, error == nil {
+                            print("AccountFirestoreService: Successfully downloaded external image. Size: \(data.count) bytes")
+                            finish(with: data)
+                        } else {
+                            print("AccountFirestoreService: Error downloading external profile image: \(error?.localizedDescription ?? "unknown")")
+                            finish(with: nil)
+                        }
+                    }.resume()
+                } else {
+                    // Not a URL string (e.g. "0", "1" for local colors), so no image data to fetch.
+                    print("AccountFirestoreService: Avatar string is not a URL (likely a color index). No image to fetch.")
+                    finish(with: nil)
                 }
             } else {
+                print("AccountFirestoreService: profileAvatar is nil or empty")
                 finish(with: nil)
             }
         }
@@ -162,6 +203,43 @@ class AccountFirestoreService {
         }
     }
 
+    /// Explicitly updates the trialPeriodEnd field.
+    /// Use this instead of saveAccount to avoid race conditions overwriting remote values with stale local data.
+    func updateTrialPeriodEnd(for id: String, date: Date?, completion: ((Bool) -> Void)? = nil) {
+        var data: [String: Any] = [:]
+        if let d = date {
+            data["trialPeriodEnd"] = Timestamp(date: d)
+        } else {
+            data["trialPeriodEnd"] = FieldValue.delete()
+        }
+        
+        db.collection(collection).document(id).setData(data, merge: true) { error in
+            if let error {
+                print("AccountFirestoreService.updateTrialPeriodEnd error: \(error.localizedDescription)")
+            }
+            completion?(error == nil)
+        }
+    }
+
+    /// Explicitly updates the proPeriodEnd field.
+    /// Use this instead of saveAccount to avoid race conditions overwriting remote values with stale local data.
+    func updateProPeriodEnd(for id: String, date: Date?, completion: ((Bool) -> Void)? = nil) {
+        var data: [String: Any] = [:]
+        if let d = date {
+            data["proPeriodEnd"] = Timestamp(date: d)
+        } else {
+            // Set to null to clear the override but keep the field key present
+            data["proPeriodEnd"] = NSNull()
+        }
+        
+        db.collection(collection).document(id).setData(data, merge: true) { error in
+            if let error {
+                print("AccountFirestoreService.updateProPeriodEnd error: \(error.localizedDescription)")
+            }
+            completion?(error == nil)
+        }
+    }
+
     /// Persist a lightweight subscription status string for analytics/metadata.
     func updateSubscriptionStatus(for id: String, status: String, completion: ((Bool) -> Void)? = nil) async {
         let payload: [String: Any] = [
@@ -178,6 +256,21 @@ class AccountFirestoreService {
                     completion?(true)
                 }
                 continuation.resume()
+            }
+        }
+    }
+
+    /// Checks if 'proPeriodEnd' exists in the document. If not, initializes it to null.
+    /// This ensures the field is visible in the console for manual editing.
+    func ensureProPeriodFieldExists(for id: String) {
+        let docRef = db.collection(collection).document(id)
+        docRef.getDocument { snapshot, error in
+            if let data = snapshot?.data() {
+                // If key is missing entirely, set it to NSNull() to make it "present" but empty.
+                if data["proPeriodEnd"] == nil {
+                     print("AccountFirestoreService: proPeriodEnd missing, initializing to null.")
+                     docRef.setData(["proPeriodEnd": NSNull()], merge: true)
+                }
             }
         }
     }
@@ -243,8 +336,8 @@ class AccountFirestoreService {
         let mealSchedule = account.mealSchedule
         let mealCatalog = account.mealCatalog
         let itineraryEvents = account.itineraryEvents
-        let trialPeriodEnd = account.trialPeriodEnd
         let activityLevel = account.activityLevel
+        let googleRefreshToken = account.googleRefreshToken
 
         func proceedWithSave(avatarURL: String?) {
             var data: [String: Any] = [:]
@@ -301,6 +394,12 @@ class AccountFirestoreService {
             if forceOverwrite || didCompleteOnboarding {
                 data["didCompleteOnboarding"] = didCompleteOnboarding
             }
+            if forceOverwrite || (googleRefreshToken?.isEmpty == false) {
+                // Only write if we have a token, or if we are overwriting everything (though usually token is only added/updated, not removed)
+                if let token = googleRefreshToken {
+                    data["googleRefreshToken"] = token
+                }
+            }
             
             if forceOverwrite || (startWeekOn?.isEmpty == false) {
                 data["startWeekOn"] = startWeekOn ?? ""
@@ -338,11 +437,6 @@ class AccountFirestoreService {
             data["mealCatalog"] = mealCatalog.map { $0.asDictionary }
             // Persist itinerary events even when empty so deletions propagate.
             data["itineraryEvents"] = itineraryEvents.map { $0.asFirestoreDictionary() }
-            if let trialEnd = trialPeriodEnd {
-                data["trialPeriodEnd"] = Timestamp(date: trialEnd)
-            } else if forceOverwrite {
-                data["trialPeriodEnd"] = FieldValue.delete()
-            }
 
             // Handle activityLevel carefully: avoid writing a default 'sedentary'
             // value into Firestore on initial saves (e.g. app launch). If the

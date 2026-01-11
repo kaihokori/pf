@@ -176,6 +176,7 @@ private struct FullScreenMapView: View {
     // Temporary guard to suppress POI sheet while a detail view is opening.
     @State private var suppressPOISheet: Bool = false
     @State private var editingEvent: ItineraryEvent?
+    @State private var coordinateToResolve: CLLocationCoordinate2D?
     @State private var editorSeedDate = Date()
     @State private var initialCamera: MapCameraPosition? = nil
     @State private var hasMovedFromInitial: Bool = false
@@ -437,13 +438,16 @@ private struct FullScreenMapView: View {
                 ItineraryEventEditorView(
                     event: event,
                     defaultDate: editorSeedDate,
+                    coordinateToResolve: coordinateToResolve,
                     onSave: { updated in
                         upsertEvent(updated)
                         selectedEvent = updated
                         editingEvent = nil
+                        coordinateToResolve = nil
                     },
                     onCancel: {
                         editingEvent = nil
+                        coordinateToResolve = nil
                     }
                 )
             }
@@ -464,38 +468,28 @@ private struct FullScreenMapView: View {
     }
 
     private func resolvePOI(at coordinate: CLLocationCoordinate2D) {
-        // Keep annotation buttons working: ignore taps if already loading or no coordinate
-        isResolvingPOI = true
-        tappedPOI = POISelection(name: "", subtitle: "", coordinate: coordinate)
-
-        Task {
-            let result = await lookupPOI(at: coordinate)
-            await MainActor.run {
-                let poi = result ?? POISelection(name: "Pinned Location", subtitle: formattedCoordinate(coordinate), coordinate: coordinate)
-
-                // Prefill an ItineraryEvent with the POI information and open the editor
-                let newEvent = ItineraryEvent(
-                    name: "",
-                    notes: "",
-                    date: editorSeedDate,
-                    locationAdministrativeArea: nil,
-                    locationCountry: nil,
-                    locationLatitude: poi.coordinate.latitude,
-                    locationLocality: nil,
-                    locationLongitude: poi.coordinate.longitude,
-                    locationName: poi.name,
-                    locationPostcode: nil,
-                    locationSubThoroughfare: nil,
-                    locationThoroughfare: poi.subtitle,
-                    type: "activity"
-                )
-
-                editingEvent = newEvent
-                editorSeedDate = Date()
-                isResolvingPOI = false
-                isShowingPOISheet = false
-            }
-        }
+        // Immediately create a placeholder event and open the editor
+        // letting the editor handle the async resolution of the place name.
+        let newEvent = ItineraryEvent(
+            name: "",
+            notes: "",
+            date: editorSeedDate,
+            locationAdministrativeArea: nil,
+            locationCountry: nil,
+            locationLatitude: coordinate.latitude,
+            locationLocality: nil,
+            locationLongitude: coordinate.longitude,
+            locationName: "",
+            locationPostcode: nil,
+            locationSubThoroughfare: nil,
+            locationThoroughfare: nil,
+            type: "activity"
+        )
+        
+        self.coordinateToResolve = coordinate
+        self.editingEvent = newEvent
+        self.editorSeedDate = Date()
+        self.isShowingPOISheet = false
     }
 
     private func lookupPOI(at coordinate: CLLocationCoordinate2D) async -> POISelection? {
@@ -652,6 +646,7 @@ struct ItineraryEventEditorView: View {
 
     var event: ItineraryEvent?
     var defaultDate: Date
+    var coordinateToResolve: CLLocationCoordinate2D?
     var onSave: (ItineraryEvent) -> Void
     var onCancel: () -> Void
 
@@ -666,6 +661,7 @@ struct ItineraryEventEditorView: View {
     @State private var time: Date
     @State private var isShowingCalendar: Bool = false
     @State private var isShowingPlacePicker: Bool = false
+    @State private var isResolvingLocation: Bool = false
 
     // Calendar picker state and helpers (used by the inline calendar selector)
     private let calendar = Calendar.current
@@ -701,9 +697,10 @@ struct ItineraryEventEditorView: View {
         return true
     }
 
-    init(event: ItineraryEvent?, defaultDate: Date = Date(), onSave: @escaping (ItineraryEvent) -> Void, onCancel: @escaping () -> Void) {
+    init(event: ItineraryEvent?, defaultDate: Date = Date(), coordinateToResolve: CLLocationCoordinate2D? = nil, onSave: @escaping (ItineraryEvent) -> Void, onCancel: @escaping () -> Void) {
         self.event = event
         self.defaultDate = defaultDate
+        self.coordinateToResolve = coordinateToResolve
         self.onSave = onSave
         self.onCancel = onCancel
 
@@ -719,6 +716,7 @@ struct ItineraryEventEditorView: View {
         _longitude = State(initialValue: event?.coordinate.map { String(format: "%.4f", $0.longitude) } ?? "")
         _day = State(initialValue: baseDate)
         _time = State(initialValue: event?.date ?? defaultDate)
+        _isResolvingLocation = State(initialValue: coordinateToResolve != nil)
     }
 
     var body: some View {
@@ -749,6 +747,11 @@ struct ItineraryEventEditorView: View {
                     .disabled(!isValid)
                     .opacity(isValid ? 1 : 0.4)
                 }
+            }
+        }
+        .task {
+            if let coordinate = coordinateToResolve {
+                await resolveLocation(coordinate)
             }
         }
     }
@@ -802,23 +805,35 @@ struct ItineraryEventEditorView: View {
             VStack(spacing: 12) {
                 VStack(spacing: 12) {
                     Button(action: {
-                        isShowingPlacePicker = true
+                        if !isResolvingLocation {
+                            isShowingPlacePicker = true
+                        }
                     }) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(locationName.isEmpty ? "Place or venue" : locationName)
-                                    .foregroundStyle(locationName.isEmpty ? Color.secondary.opacity(0.8) : Color.primary)
+                                if isResolvingLocation {
+                                    HStack(spacing: 8) {
+                                        ProgressView()
+                                        Text("Identifying place...")
+                                            .foregroundStyle(.secondary)
+                                    }
                                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                                if !address.isEmpty {
-                                    Text(address)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    .frame(height: 38)
+                                } else {
+                                    Text(locationName.isEmpty ? "Place or venue" : locationName)
+                                        .foregroundStyle(locationName.isEmpty ? Color.secondary.opacity(0.8) : Color.primary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    if !address.isEmpty {
+                                        Text(address)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                                 }
                             }
 
-                            if !locationName.isEmpty {
+                            if !locationName.isEmpty && !isResolvingLocation {
                                 Button(action: {
                                     locationName = ""
                                     address = ""
@@ -1308,5 +1323,48 @@ struct ItineraryEventEditorView: View {
         .filter { !$0.isEmpty }
 
         return parts.joined(separator: ", ")
+    }
+
+    private func resolveLocation(_ coordinate: CLLocationCoordinate2D) async {
+        // Small delay to ensure the sheet animation starts smoothly
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        
+        let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 800)
+        let search = MKLocalSearch(request: request)
+        
+        var nameResult = "Pinned Location"
+        var addressResult = formattedCoordinate(coordinate)
+        
+        if let response = try? await search.start(), let poiResult = response.mapItems.first {
+             nameResult = poiResult.name ?? "Unnamed Place"
+             
+             if #available(iOS 26, *) {
+                 if let addr = poiResult.address {
+                    let full = addr.fullAddress
+                    if !full.isEmpty {
+                        addressResult = full
+                    } else {
+                        addressResult = addr.shortAddress ?? ""
+                    }
+                 } else {
+                     let location = poiResult.location
+                     addressResult = formattedCoordinate(location.coordinate)
+                 }
+             } else {
+                 addressResult = poiResult.name ?? addressResult
+             }
+        }
+        
+        await MainActor.run {
+            self.locationName = nameResult
+            self.address = addressResult
+            self.isResolvingLocation = false
+        }
+    }
+
+    private func formattedCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
+        let lat = String(format: "%.4f", coordinate.latitude)
+        let lon = String(format: "%.4f", coordinate.longitude)
+        return "Lat \(lat), Lon \(lon)"
     }
 }

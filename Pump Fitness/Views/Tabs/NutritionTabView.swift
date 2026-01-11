@@ -1763,7 +1763,7 @@ struct SupplementEditorSheet: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more supplement slots + benefits")
+                                    Text("Unlock unlimited supplement slots + benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -2593,7 +2593,7 @@ struct MacroEditorSheet: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more macro slots + benefits")
+                                    Text("Unlock unlimited macro slots + benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -4463,18 +4463,6 @@ struct FastingTimerCard: View {
         .onChange(of: selectedProtocol) { _, _ in
             applyProtocolChange()
         }
-        .onChange(of: customHours) { _, _ in
-            if selectedProtocol != .custom {
-                selectedProtocol = .custom
-            }
-            applyProtocolChange()
-        }
-        .onChange(of: customMinutes) { _, _ in
-            if selectedProtocol != .custom {
-                selectedProtocol = .custom
-            }
-            applyProtocolChange()
-        }
         .sheet(isPresented: $showProtocolSheet) {
             FastingProtocolSheet(
                 selectedProtocol: $selectedProtocol,
@@ -4529,8 +4517,11 @@ private struct FastingProtocolSheet: View {
                                 TextField("Hours", text: $customHours)
                                     .keyboardType(.numberPad)
                                     .textFieldStyle(.plain)
-                                    .onChange(of: customHours) { _, _ in
-                                        if selectedProtocol != .custom {
+                                    .onChange(of: customHours) { _, newValue in
+                                        let h = Int(newValue) ?? 0
+                                        let m = Int(customMinutes) ?? 0
+                                        let total = h * 60 + m
+                                        if selectedProtocol != .custom && total != selectedProtocol.minutes {
                                             selectedProtocol = .custom
                                         }
                                     }
@@ -4545,8 +4536,11 @@ private struct FastingProtocolSheet: View {
                                 TextField("Minutes", text: $customMinutes)
                                     .keyboardType(.numberPad)
                                     .textFieldStyle(.plain)
-                                    .onChange(of: customMinutes) { _, _ in
-                                        if selectedProtocol != .custom {
+                                    .onChange(of: customMinutes) { _, newValue in
+                                        let h = Int(customHours) ?? 0
+                                        let m = Int(newValue) ?? 0
+                                        let total = h * 60 + m
+                                        if selectedProtocol != .custom && total != selectedProtocol.minutes {
                                             selectedProtocol = .custom
                                         }
                                     }

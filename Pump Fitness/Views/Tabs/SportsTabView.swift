@@ -1248,12 +1248,12 @@ struct SportsTabView: View {
             }
         }
         .sheet(isPresented: $showTeamMetricsEditor) {
-            TeamPlayMetricsEditorSheet(metrics: $teamMetrics) { updated in
+            TeamPlayMetricsEditorSheet(metrics: $teamMetrics, isPro: isPro) { updated in
                 persistTeamMetrics(updated)
             }
         }
         .sheet(isPresented: $showSoloMetricsEditor) {
-            SoloPlayMetricsEditorSheet(metrics: $soloMetrics) { updated in
+            SoloPlayMetricsEditorSheet(metrics: $soloMetrics, isPro: isPro) { updated in
                 persistSoloMetrics(updated)
             }
         }
@@ -1810,6 +1810,7 @@ fileprivate struct SoloPlaySection: View {
 private struct SoloPlayMetricsEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var metrics: [SoloMetric]
+    var isPro: Bool
     var onSave: ([SoloMetric]) -> Void
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
@@ -1822,7 +1823,7 @@ private struct SoloPlayMetricsEditorSheet: View {
     private let maxTracked = 6
 
     private var canAddMore: Bool {
-        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive { return true }
+        if isPro { return true }
         return working.count < maxTracked
     }
     private var canAddCustom: Bool {
@@ -1920,7 +1921,7 @@ private struct SoloPlayMetricsEditorSheet: View {
                         }
                     }
 
-                    if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                    if !isPro {
                         Button(action: { showProSubscription = true }) {
                             HStack(alignment: .center) {
                                 Image(systemName: "sparkles")
@@ -1933,7 +1934,7 @@ private struct SoloPlayMetricsEditorSheet: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more metric slots + benefits")
+                                    Text("Unlock unlimited metric slots + benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -1968,6 +1969,12 @@ private struct SoloPlayMetricsEditorSheet: View {
                             .buttonStyle(.plain)
                             .disabled(!canAddCustom)
                             .opacity(!canAddCustom ? 0.4 : 1)
+                        }
+
+                        if !isPro {
+                            Text("You can track up to \(maxTracked) metrics.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -2220,6 +2227,7 @@ fileprivate struct TeamPlaySection: View {
 private struct TeamPlayMetricsEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var metrics: [TeamMetric]
+    var isPro: Bool
     var onSave: ([TeamMetric]) -> Void
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
 
@@ -2232,7 +2240,7 @@ private struct TeamPlayMetricsEditorSheet: View {
     private let maxTracked = 6
 
     private var canAddMore: Bool {
-        if subscriptionManager.hasProAccess && !subscriptionManager.isTrialActive { return true }
+        if isPro { return true }
         return working.count < maxTracked
     }
     private var canAddCustom: Bool {
@@ -2337,7 +2345,7 @@ private struct TeamPlayMetricsEditorSheet: View {
                         }
                     }
 
-                    if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                    if !isPro {
                         Button(action: { showProSubscription = true }) {
                             HStack(alignment: .center) {
                                 Image(systemName: "sparkles")
@@ -2350,7 +2358,7 @@ private struct TeamPlayMetricsEditorSheet: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
 
-                                    Text("Unlock more metric slots + benefits")
+                                    Text("Unlock unlimited metric slots + benefits")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -2388,7 +2396,7 @@ private struct TeamPlayMetricsEditorSheet: View {
                                 .opacity(!canAddCustom ? 0.4 : 1)
                             }
 
-                            if !subscriptionManager.hasProAccess || subscriptionManager.purchasedProductIDs.isEmpty {
+                            if !isPro {
                                 Text("You can track up to \(maxTracked) metrics.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)

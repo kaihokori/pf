@@ -123,6 +123,14 @@ struct WelcomeView: View {
                 .glassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 24)
             }
+            
+            if authViewModel.isLoading {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.5)
+            }
         }
     }
 }

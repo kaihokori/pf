@@ -843,117 +843,117 @@ struct SportsTabView: View {
                                 }
                             }
 
-                            VStack {
-                                HStack {
-                                    Text("Solo Play Tracking")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
+                            // VStack {
+                            //     HStack {
+                            //         Text("Solo Play Tracking")
+                            //             .font(.title3)
+                            //             .fontWeight(.semibold)
+                            //             .foregroundStyle(.primary)
 
-                                    Spacer()
+                            //         Spacer()
 
-                                    Button {
-                                        showSoloMetricsEditor = true
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                            .font(.callout)
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 18)
-                                .padding(.top, 38)
-                                .padding(.bottom, 8)
+                            //         Button {
+                            //             showSoloMetricsEditor = true
+                            //         } label: {
+                            //             Label("Edit", systemImage: "pencil")
+                            //                 .font(.callout)
+                            //                 .fontWeight(.medium)
+                            //                 .padding(.horizontal, 12)
+                            //                 .padding(.vertical, 8)
+                            //                 .glassEffect(in: .rect(cornerRadius: 18.0))
+                            //         }
+                            //         .buttonStyle(.plain)
+                            //     }
+                            //     .frame(maxWidth: .infinity, alignment: .leading)
+                            //     .padding(.horizontal, 18)
+                            //     .padding(.top, 38)
+                            //     .padding(.bottom, 8)
 
-                               SoloPlaySection(
-                                   selectedDate: selectedDate,
-                                   metrics: $soloMetrics,
-                                   metricValues: $soloMetricValuesStore,
-                                   focusBinding: $soloInputsFocused,
-                                   onValueChange: handleSoloMetricValueChange
-                               )
-                                .padding(.horizontal, 18)
-                            }
-                            .opacity(isPro ? 1 : 0.5)
-                            .blur(radius: isPro ? 0 : 4)
-                            .disabled(!isPro)
-                            .overlay {
-                                if !isPro {
-                                    ZStack {
-                                        Color.black.opacity(0.001) // Capture taps
-                                            .onTapGesture {
-                                                // Optional: Trigger upgrade flow
-                                            }
+                            //    SoloPlaySection(
+                            //        selectedDate: selectedDate,
+                            //        metrics: $soloMetrics,
+                            //        metricValues: $soloMetricValuesStore,
+                            //        focusBinding: $soloInputsFocused,
+                            //        onValueChange: handleSoloMetricValueChange
+                            //    )
+                            //     .padding(.horizontal, 18)
+                            // }
+                            // .opacity(isPro ? 1 : 0.5)
+                            // .blur(radius: isPro ? 0 : 4)
+                            // .disabled(!isPro)
+                            // .overlay {
+                            //     if !isPro {
+                            //         ZStack {
+                            //             Color.black.opacity(0.001) // Capture taps
+                            //                 .onTapGesture {
+                            //                     // Optional: Trigger upgrade flow
+                            //                 }
                                         
-                                        VStack(spacing: 8) {
-                                            HStack {
-                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+                            //             VStack(spacing: 8) {
+                            //                 HStack {
+                            //                     let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
 
-                                                if let accent {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.template)
-                                                        .foregroundStyle(accent)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                } else {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.original)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                }
+                            //                     if let accent {
+                            //                         Image("logo")
+                            //                             .resizable()
+                            //                             .renderingMode(.template)
+                            //                             .foregroundStyle(accent)
+                            //                             .aspectRatio(contentMode: .fit)
+                            //                             .frame(height: 40)
+                            //                             .padding(.leading, 4)
+                            //                             .offset(y: 6)
+                            //                     } else {
+                            //                         Image("logo")
+                            //                             .resizable()
+                            //                             .renderingMode(.original)
+                            //                             .aspectRatio(contentMode: .fit)
+                            //                             .frame(height: 40)
+                            //                             .padding(.leading, 4)
+                            //                             .offset(y: 6)
+                            //                     }
                                                 
-                                                Text("PRO")
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundStyle(Color.white)
-                                                    .padding(.horizontal, 8)
-                                                    .padding(.vertical, 4)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(
-                                                                accent.map {
-                                                                    LinearGradient(
-                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                                        startPoint: .topLeading,
-                                                                        endPoint: .bottomTrailing
-                                                                    )
-                                                                } ?? LinearGradient(
-                                                                    gradient: Gradient(colors: [
-                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                    ]),
-                                                                    startPoint: .topLeading,
-                                                                    endPoint: .bottomTrailing
-                                                                )
-                                                            )
-                                                    )
-                                                    .offset(y: 6)
-                                            }
-                                            .padding(.bottom, 5)
+                            //                     Text("PRO")
+                            //                         .font(.subheadline)
+                            //                         .fontWeight(.semibold)
+                            //                         .foregroundStyle(Color.white)
+                            //                         .padding(.horizontal, 8)
+                            //                         .padding(.vertical, 4)
+                            //                         .background(
+                            //                             RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            //                                 .fill(
+                            //                                     accent.map {
+                            //                                         LinearGradient(
+                            //                                             gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                            //                                             startPoint: .topLeading,
+                            //                                             endPoint: .bottomTrailing
+                            //                                         )
+                            //                                     } ?? LinearGradient(
+                            //                                         gradient: Gradient(colors: [
+                            //                                             Color(red: 0.74, green: 0.43, blue: 0.97),
+                            //                                             Color(red: 0.83, green: 0.99, blue: 0.94)
+                            //                                         ]),
+                            //                                         startPoint: .topLeading,
+                            //                                         endPoint: .bottomTrailing
+                            //                                     )
+                            //                                 )
+                            //                         )
+                            //                         .offset(y: 6)
+                            //                 }
+                            //                 .padding(.bottom, 5)
                                             
-                                            Text("Trackerio Pro")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
+                            //                 Text("Trackerio Pro")
+                            //                     .font(.headline)
+                            //                     .foregroundStyle(.primary)
                                             
-                                            Text("Upgrade to unlock Solo Play Tracking + More")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                                    }
-                                }
-                            }
+                            //                 Text("Upgrade to unlock Solo Play Tracking + More")
+                            //                     .font(.caption)
+                            //                     .foregroundStyle(.secondary)
+                            //             }
+                            //             .padding()
+                            //             .glassEffect(in: .rect(cornerRadius: 16.0))
+                            //         }
+                            //     }
+                            // }
 
                             VStack {
                                 HStack {
@@ -1021,7 +1021,48 @@ struct SportsTabView: View {
                                                         .accessibilityLabel("Edit sport metrics")
                                                 }
                                                 .buttonStyle(.plain)
+                                            }
 
+                                            if idx == 0 {
+                                                Button {
+                                                    dataEntrySportIndex = idx
+                                                    editingSportRecord = nil
+                                                    dataEntryDefaultDate = selectedDate
+                                                } label: {
+                                                    HStack(spacing: 8) {
+                                                        Spacer()
+                                                        Label("Submit Data", systemImage: "paperplane.fill")
+                                                            .font(.callout.weight(.semibold))
+                                                        Spacer()
+                                                    }
+                                                    .padding(.vertical, 18)
+                                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                                                }
+                                                .sportsTip(.sportsTracking, isEnabled: isPro)
+                                                .id("sportsTracking")
+                                                .padding(.horizontal, 8)
+                                                .buttonStyle(.plain)
+                                                .contentShape(RoundedRectangle(cornerRadius: 16.0))
+                                            } else {
+                                                Button {
+                                                    dataEntrySportIndex = idx
+                                                    editingSportRecord = nil
+                                                    dataEntryDefaultDate = selectedDate
+                                                } label: {
+                                                    HStack(spacing: 8) {
+                                                        Spacer()
+                                                        Label("Submit Data", systemImage: "paperplane.fill")
+                                                            .font(.callout.weight(.semibold))
+                                                        Spacer()
+                                                    }
+                                                    .padding(.vertical, 18)
+                                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                                                }
+                                                .padding(.horizontal, 8)
+                                                .buttonStyle(.plain)
+                                                .contentShape(RoundedRectangle(cornerRadius: 16.0))
                                             }
 
                                             ForEach(sport.metrics) { metric in
@@ -1103,38 +1144,6 @@ struct SportsTabView: View {
                                                 }
                                             }
                                             .padding(.horizontal, 8)
-
-                                            if idx == 0 {
-                                                Button {
-                                                    dataEntrySportIndex = idx
-                                                    editingSportRecord = nil
-                                                    dataEntryDefaultDate = selectedDate
-                                                } label: {
-                                                    Label("Submit Data", systemImage: "paperplane.fill")
-                                                        .font(.callout.weight(.semibold))
-                                                        .padding(.vertical, 18)
-                                                        .frame(maxWidth: .infinity, minHeight: 52)
-                                                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                                                }
-                                                .sportsTip(.sportsTracking, isEnabled: isPro)
-                                                .id("sportsTracking")
-                                                .padding(.horizontal, 8)
-                                                .buttonStyle(.plain)
-                                            } else {
-                                                Button {
-                                                    dataEntrySportIndex = idx
-                                                    editingSportRecord = nil
-                                                    dataEntryDefaultDate = selectedDate
-                                                } label: {
-                                                    Label("Submit Data", systemImage: "paperplane.fill")
-                                                        .font(.callout.weight(.semibold))
-                                                        .padding(.vertical, 18)
-                                                        .frame(maxWidth: .infinity, minHeight: 52)
-                                                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                                                }
-                                                .padding(.horizontal, 8)
-                                                .buttonStyle(.plain)
-                                            }
                                         }
                                         .padding(20)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2103,12 +2112,18 @@ fileprivate struct TeamPlaySection: View {
     var focusBinding: FocusState<Bool>.Binding
     var onValueChange: (TeamMetric, String) -> Void
     var onScoreChange: (Int, Int) -> Void
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .center, spacing: 18) {
+            let defaultAccent = Color(UIColor.systemFill)
+            let homeAccent = themeManager.selectedTheme == .multiColour ? Color.yellow : defaultAccent
+            let awayAccent = themeManager.selectedTheme == .multiColour ? Color.indigo : defaultAccent
+
             HStack(spacing: 12) {
-                ScoreBox(title: "Home", value: $homeScore)
-                ScoreBox(title: "Away", value: $awayScore)
+                ScoreBox(title: "Home", value: $homeScore, accent: homeAccent)
+                ScoreBox(title: "Away", value: $awayScore, accent: awayAccent)
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
@@ -2126,7 +2141,7 @@ fileprivate struct TeamPlaySection: View {
                                     .keyboardType(.decimalPad)
                                     .focused(focusBinding)
                                     .padding()
-                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                    .background(Color(UIColor.systemFill), in: RoundedRectangle(cornerRadius: 16))
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -2174,6 +2189,7 @@ fileprivate struct TeamPlaySection: View {
     private struct ScoreBox: View {
         let title: String
         @Binding var value: Int
+        let accent: Color
 
         var body: some View {
             VStack(spacing: 12) {
@@ -2219,7 +2235,7 @@ fileprivate struct TeamPlaySection: View {
             }
             .padding()
             .aspectRatio(1, contentMode: .fit)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .background(accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
         }
     }
 }

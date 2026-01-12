@@ -365,7 +365,6 @@ private struct SleepDayColumn: View {
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
     }
 
@@ -635,6 +634,8 @@ struct RoutineTabView: View {
                                 Spacer()
                                 Label("Sleep Summary", systemImage: "bed.double.fill")
                                     .font(.callout.weight(.semibold))
+                                Image(systemName: showWeeklySleep ? "chevron.up" : "chevron.down")
+                                    .font(.caption.weight(.semibold))
                                 Spacer()
                             }
                             .contentShape(Rectangle())

@@ -93,7 +93,7 @@ struct OnboardingView: View {
                                     ExpensesStepView(viewModel: viewModel)
                                 case .sports:
                                     SportsStepView(viewModel: viewModel)
-                                case .travel:
+                                case .itinerary:
                                     TravelStepView(viewModel: viewModel)
                                 }
                             }
@@ -513,7 +513,7 @@ struct OnboardingView: View {
                    viewModel.canAddSports {
                     viewModel.addSport()
                 }
-            case .travel:
+            case .itinerary:
                 if !viewModel.newEventName.trimmingCharacters(in: .whitespaces).isEmpty {
                     viewModel.addItineraryEvent()
                 }
@@ -621,7 +621,7 @@ struct OnboardingView: View {
             return "Please complete all fields."
         case .sports:
             return "Please complete all fields."
-        case .travel:
+        case .itinerary:
             return "Please complete all fields."
         }
     }
@@ -917,9 +917,30 @@ private struct NutritionTrackingStepView: View {
             }
             .buttonStyle(.plain)
 
-            SectionTitle("Target Calories")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            HStack {
+                SectionTitle("Target Calories")
+                    // .font(.footnote)
+                    // .foregroundStyle(.secondary)
+                Spacer()
+                let disableAuto = viewModel.shouldDisableCalorieAuto
+                Button(action: { viewModel.autoCalculateMacro(.calories) }) {
+                    Text("Auto Calculate Target")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                .fill(Color.accentColor)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(disableAuto)
+                .opacity(disableAuto ? 0.5 : 1)
+            }
+            .padding(.bottom, -8)
+            
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     TextField(
@@ -934,29 +955,30 @@ private struct NutritionTrackingStepView: View {
                     Text("cal")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    
-                    let disableAuto = viewModel.shouldDisableCalorieAuto
-                    Button(action: { viewModel.autoCalculateMacro(.calories) }) {
-                        Text("Auto")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 18.0, style: .continuous)
-                                    .fill(Color.accentColor)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(disableAuto)
-                    .opacity(disableAuto ? 0.5 : 1)
                 }
                 .padding()
                 .surfaceCard(12)
             }
 
-            SectionTitle("Tracked Macros")
+            HStack {
+                SectionTitle("Tracked Macros")
+                Spacer()
+                Button(action: { viewModel.autoCalculateAllMacros() }) {
+                    Text("Auto Calculate Macros")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18.0, style: .continuous)
+                                .fill(Color.accentColor)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, -8)
+            
             VStack(spacing: 16) {
                 // Protein
                 HStack {
@@ -1134,24 +1156,6 @@ private struct NutritionTrackingStepView: View {
                 }
                 .padding()
                 .surfaceCard(12)
-
-                // Single consolidated Auto button for macros
-                HStack {
-                    Spacer()
-                    Button(action: { viewModel.autoCalculateAllMacros() }) {
-                        Text("Auto Calculate Macros")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 18.0, style: .continuous)
-                                    .fill(Color.accentColor)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
             }
 
             if !viewModel.customMacros.isEmpty {
@@ -2516,7 +2520,7 @@ final class OnboardingViewModel: ObservableObject {
                 .weightsTracking,
                 .workoutSupplements,
                 .sports,
-                .travel
+                .itinerary
             ]
         } else {
             return [
@@ -2530,7 +2534,7 @@ final class OnboardingViewModel: ObservableObject {
                 .weightsTracking,
                 .workoutSupplements,
                 .sports,
-                .travel
+                .itinerary
             ]
         }
     }
@@ -2658,7 +2662,7 @@ final class OnboardingViewModel: ObservableObject {
             return true
         case .sports:
             return true
-        case .travel:
+        case .itinerary:
             return true
         }
     }
@@ -3139,7 +3143,7 @@ enum OnboardingStep: CaseIterable, Equatable {
     case weightsTracking
     case expenses
     case sports
-    case travel
+    case itinerary
 
     var title: String {
         switch self {
@@ -3154,7 +3158,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .weightsTracking: return "Weights"
         case .expenses: return "Routine"
         case .sports: return "Sports"
-        case .travel: return "Travel"
+        case .itinerary: return "Itinerary"
         }
     }
 
@@ -3181,7 +3185,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .weightsTracking: return "dumbbell.fill"
         case .expenses: return "dollarsign.circle"
         case .sports: return "sportscourt"
-        case .travel: return "airplane"
+        case .itinerary: return "airplane"
         }
     }
 
@@ -3198,7 +3202,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .weightsTracking: return "Choose which body parts you want to track for weights."
         case .expenses: return "Yeah we know! We could help you manage your expenses!"
         case .sports: return "What sports do you want to track your performance in?"
-        case .travel: return "Keep track of plans before you voyage around the world"
+        case .itinerary: return "Keep track of plans before you voyage around the world"
         }
     }
 

@@ -967,17 +967,17 @@ struct AccountsView: View {
                                 .toggleStyle(.switch)
                             }
 
-                            // Travel
+                            // Itinerary
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("Travel")
+                                Text("Itinerary")
                                     .font(.title2.weight(.bold))
                                 Divider()
 
                                 Toggle(isOn: $itineraryAlertsEnabled) {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Travel Itinerary")
+                                        Text("Itinerary Events")
                                             .font(.subheadline.weight(.semibold))
-                                        Text("Receive reminders for your upcoming itinerary events.")
+                                        Text("Receive reminders for your upcoming activities.")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }

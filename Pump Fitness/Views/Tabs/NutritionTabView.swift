@@ -1375,7 +1375,7 @@ struct CalorieSummary: View {
                 Image(systemName: "info.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Values are in calories (cal).")
+                Text("Values are in calories (cal)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -3426,6 +3426,8 @@ struct DailyMealLogSection: View {
                 Spacer()
                 Label("What You've Eaten", systemImage: "magnifyingglass")
                     .font(.callout.weight(.semibold))
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
                 Spacer()
             }
             .contentShape(Rectangle())
@@ -3529,6 +3531,8 @@ struct DailyMealLogSection: View {
                 Spacer()
                 Label("Weekly Intake", systemImage: "chart.bar.xaxis")
                     .font(.callout.weight(.semibold))
+                Image(systemName: showWeeklyMacros ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
                 Spacer()
             }
             .contentShape(Rectangle())

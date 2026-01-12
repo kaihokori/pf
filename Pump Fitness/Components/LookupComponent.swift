@@ -41,6 +41,7 @@ struct LookupComponent: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @FocusState private var searchFieldIsFocused: Bool
+    @FocusState private var portionFieldIsFocused: Bool
 
     @State private var searchText: String = ""
     @State private var foundItems: [LookupResultItem] = []
@@ -72,6 +73,7 @@ struct LookupComponent: View {
                             TextField("0", text: $portionSizeGrams)
                                 .keyboardType(.decimalPad)
                                 .textFieldStyle(.plain)
+                                .focused($portionFieldIsFocused)
                             Text("g")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -84,8 +86,18 @@ struct LookupComponent: View {
                             if filtered != newValue {
                                 portionSizeGrams = filtered
                             }
-                            if portionSizeGrams.isEmpty {
-                                portionSizeGrams = "0"
+                            // Allow the field to be empty while the user is editing.
+                            // We'll normalize (strip leading zeros / default to "0") when it loses focus.
+                        }
+                        .onChange(of: portionFieldIsFocused) { _, focused in
+                            if !focused {
+                                // On blur: normalize value. If empty -> "0". Otherwise strip leading zeros.
+                                if portionSizeGrams.isEmpty {
+                                    portionSizeGrams = "0"
+                                } else {
+                                    let trimmed = portionSizeGrams.drop(while: { $0 == "0" })
+                                    portionSizeGrams = trimmed.isEmpty ? "0" : String(trimmed)
+                                }
                             }
                         }
                     }

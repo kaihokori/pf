@@ -259,7 +259,7 @@ struct WeightGroupDefinition: Codable, Hashable, Identifiable {
         self.name = name
         let exerciseDicts = dictionary["exercises"] as? [[String: Any]] ?? []
         let exercises = exerciseDicts.compactMap { WeightExerciseDefinition(dictionary: $0) }
-        self.exercises = exercises.isEmpty ? WeightGroupDefinition.defaults.first?.exercises ?? [] : exercises
+        self.exercises = exercises
     }
 
     var asDictionary: [String: Any] {
@@ -271,32 +271,7 @@ struct WeightGroupDefinition: Codable, Hashable, Identifiable {
     }
 
     static var defaults: [WeightGroupDefinition] {
-        let chestId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
-        let benchId = UUID(uuidString: "22222222-2222-2222-2222-222222222222") ?? UUID()
-        let chestAccessoryId = UUID(uuidString: "33333333-3333-3333-3333-333333333333") ?? UUID()
-
-        let backId = UUID(uuidString: "44444444-4444-4444-4444-444444444444") ?? UUID()
-        let pullDownId = UUID(uuidString: "55555555-5555-5555-5555-555555555555") ?? UUID()
-        let backAccessoryId = UUID(uuidString: "66666666-6666-6666-6666-666666666666") ?? UUID()
-
-        return [
-            .init(
-                id: chestId,
-                name: "Chest",
-                exercises: [
-                    WeightExerciseDefinition(id: benchId, name: "Bench Press"),
-                    WeightExerciseDefinition(id: chestAccessoryId, name: "")
-                ]
-            ),
-            .init(
-                id: backId,
-                name: "Back",
-                exercises: [
-                    WeightExerciseDefinition(id: pullDownId, name: "Pull Down"),
-                    WeightExerciseDefinition(id: backAccessoryId, name: "")
-                ]
-            )
-        ]
+        return []
     }
 }
 
@@ -570,6 +545,8 @@ struct ItineraryEvent: Codable, Hashable, Identifiable {
     var locationSubThoroughfare: String?
     var locationThoroughfare: String?
     var type: String
+    var photoData: Data?
+    var pdfData: Data?
 
     init(
         id: UUID = UUID(),
@@ -585,7 +562,9 @@ struct ItineraryEvent: Codable, Hashable, Identifiable {
         locationPostcode: String? = nil,
         locationSubThoroughfare: String? = nil,
         locationThoroughfare: String? = nil,
-        type: String = "other"
+        type: String = "other",
+        photoData: Data? = nil,
+        pdfData: Data? = nil
     ) {
         self.id = id
         self.name = name
@@ -601,6 +580,8 @@ struct ItineraryEvent: Codable, Hashable, Identifiable {
         self.locationSubThoroughfare = locationSubThoroughfare
         self.locationThoroughfare = locationThoroughfare
         self.type = type
+        self.photoData = photoData
+        self.pdfData = pdfData
     }
 
     init?(dictionary: [String: Any]) {
@@ -623,6 +604,20 @@ struct ItineraryEvent: Codable, Hashable, Identifiable {
         let locationSubThoroughfare = dictionary["locationSubThoroughfare"] as? String
         let locationThoroughfare = dictionary["locationThoroughfare"] as? String
 
+        var decodedPhoto: Data? = nil
+        if let base64 = dictionary["photoDataBase64"] as? String {
+            decodedPhoto = Data(base64Encoded: base64)
+        } else if let rawData = dictionary["photoData"] as? Data {
+            decodedPhoto = rawData
+        }
+
+        var decodedPDF: Data? = nil
+        if let base64 = dictionary["pdfDataBase64"] as? String {
+            decodedPDF = Data(base64Encoded: base64)
+        } else if let rawData = dictionary["pdfData"] as? Data {
+            decodedPDF = rawData
+        }
+
         self.init(
             id: id,
             name: name,
@@ -637,7 +632,9 @@ struct ItineraryEvent: Codable, Hashable, Identifiable {
             locationPostcode: locationPostcode,
             locationSubThoroughfare: locationSubThoroughfare,
             locationThoroughfare: locationThoroughfare,
-            type: type
+            type: type,
+            photoData: decodedPhoto,
+            pdfData: decodedPDF
         )
     }
 
@@ -674,6 +671,12 @@ struct ItineraryEvent: Codable, Hashable, Identifiable {
         if let locationPostcode { dict["locationPostcode"] = locationPostcode }
         if let locationSubThoroughfare { dict["locationSubThoroughfare"] = locationSubThoroughfare }
         if let locationThoroughfare { dict["locationThoroughfare"] = locationThoroughfare }
+        if let photoData {
+             dict["photoDataBase64"] = photoData.base64EncodedString()
+        }
+           if let pdfData {
+               dict["pdfDataBase64"] = pdfData.base64EncodedString()
+           }
         return dict
     }
 
@@ -951,7 +954,7 @@ class Account: ObservableObject {
     var sports: [SportConfig] = []
     var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
     var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
-    var weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults
+    var weightGroups: [WeightGroupDefinition] = []
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     var trialPeriodEnd: Date? = nil
     var proPeriodEnd: Date? = nil
@@ -1001,7 +1004,7 @@ class Account: ObservableObject {
         caloriesBurnGoal: Int = 800,
         stepsGoal: Int = 10_000,
         distanceGoal: Double = 3_000,
-        weightGroups: [WeightGroupDefinition] = WeightGroupDefinition.defaults,
+        weightGroups: [WeightGroupDefinition] = [],
         activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers,
         trialPeriodEnd: Date? = nil,
         proPeriodEnd: Date? = nil,

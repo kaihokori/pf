@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
 import MapKit
 import CoreLocation
 import Combine
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct MapSection: View {
     @Binding var events: [ItineraryEvent]
@@ -104,6 +107,73 @@ struct MapSection: View {
             )
             .environmentObject(themeManager)
         }
+    }
+}
+
+private struct MapLegalInsetAdjuster: UIViewRepresentable {
+    let left: CGFloat
+    let bottom: CGFloat
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView(frame: .zero)
+        v.backgroundColor = .clear
+        v.isUserInteractionEnabled = false
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            // Search windows for an MKMapView and adjust its layoutMargins.
+            let mapView = findMapViewInScenes() ?? findMapViewInKeyWindow()
+            if let map = mapView {
+                map.layoutMargins = UIEdgeInsets(top: 0, left: left, bottom: bottom, right: 0)
+            }
+        }
+    }
+
+    private func findMapViewInScenes() -> MKMapView? {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let scene = scene as? UIWindowScene else { continue }
+            for window in scene.windows where window.isHidden == false {
+                if let found = findMap(in: window) { return found }
+            }
+        }
+        return nil
+    }
+
+    private func findMapViewInKeyWindow() -> MKMapView? {
+        // Prefer finding the key window on connected scenes (iOS 15+).
+        if #available(iOS 15.0, *) {
+            for scene in UIApplication.shared.connectedScenes {
+                guard let windowScene = scene as? UIWindowScene else { continue }
+                if let key = windowScene.windows.first(where: { $0.isKeyWindow }) {
+                    return findMap(in: key)
+                }
+            }
+
+            // Fallback: look through all non-hidden windows on each scene
+            for scene in UIApplication.shared.connectedScenes {
+                guard let windowScene = scene as? UIWindowScene else { continue }
+                for window in windowScene.windows where !window.isHidden {
+                    if let found = findMap(in: window) { return found }
+                }
+            }
+            return nil
+        } else {
+            // iOS <15 fallback
+            if let window = UIApplication.shared.keyWindow {
+                return findMap(in: window)
+            }
+            return UIApplication.shared.windows.compactMap { findMap(in: $0) }.first
+        }
+    }
+
+    private func findMap(in view: UIView) -> MKMapView? {
+        if let map = view as? MKMapView { return map }
+        for sub in view.subviews {
+            if let found = findMap(in: sub) { return found }
+        }
+        return nil
     }
 }
 
@@ -298,6 +368,12 @@ private struct FullScreenMapView: View {
                 }
                 .ignoresSafeArea()
 
+                // Adjust the underlying MKMapView's layoutMargins so the
+                // Apple legal element (bottom-left) is not clipped.
+                MapLegalInsetAdjuster(left: 12, bottom: 20)
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+
                 .onAppear {
                     if locationManager.lastLocation == nil {
                         locationManager.requestLocation()
@@ -305,13 +381,37 @@ private struct FullScreenMapView: View {
 
                     // Ensure full-screen map initially frames only the annotation pins
                     // and ignores subsequent location updates so it doesn't include
-                    // the user's current location unexpectedly.
+                    // the user's current location unexpectedly. If the closest
+                    // event is within 5km of the user, zoom into the user's
+                    // location instead of fitting all events.
                     let coords = filteredEvents.compactMap { $0.coordinate }
                     if !coords.isEmpty {
-                        let region = regionForEvents(filteredEvents)
-                        locationManager.ignoreLocationUpdates = true
-                        locationManager.cameraPosition = .region(region)
-                        initialCamera = .region(region)
+                        if let userLoc = locationManager.lastLocation {
+                            // Compute distance to nearest event
+                            let distances = coords.map { coord in
+                                CLLocation(latitude: coord.latitude, longitude: coord.longitude).distance(from: userLoc)
+                            }
+                            if let minDist = distances.min(), minDist <= 5_000 {
+                                // Nearest event within 5km: center on user with a tighter span
+                                let span = MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+                                let region = MKCoordinateRegion(center: userLoc.coordinate, span: span)
+                                locationManager.ignoreLocationUpdates = true
+                                locationManager.cameraPosition = .region(region)
+                                initialCamera = .region(region)
+                            } else {
+                                // Otherwise, fit all events
+                                let region = regionForEvents(filteredEvents)
+                                locationManager.ignoreLocationUpdates = true
+                                locationManager.cameraPosition = .region(region)
+                                initialCamera = .region(region)
+                            }
+                        } else {
+                            // No known user location yet: fall back to fitting events
+                            let region = regionForEvents(filteredEvents)
+                            locationManager.ignoreLocationUpdates = true
+                            locationManager.cameraPosition = .region(region)
+                            initialCamera = .region(region)
+                        }
                     } else {
                         // No annotations: center on default region but still ignore
                         // location-driven camera updates until user explicitly asks.
@@ -659,6 +759,11 @@ struct ItineraryEventEditorView: View {
     @State private var longitude: String
     @State private var day: Date
     @State private var time: Date
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var selectedPhotoData: Data? = nil
+    @State private var selectedPDFData: Data? = nil
+    @State private var selectedPDFName: String? = nil
+    @State private var isShowingPDFImporter: Bool = false
     @State private var isShowingCalendar: Bool = false
     @State private var isShowingPlacePicker: Bool = false
     @State private var isResolvingLocation: Bool = false
@@ -716,6 +821,8 @@ struct ItineraryEventEditorView: View {
         _longitude = State(initialValue: event?.coordinate.map { String(format: "%.4f", $0.longitude) } ?? "")
         _day = State(initialValue: baseDate)
         _time = State(initialValue: event?.date ?? defaultDate)
+        _selectedPhotoData = State(initialValue: event?.photoData)
+        _selectedPDFData = State(initialValue: event?.pdfData)
         _isResolvingLocation = State(initialValue: coordinateToResolve != nil)
     }
 
@@ -726,6 +833,8 @@ struct ItineraryEventEditorView: View {
                     categorySection
                     detailsSection
                     notesSection
+                    photoSection
+                    pdfSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
@@ -752,6 +861,35 @@ struct ItineraryEventEditorView: View {
         .task {
             if let coordinate = coordinateToResolve {
                 await resolveLocation(coordinate)
+            }
+        }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            Task {
+                if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                    selectedPhotoData = data
+                }
+            }
+        }
+        .fileImporter(isPresented: $isShowingPDFImporter, allowedContentTypes: [.pdf]) { result in
+            switch result {
+            case .success(let url):
+                var data: Data? = nil
+                let needsAccess = url.startAccessingSecurityScopedResource()
+                defer { if needsAccess { url.stopAccessingSecurityScopedResource() } }
+
+                do {
+                    data = try Data(contentsOf: url)
+                } catch {
+                    data = nil
+                }
+
+                DispatchQueue.main.async {
+                    selectedPDFData = data
+                    selectedPDFName = url.lastPathComponent
+                }
+            case .failure:
+                selectedPDFData = nil
+                selectedPDFName = nil
             }
         }
     }
@@ -1243,6 +1381,126 @@ struct ItineraryEventEditorView: View {
         }
     }
 
+    private var photoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Photo")
+                .font(.subheadline.weight(.semibold))
+            
+            HStack {
+                if let data = selectedPhotoData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 80, height: 80)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+                        )
+                        
+                    Button(role: .destructive) {
+                        withAnimation {
+                            selectedPhotoData = nil
+                            selectedPhotoItem = nil
+                        }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "trash")
+                                .font(.callout)
+                                .foregroundStyle(.red)
+                                .accessibilityLabel("Remove photo")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 8)
+                } else {
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        HStack {
+                            Image(systemName: "photo")
+                                .font(.title3)
+                            Text("Add Photo")
+                                .font(.callout)
+                        }
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.accentColor.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var pdfSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PDF")
+                .font(.subheadline.weight(.semibold))
+
+            HStack(spacing: 10) {
+                if let data = selectedPDFData {
+                    let displayName = (selectedPDFName ?? "PDF attached")
+                    let truncatedName: String = {
+                        if displayName.count > 16 {
+                            return String(displayName.prefix(16)) + "..."
+                        }
+                        return displayName
+                    }()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(truncatedName)
+                            .font(.callout.weight(.semibold))
+                        Text(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        isShowingPDFImporter = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.callout)
+                            .accessibilityLabel("Replace PDF")
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(role: .destructive) {
+                        withAnimation {
+                            selectedPDFData = nil
+                            selectedPDFName = nil
+                        }
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("Remove PDF")
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        isShowingPDFImporter = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.fill")
+                                .font(.title3)
+                            Text("Add PDF")
+                                .font(.callout)
+                        }
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.accentColor.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private func save() {
         guard isValid else { return }
 
@@ -1261,7 +1519,9 @@ struct ItineraryEventEditorView: View {
             locationLongitude: lonValue,
             locationName: trimmedLocation,
             locationThoroughfare: address.isEmpty ? nil : address,
-            type: selectedCategory.rawValue
+            type: selectedCategory.rawValue,
+            photoData: selectedPhotoData,
+            pdfData: selectedPDFData
         )
 
         updated.name = trimmedName
@@ -1272,6 +1532,8 @@ struct ItineraryEventEditorView: View {
         updated.locationLongitude = lonValue
         updated.locationThoroughfare = address.isEmpty ? nil : address
         updated.type = selectedCategory.rawValue
+        updated.photoData = selectedPhotoData
+        updated.pdfData = selectedPDFData
 
         onSave(updated)
         dismiss()

@@ -2787,12 +2787,12 @@ private extension RootView {
                                 .onAppear { handleTabAppear(.sports) }
                             }
                             Tab(
-                                "Travel",
-                                systemImage: AppTab.travel.systemImage,
-                                value: AppTab.travel,
+                                "Itinerary",
+                                systemImage: AppTab.itinerary.systemImage,
+                                value: AppTab.itinerary,
                             ) {
                                 TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate, isPro: isPro)
-                                    .onAppear { handleTabAppear(.travel) }
+                                    .onAppear { handleTabAppear(.itinerary) }
                             }
                         }
                     }
@@ -2827,7 +2827,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
     case routine
     case workout
     case sports
-    case travel
+    case itinerary
 
     var id: String { rawValue }
 
@@ -2837,7 +2837,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
         case .routine: return "Routine"
         case .workout: return "Workout"
         case .sports: return "Sports"
-        case .travel: return "Travel"
+        case .itinerary: return "Itinerary"
         }
     }
 
@@ -2847,7 +2847,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
         case .routine: return "calendar.and.person"
         case .workout: return "figure.strengthtraining.traditional"
         case .sports: return "sportscourt.fill"
-        case .travel: return "globe.asia.australia.fill"
+        case .itinerary: return "globe.asia.australia.fill"
         }
     }
 }

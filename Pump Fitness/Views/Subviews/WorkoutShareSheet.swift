@@ -17,6 +17,31 @@ struct WeightSnapshot: Identifiable {
     let note: String?
 }
 
+struct DailySummarySnapshot {
+    let calories: Double
+    let steps: Double
+    let distanceMeters: Double
+
+    private static let integerFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
+    var caloriesText: String {
+        Self.integerFormatter.string(from: NSNumber(value: Int(calories))) ?? "\(Int(calories))"
+    }
+
+    var stepsText: String {
+        Self.integerFormatter.string(from: NSNumber(value: Int(steps))) ?? "\(Int(steps))"
+    }
+
+    var distanceText: String {
+        String(format: "%.1f km", distanceMeters / 1000)
+    }
+}
+
 struct BodyMeasurements {
     var lastWeightKg: Double?
     var waterPercent: Double?
@@ -26,6 +51,7 @@ struct BodyMeasurements {
 struct WorkoutShareSheet: View {
     var accentColor: Color
     var dailyCheckIn: String
+    var dailySummary: DailySummarySnapshot
     var schedule: [WorkoutScheduleSnapshot]
     var supplements: [Supplement]
     var takenSupplements: Set<String>
@@ -39,6 +65,7 @@ struct WorkoutShareSheet: View {
     @State private var showSupplements = true
     @State private var showWeights = true
     @State private var showMeasurements = true
+    @State private var showDailySummary = true
 
     @State private var selectedWeightGroupId: UUID? = nil
     @State private var sharePayload: WorkoutSharePayload?
@@ -61,6 +88,8 @@ struct WorkoutShareSheet: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         VStack(spacing: 0) {
+                            ToggleRow(title: "Daily Summary", isOn: $showDailySummary, icon: "chart.bar.fill", color: .purple)
+                            Divider().padding(.leading, 44)
                             ToggleRow(title: "Today's Schedule", isOn: $showSchedule, icon: "calendar", color: .blue)
                             Divider().padding(.leading, 44)
                             if !supplements.isEmpty {
@@ -101,6 +130,7 @@ struct WorkoutShareSheet: View {
                             WorkoutShareCard(
                                 accentColor: accentColor,
                                 checkInText: dailyCheckIn,
+                                dailySummary: dailySummary,
                                 schedule: schedule,
                                 supplements: supplements,
                                 takenIDs: takenSupplements,
@@ -108,6 +138,7 @@ struct WorkoutShareSheet: View {
                                 weightEntries: weightEntries,
                                 selectedWeightGroupId: $selectedWeightGroupId,
                                 measurements: measurements,
+                                showDailySummary: showDailySummary,
                                 showSchedule: showSchedule,
                                 showSupplements: showSupplements,
                                 showWeights: showWeights,
@@ -185,6 +216,7 @@ struct WorkoutShareSheet: View {
             WorkoutShareCard(
                 accentColor: accentColor,
                 checkInText: dailyCheckIn,
+                dailySummary: dailySummary,
                 schedule: schedule,
                 supplements: supplements,
                 takenIDs: takenSupplements,
@@ -192,6 +224,7 @@ struct WorkoutShareSheet: View {
                 weightEntries: weightEntries,
                 selectedWeightGroupId: .constant(selectedWeightGroupId),
                 measurements: measurements,
+                showDailySummary: showDailySummary,
                 showSchedule: showSchedule,
                 showSupplements: showSupplements,
                 showWeights: showWeights,
@@ -221,6 +254,7 @@ struct WorkoutShareSheet: View {
 private struct WorkoutShareCard: View {
     var accentColor: Color
     var checkInText: String
+    var dailySummary: DailySummarySnapshot
     var schedule: [WorkoutScheduleSnapshot]
     var supplements: [Supplement]
     var takenIDs: Set<String>
@@ -229,6 +263,7 @@ private struct WorkoutShareCard: View {
     var selectedWeightGroupId: Binding<UUID?>
     var measurements: BodyMeasurements
 
+    var showDailySummary: Bool
     var showSchedule: Bool
     var showSupplements: Bool
     var showWeights: Bool
@@ -258,6 +293,10 @@ private struct WorkoutShareCard: View {
             .background(Color(UIColor.secondarySystemBackground))
 
             VStack(spacing: 18) {
+                if showDailySummary {
+                    WorkoutDailySummarySection(summary: dailySummary, color: .purple)
+                }
+
                 if showSchedule && !schedule.isEmpty {
                     WorkoutScheduleSection(items: schedule, checkInText: checkInText)
                 }
@@ -317,8 +356,8 @@ private struct WorkoutScheduleSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "TODAY'S SCHEDULE", icon: "calendar", color: .blue)
             HStack {
-                SectionHeader(title: "TODAY'S SCHEDULE", icon: "calendar", color: .blue)
                 Spacer()
                 // Status: Checked In / Rest Day / Not Logged
                 Text(statusText(from: checkInText))
@@ -563,6 +602,38 @@ private struct WorkoutMeasurementsSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .padding(0)
+    }
+}
+
+private struct WorkoutDailySummarySection: View {
+    var summary: DailySummarySnapshot
+    var color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "DAILY SUMMARY", icon: "chart.bar.fill", color: color)
+            HStack(spacing: 12) {
+                statCard(title: "Calories", value: summary.caloriesText)
+                statCard(title: "Steps", value: summary.stepsText)
+                statCard(title: "Distance", value: summary.distanceText)
+            }
+            .padding(10)
+            .background(Color(UIColor.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .padding(0)
+    }
+
+    private func statCard(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

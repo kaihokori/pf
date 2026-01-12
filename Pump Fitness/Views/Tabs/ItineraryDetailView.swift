@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import MapKit
 import CoreLocation
+import PDFKit
 
 struct ItineraryDetailView: View {
     let event: ItineraryEvent
@@ -9,6 +10,8 @@ struct ItineraryDetailView: View {
     var onDelete: ((ItineraryEvent) -> Void)?
 
     @State private var cameraPosition: MapCameraPosition
+    @State private var showFullScreenImage: Bool = false
+    @State private var showPDFViewer: Bool = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
@@ -59,7 +62,7 @@ struct ItineraryDetailView: View {
     }
 
     private var mapSection: some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             if hasValidCoordinate {
                 Map(position: $cameraPosition, interactionModes: []) {
                     if let coordinate = event.coordinate {
@@ -78,6 +81,26 @@ struct ItineraryDetailView: View {
                 )
                 .frame(height: mapHeight)
             }
+            
+            if let data = event.photoData, let uiImage = UIImage(data: data) {
+                Button {
+                    showFullScreenImage = true
+                } label: {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white, lineWidth: 3)
+                        )
+                        .shadow(color: Color.black.opacity(0.3), radius: 6, x: 0, y: 3)
+                }
+                .buttonStyle(.plain)
+                .padding([.top, .trailing], 20)
+                .offset(y: 40)
+            }
 
         }
         .overlay(alignment: .topLeading) {
@@ -86,6 +109,36 @@ struct ItineraryDetailView: View {
                 .padding(.top, topSafeAreaInset)
         }
         .ignoresSafeArea(edges: .top)
+        .fullScreenCover(isPresented: $showFullScreenImage) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                if let data = event.photoData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .ignoresSafeArea()
+                }
+
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            showFullScreenImage = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.white)
+                                .opacity(0.9)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 20)
+                        .padding(.top, 50)
+                    }
+                    Spacer()
+                }
+            }
+        }
     }
 
     private var detailSection: some View {
@@ -232,7 +285,33 @@ struct ItineraryDetailView: View {
                     .accessibilityLabel("Open in Maps")
                 }
                 .buttonStyle(.plain)
-                .padding(.top)
+            }
+
+            if let pdfData = event.pdfData {
+                Button {
+                    showPDFViewer = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.richtext")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("View PDF")
+                            .font(.callout)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(.thickMaterial, in: .rect(cornerRadius: 12))
+                    .accessibilityLabel("View attached PDF")
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showPDFViewer) {
+                    ItineraryPDFViewer(pdfData: pdfData)
+                }
             }
         }
         .padding(.horizontal)
@@ -375,5 +454,58 @@ struct MapEventBadge: View {
             Image(systemName: category.symbol)
                 .foregroundStyle(.white)
         }
+    }
+}
+
+private struct ItineraryPDFViewer: View {
+    let pdfData: Data
+    @Environment(\.dismiss) private var dismiss
+    @State private var tempURL: URL? = nil
+
+    var body: some View {
+        NavigationStack {
+            PDFKitView(data: pdfData)
+                .navigationTitle("PDF")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { dismiss() }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        if let tempURL {
+                            ShareLink(item: tempURL) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                }
+                .onAppear { prepareTempFile() }
+        }
+    }
+
+    private func prepareTempFile() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("itinerary-\(UUID().uuidString).pdf")
+        do {
+            try pdfData.write(to: url)
+            tempURL = url
+        } catch {
+            tempURL = nil
+        }
+    }
+}
+
+private struct PDFKitView: UIViewRepresentable {
+    let data: Data
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.document = PDFDocument(data: data)
+        return view
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        uiView.document = PDFDocument(data: data)
     }
 }

@@ -534,6 +534,7 @@ struct WorkoutTabView: View {
                             progress: min(Double(caloriesBurnedToday) / Double(caloriesBurnGoal), 1.0)
                         )
                         .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                         .onTapGesture {
                             adjustTarget = "calories"
                             refreshHealthKitValues(applyToState: false, persist: false)
@@ -551,6 +552,7 @@ struct WorkoutTabView: View {
                                 progress: stepsProgress
                             )
                             .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                             .onTapGesture {
                                 adjustTarget = "steps"
                                 refreshHealthKitValues(applyToState: false, persist: false)
@@ -566,6 +568,7 @@ struct WorkoutTabView: View {
                                 progress: walkingProgress
                             )
                             .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                             .onTapGesture {
                                 adjustTarget = "walking"
                                 refreshHealthKitValues(applyToState: false, persist: false)
@@ -1007,6 +1010,11 @@ struct WorkoutTabView: View {
             WorkoutShareSheet(
                 accentColor: accentOverride ?? .accentColor,
                 dailyCheckIn: checkInStatusText,
+                dailySummary: DailySummarySnapshot(
+                    calories: caloriesBurnedToday,
+                    steps: stepsTakenToday,
+                    distanceMeters: distanceTravelledToday
+                ),
                 schedule: todaysSessions,
                 supplements: account.workoutSupplements,
                 takenSupplements: dayTakenWorkoutSupplementIDs,
@@ -1807,6 +1815,14 @@ private struct WeeklyWorkoutScheduleCard: View {
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
             .padding(.horizontal, 4)
+
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                Text("Tap an activity to view details.")
+                Spacer()
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
         .padding(20)
         .glassEffect(in: .rect(cornerRadius: 16.0))
@@ -1998,7 +2014,7 @@ private struct WorkoutScheduleEditorSheet: View {
                                                                 }
                                                                 .padding(.horizontal, 12)
                                                                 .padding(.vertical, 8)
-                                                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
+                                                                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
                                                                 .foregroundColor(.primary)
                                                                 
                                                             }
@@ -2441,7 +2457,7 @@ private struct WorkoutSessionDetailView: View {
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18.0))
+                                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18))
                                 .foregroundColor(.primary)
                             }
                         }
@@ -3306,6 +3322,19 @@ private struct WeightsTrackingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if bodyParts.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No weight groups yet", systemImage: "list.bullet.rectangle")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("Add weight groups in the Edit screen to track them here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+            }
+
             // One section per body part
             ForEach($bodyParts) { $part in
                 VStack(alignment: .leading, spacing: 12) {

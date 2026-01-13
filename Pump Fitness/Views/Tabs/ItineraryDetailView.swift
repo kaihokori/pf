@@ -81,27 +81,6 @@ struct ItineraryDetailView: View {
                 )
                 .frame(height: mapHeight)
             }
-            
-            if let data = event.photoData, let uiImage = UIImage(data: data) {
-                Button {
-                    showFullScreenImage = true
-                } label: {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 3)
-                        )
-                        .shadow(color: Color.black.opacity(0.3), radius: 6, x: 0, y: 3)
-                }
-                .buttonStyle(.plain)
-                .padding([.top, .trailing], 20)
-                .offset(y: 40)
-            }
-
         }
         .overlay(alignment: .topLeading) {
             backButton
@@ -109,36 +88,6 @@ struct ItineraryDetailView: View {
                 .padding(.top, topSafeAreaInset)
         }
         .ignoresSafeArea(edges: .top)
-        .fullScreenCover(isPresented: $showFullScreenImage) {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                if let data = event.photoData, let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .ignoresSafeArea()
-                }
-
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button {
-                            showFullScreenImage = false
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.white)
-                                .opacity(0.9)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 20)
-                        .padding(.top, 50)
-                    }
-                    Spacer()
-                }
-            }
-        }
     }
 
     private var detailSection: some View {
@@ -287,6 +236,30 @@ struct ItineraryDetailView: View {
                 .buttonStyle(.plain)
             }
 
+            if let data = event.photoData, UIImage(data: data) != nil {
+                Button {
+                    showFullScreenImage = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("View Image")
+                            .font(.callout)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(.thickMaterial, in: .rect(cornerRadius: 12))
+                    .accessibilityLabel("View attached Image")
+                }
+                .buttonStyle(.plain)
+            }
+
             if let pdfData = event.pdfData {
                 Button {
                     showPDFViewer = true
@@ -316,6 +289,36 @@ struct ItineraryDetailView: View {
         }
         .padding(.horizontal)
         .padding(.bottom)
+        .fullScreenCover(isPresented: $showFullScreenImage) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                if let data = event.photoData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .ignoresSafeArea()
+                }
+
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            showFullScreenImage = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.white)
+                                .opacity(0.9)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 20)
+                        .padding(.top, 50)
+                    }
+                    Spacer()
+                }
+            }
+        }
     }
 
     

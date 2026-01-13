@@ -46,6 +46,7 @@ struct WeightGoalExplainer: View {
 
 struct MacroStrategyExplainer: View {
     private let strategyRows = MacroStrategyExplanation.rows
+    private let nutrientRows = NutrientExplanation.rows
 
     var body: some View {
         ScrollView {
@@ -72,6 +73,30 @@ struct MacroStrategyExplainer: View {
                                 .foregroundStyle(.secondary)
                         }
                         if row.id != strategyRows.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(18)
+                .surfaceCard(18)
+                
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Nutrition Targets")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(nutrientRows) { row in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(row.title)
+                                .font(.subheadline.weight(.semibold))
+                            Text("Recommended: \(row.recommended)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Text("Notes: \(row.notes)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        if row.id != nutrientRows.last?.id {
                             Divider()
                         }
                     }
@@ -197,6 +222,88 @@ private struct MacroCalculationExplanation: Identifiable, Equatable {
             title: "Water",
             formula: "Body weight × 35 ml with a 2,000 ml floor",
             example: "At 75 kg → ≈ 2,625 ml/day"
+        )
+    ]
+}
+
+private struct NutrientExplanation: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let recommended: String
+    let notes: String
+
+    static let rows: [NutrientExplanation] = [
+        NutrientExplanation(
+            id: "fiber",
+            title: "Fiber",
+            recommended: "Men: 30–38 g • Women: 21–25 g",
+            notes: "Aim ≥25 g/day"
+        ),
+        NutrientExplanation(
+            id: "addedSugar",
+            title: "Added Sugar",
+            recommended: "Men: ≤36 g • Women: ≤25 g",
+            notes: "As low as possible"
+        ),
+        NutrientExplanation(
+            id: "sodium",
+            title: "Sodium",
+            recommended: "1,500 mg (ideal)",
+            notes: "Max 2,300 mg/day"
+        ),
+        NutrientExplanation(
+            id: "potassium",
+            title: "Potassium",
+            recommended: "Men: 3,400 mg • Women: 2,600 mg",
+            notes: "Higher intake is beneficial"
+        ),
+        NutrientExplanation(
+            id: "iron",
+            title: "Iron",
+            recommended: "Men: 8 mg • Women (menstruating): 18 mg • Women (post-menopause): 8 mg",
+            notes: "Excess can be harmful"
+        ),
+        NutrientExplanation(
+            id: "magnesium",
+            title: "Magnesium",
+            recommended: "Men: 400–420 mg • Women: 310–320 mg",
+            notes: "Important for muscle & sleep"
+        ),
+        NutrientExplanation(
+            id: "zinc",
+            title: "Zinc",
+            recommended: "Men: 11 mg • Women: 8 mg",
+            notes: "Upper limit: 40 mg/day"
+        ),
+        NutrientExplanation(
+            id: "phosphorus",
+            title: "Phosphorus",
+            recommended: "700 mg",
+            notes: "Upper limit: 4,000 mg/day"
+        ),
+        NutrientExplanation(
+            id: "iodine",
+            title: "Iodine",
+            recommended: "150 mcg",
+            notes: "Upper limit: 1,100 mcg/day"
+        ),
+        NutrientExplanation(
+            id: "cholesterol",
+            title: "Cholesterol",
+            recommended: "≤300 mg",
+            notes: "≤200 mg if heart-risk"
+        ),
+        NutrientExplanation(
+            id: "caffeine",
+            title: "Caffeine",
+            recommended: "≤400 mg",
+            notes: "Sensitive individuals: ≤200 mg"
+        ),
+        NutrientExplanation(
+            id: "selenium",
+            title: "Selenium",
+            recommended: "55 mcg",
+            notes: "Upper limit: 400 mcg/day"
         )
     ]
 }

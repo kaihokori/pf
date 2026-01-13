@@ -894,6 +894,7 @@ struct NutritionTabView: View {
                 macroFocus: selectedMacroFocus,
                 calorieGoal: calorieGoal,
                 bodyWeightKg: bodyWeightKg,
+                genderOption: GenderOption(rawValue: account.gender ?? ""),
                 selectedMacroStrategy: $selectedMacroStrategy,
                 isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty,
                 onDone: { showMacroEditorSheet = false }
@@ -944,6 +945,7 @@ struct NutritionTabView: View {
                 supplements: supplementsBinding,
                 tint: accentOverride ?? .orange,
                 isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty,
+                genderOption: GenderOption(rawValue: account.gender ?? ""),
                 onDone: { showSupplementEditor = false }
             )
             .presentationDetents([.large, .medium])
@@ -1620,6 +1622,7 @@ struct SupplementEditorSheet: View {
     @Binding var supplements: [Supplement]
     var tint: Color
     var isPro: Bool
+    var genderOption: GenderOption?
     var onDone: () -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -1726,7 +1729,7 @@ struct SupplementEditorSheet: View {
                                             VStack(alignment: .leading) {
                                                 Text(preset.name)
                                                     .font(.subheadline.weight(.semibold))
-                                                Text(preset.amountLabel ?? "")
+                                                Text(preset.amountLabel(for: genderOption) ?? "")
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
                                             }
@@ -1847,7 +1850,8 @@ struct SupplementEditorSheet: View {
         if isPresetSelected(preset) {
             working.removeAll { $0.name == preset.name }
         } else if canAddMore {
-            working.append(preset)
+            let amount = preset.amountLabel(for: genderOption)
+            working.append(Supplement(name: preset.name, amountLabel: amount))
         }
     }
 
@@ -2000,6 +2004,23 @@ struct MacroSummary: View {
             .glassEffect(in: .rect(cornerRadius: 16.0))
             .padding(.horizontal, 18)
             .padding(.top, 14)
+        }
+    }
+}
+
+// MARK: - Supplement helpers
+extension Supplement {
+    func amountLabel(for gender: GenderOption?) -> String? {
+        guard let g = gender else { return amountLabel }
+        switch name.lowercased() {
+        case "iron":
+            return (g == .male) ? "8 mg" : "18 mg"
+        case "magnesium":
+            return (g == .male) ? "400–420 mg" : "310–320 mg"
+        case "zinc":
+            return (g == .male) ? "11 mg" : "8 mg"
+        default:
+            return amountLabel
         }
     }
 }
@@ -2357,6 +2378,33 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         }
     }
 
+    func allowedLabel(for genderOption: GenderOption?) -> String {
+        guard let g = genderOption, g != .preferNotSay else { return allowedLabel }
+
+        switch self {
+        case .fibre:
+            switch g {
+            case .male: return "30–38 g"
+            case .female: return "21–25 g"
+            default: return allowedLabel
+            }
+        case .sugar:
+            switch g {
+            case .male: return "≤36 g"
+            case .female: return "≤25 g"
+            default: return allowedLabel
+            }
+        case .potassium:
+            switch g {
+            case .male: return "3,400 mg"
+            case .female: return "2,600 mg"
+            default: return allowedLabel
+            }
+        default:
+            return allowedLabel
+        }
+    }
+
     var percent: Double {
         switch self {
         case .protein: return 0.72
@@ -2393,12 +2441,12 @@ private extension MacroPreset {
 }
 
 private extension MacroMetric {
-    static func preset(_ preset: MacroPreset) -> MacroMetric {
+    static func preset(_ preset: MacroPreset, gender: GenderOption? = nil) -> MacroMetric {
         MacroMetric(
             title: preset.displayName,
             percent: preset.percent,
             currentLabel: preset.consumedLabel,
-            targetLabel: preset.allowedLabel,
+            targetLabel: preset.allowedLabel(for: gender),
             color: preset.color,
             source: .preset(preset)
         )
@@ -2425,6 +2473,7 @@ struct MacroEditorSheet: View {
     var macroFocus: MacroCalculator.WeightGoalOption?
     var calorieGoal: Int
     var bodyWeightKg: Double
+    var genderOption: GenderOption?
     @Binding var selectedMacroStrategy: MacroCalculator.MacroDistributionStrategy?
     var isPro: Bool
     var onDone: () -> Void
@@ -2556,7 +2605,7 @@ struct MacroEditorSheet: View {
                                         VStack(alignment: .leading) {
                                             Text(preset.displayName)
                                                 .font(.subheadline.weight(.semibold))
-                                            Text(preset.allowedLabel)
+                                            Text(preset.allowedLabel(for: genderOption))
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
@@ -2706,7 +2755,7 @@ struct MacroEditorSheet: View {
                 return false
             }
         } else if canAddMoreMacros {
-            workingMacros.append(.preset(preset))
+            workingMacros.append(.preset(preset, gender: genderOption))
         }
     }
 

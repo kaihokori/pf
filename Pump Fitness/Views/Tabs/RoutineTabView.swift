@@ -1689,9 +1689,14 @@ private struct GoalsEditorView: View {
         let in3 = cal.date(byAdding: .day, value: 3, to: today) ?? today
         let in14 = cal.date(byAdding: .day, value: 14, to: today) ?? today
         return [
-            GoalItem(title: "10 min Walk", note: "Quick cardio", dueDate: today),
-            GoalItem(title: "Read 10 pages", note: "Evening habit", dueDate: in3),
-            GoalItem(title: "Prep healthy lunch", note: "Meal prep", dueDate: in14)
+            GoalItem(title: "Stop eating fast food", note: "Focus on home-cooked meals", dueDate: in3),
+            GoalItem(title: "Drop 5 kg in weight", note: "Maintain a healthy diet and exercise routine", dueDate: in14),
+            GoalItem(title: "Get a job", note: "Update resume and apply to at least 5 positions", dueDate: in14),
+            GoalItem(title: "Get promoted", note: "Take on additional responsibilities at work", dueDate: in14),
+            GoalItem(title: "Travel to Bali", note: "Plan itinerary and book accommodations", dueDate: in14),
+            GoalItem(title: "Travel around Europe", note: "Visit at least 3 new countries", dueDate: in14),
+            GoalItem(title: "Gain financial freedom", note: "Create a budget and start investing", dueDate: in14),
+            GoalItem(title: "Find a soulmate", note: "Join social groups and attend events", dueDate: in14)
         ]
     }
 

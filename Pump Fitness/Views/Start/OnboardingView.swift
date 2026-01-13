@@ -1223,7 +1223,7 @@ private struct NutritionTrackingStepView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(preset.displayName)
                                     .fontWeight(.medium)
-                                Text(preset.allowedLabel)
+                                Text(preset.allowedLabel(for: viewModel.selectedGender))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -1308,7 +1308,7 @@ private struct NutritionTrackingStepView: View {
 
     private func addPresetMacro(_ preset: MacroPreset) {
         // Parse allowedLabel like "100g" or "2500mL" into numeric target and unit
-        let allowed = preset.allowedLabel
+        let allowed = preset.allowedLabel(for: viewModel.selectedGender)
         let digits = allowed.unicodeScalars.filter { CharacterSet(charactersIn: "0123456789.").contains($0) }
         let suffixScalars = allowed.unicodeScalars.filter { !CharacterSet(charactersIn: "0123456789.").contains($0) }
         let numberString = String(String.UnicodeScalarView(digits))
@@ -1398,13 +1398,13 @@ private struct DailySupplementsStepView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(option.name)
                                 .fontWeight(.medium)
-                            Text(option.amountLabel ?? "")
+                            Text(option.amountLabel(for: viewModel.selectedGender) ?? "")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Button(action: {
-                            let amount = option.amountLabel ?? ""
+                            let amount = option.amountLabel(for: viewModel.selectedGender) ?? option.amountLabel ?? ""
                             let sup = Supplement(name: option.name, amountLabel: amount.isEmpty ? nil : amount)
                             viewModel.dailySupplements.append(sup)
                             dailyAmounts[option.name] = option.amountLabel ?? ""
@@ -1679,7 +1679,21 @@ private struct GoalsStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @FocusState private var isFocused: Bool
     
-    private let goalPresets = ["10 min Walk", "Read 10 pages", "Prep healthy lunch"]
+    private var goalPresets: [GoalItem] {
+        let today = Date()
+        let in3 = Calendar.current.date(byAdding: .day, value: 3, to: today) ?? today
+        let in14 = Calendar.current.date(byAdding: .day, value: 14, to: today) ?? today
+        return [
+            GoalItem(title: "Stop eating fast food", note: "Focus on home-cooked meals", dueDate: in3),
+            GoalItem(title: "Drop 5 kg in weight", note: "Maintain a healthy diet and exercise routine", dueDate: in14),
+            GoalItem(title: "Get a job", note: "Update resume and apply to at least 5 positions", dueDate: in14),
+            GoalItem(title: "Get promoted", note: "Take on additional responsibilities at work", dueDate: in14),
+            GoalItem(title: "Travel to Bali", note: "Plan itinerary and book accommodations", dueDate: in14),
+            GoalItem(title: "Travel around Europe", note: "Visit at least 3 new countries", dueDate: in14),
+            GoalItem(title: "Gain financial freedom", note: "Create a budget and start investing", dueDate: in14),
+            GoalItem(title: "Find a soulmate", note: "Join social groups and attend events", dueDate: in14)
+        ]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -1711,29 +1725,39 @@ private struct GoalsStepView: View {
             }
 
             // Quick Add
+            // DateFormatter for due date display in Quick Add
+            let dateFormatter: DateFormatter = {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                return formatter
+            }()
+
             let availablePresets = goalPresets.filter { preset in
-                !viewModel.goals.contains(where: { $0.title == preset })
+                !viewModel.goals.contains(where: { $0.title == preset.title })
             }
             
             if !availablePresets.isEmpty {
                 SectionTitle("Quick Add")
                 VStack(spacing: 8) {
-                    ForEach(availablePresets, id: \.self) { preset in
-                        HStack {
-                            Text(preset)
+                    ForEach(availablePresets, id: \.title) { preset in
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.title)
+                                    .fontWeight(.medium)
+                                if !preset.note.isEmpty {
+                                    Text(preset.note)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("Due: \(preset.dueDate, formatter: dateFormatter)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
                             Spacer()
                             Button(action: {
-                                let today = Date()
-                                let due: Date = {
-                                    switch preset {
-                                    case "10 min Walk": return today
-                                    case "Read 10 pages": return Calendar.current.date(byAdding: .day, value: 3, to: today) ?? today
-                                    case "Prep healthy lunch": return Calendar.current.date(byAdding: .day, value: 14, to: today) ?? today
-                                    default: return Calendar.current.date(byAdding: .day, value: 30, to: today) ?? today
-                                    }
-                                }()
-                                let goal = GoalItem(title: preset, dueDate: due)
-                                viewModel.goals.append(goal)
+                                viewModel.goals.append(
+                                    GoalItem(title: preset.title, note: preset.note, dueDate: preset.dueDate)
+                                )
                             }) {
                                 Image(systemName: "plus.circle.fill")
                                     .foregroundColor(.accentColor)
@@ -1745,6 +1769,7 @@ private struct GoalsStepView: View {
                     }
                 }
             }
+
 
             // Custom Goal
             SectionTitle("Custom Goal", onIconTap: { isFocused = true })

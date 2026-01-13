@@ -1514,18 +1514,31 @@ private extension WorkoutTabView {
 
     func handleAdjustAction(isAddition: Bool, valueString: String, target: String?) {
         guard let val = Double(valueString) else { return }
-        switch target {
-        case "steps":
-            stepsTakenToday += (isAddition ? val : -val)
-            persistActivityToDay(steps: stepsTakenToday)
-        case "walking":
-            distanceTravelledToday += (isAddition ? val : -val)
-            persistActivityToDay(distance: distanceTravelledToday)
-        case "calories":
-            caloriesBurnedToday += (isAddition ? val : -val)
-            persistActivityToDay(calories: caloriesBurnedToday)
-        default:
-            break
+
+        // Resolve target safely and perform state mutations on main thread.
+        let resolved = target ?? ""
+
+        DispatchQueue.main.async {
+            switch resolved {
+            case "steps":
+                stepsTakenToday += (isAddition ? val : -val)
+                stepsTakenToday = max(0, stepsTakenToday)
+                persistActivityToDay(steps: stepsTakenToday)
+                saveManualOverride(key: "steps", value: stepsTakenToday)
+            case "walking":
+                distanceTravelledToday += (isAddition ? val : -val)
+                distanceTravelledToday = max(0, distanceTravelledToday)
+                persistActivityToDay(distance: distanceTravelledToday)
+                saveManualOverride(key: "walking", value: distanceTravelledToday)
+            case "calories":
+                caloriesBurnedToday += (isAddition ? val : -val)
+                caloriesBurnedToday = max(0, caloriesBurnedToday)
+                persistActivityToDay(calories: caloriesBurnedToday)
+                saveManualOverride(key: "calories", value: caloriesBurnedToday)
+            default:
+                // Unknown target — log for diagnostics and ignore.
+                print("WorkoutTabView: unknown adjust target '\(target ?? "nil")'")
+            }
         }
     }
 

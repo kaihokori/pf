@@ -53,6 +53,7 @@ struct SportsTabView: View {
     @State private var currentDay: Day? = nil
     @State private var soloMetricValuesStore: [String: String] = [:]
     @State private var hasScrolledToTeamPlay = false
+    @State private var teamHistoryDays: [Day] = []
 
     private var sportsEmptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -762,7 +763,10 @@ struct SportsTabView: View {
                                     awayScore: $teamAwayScore,
                                     focusBinding: $teamInputsFocused,
                                     onValueChange: handleTeamMetricValueChange,
-                                    onScoreChange: handleTeamScoreChange
+                                    onScoreChange: handleTeamScoreChange,
+                                    onDelete: handleTeamDelete,
+                                    days: teamHistoryDays,
+                                    historyDays: historyDays
                                 )
                                 .padding(.horizontal, 18)
                             }
@@ -1033,11 +1037,12 @@ struct SportsTabView: View {
                                                         Spacer()
                                                         Label("Submit Data", systemImage: "paperplane.fill")
                                                             .font(.callout.weight(.semibold))
+                                                            .foregroundStyle(.white)
                                                         Spacer()
                                                     }
                                                     .padding(.vertical, 18)
                                                     .frame(maxWidth: .infinity, minHeight: 52)
-                                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                                                    .background(displayColor, in: RoundedRectangle(cornerRadius: 18))
                                                 }
                                                 .sportsTip(.sportsTracking, isEnabled: isPro)
                                                 .id("sportsTracking")
@@ -1054,11 +1059,12 @@ struct SportsTabView: View {
                                                         Spacer()
                                                         Label("Submit Data", systemImage: "paperplane.fill")
                                                             .font(.callout.weight(.semibold))
+                                                            .foregroundStyle(.white)
                                                         Spacer()
                                                     }
                                                     .padding(.vertical, 18)
                                                     .frame(maxWidth: .infinity, minHeight: 52)
-                                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                                                    .background(displayColor, in: RoundedRectangle(cornerRadius: 18))
                                                 }
                                                 .padding(.horizontal, 8)
                                                 .buttonStyle(.plain)
@@ -1450,6 +1456,7 @@ private extension SportsTabView {
     }
 
     func loadDayForSelectedDate() {
+        fetchTeamHistoryDays()
         guard !hasLoadedSoloDay else { return }
         
         // Optimistic load from local cache
@@ -1564,6 +1571,34 @@ private extension SportsTabView {
         persistDayIfLoaded()
     }
 
+    func handleTeamDelete(_ day: Day) {
+        day.teamHomeScore = 0
+        day.teamAwayScore = 0
+        day.teamMetricValues = []
+        
+        do {
+            try modelContext.save()
+        } catch {
+            print("SportsTabView: failed to save Day locally after delete: \(error)")
+        }
+
+        dayService.saveDay(day) { success in
+            if !success {
+                print("SportsTabView: failed to sync Day delete to Firestore")
+            }
+        }
+        
+        if Calendar.current.isDate(day.date, inSameDayAs: selectedDate) {
+             teamHomeScore = 0
+             teamAwayScore = 0
+             teamMetricValuesStore = [:]
+             syncTeamMetricStoreWithMetrics()
+        }
+        
+        // Refresh local list
+        fetchTeamHistoryDays()
+    }
+
     func persistDayIfLoaded() {
         guard let day = currentDay else { return }
         do {
@@ -1576,6 +1611,27 @@ private extension SportsTabView {
             if !success {
                 print("SportsTabView: failed to sync Day to Firestore")
             }
+        }
+    }
+
+    func fetchTeamHistoryDays() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: selectedDate)
+        var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        comps.weekday = 2
+        let startOfWeek = calendar.date(from: comps) ?? today
+        // historyDays defines the view range size in graph
+        let endOfRange = calendar.date(byAdding: .day, value: historyDays + 2, to: startOfWeek) ?? today
+
+        let start = startOfWeek
+        let end = endOfRange
+
+        let descriptor = FetchDescriptor<Day>(predicate: #Predicate { $0.date >= start && $0.date <= end })
+        do {
+            let results = try modelContext.fetch(descriptor)
+            teamHistoryDays = results
+        } catch {
+            print("Error fetching team history: \(error)")
         }
     }
 }
@@ -2112,54 +2168,159 @@ fileprivate struct TeamPlaySection: View {
     var focusBinding: FocusState<Bool>.Binding
     var onValueChange: (TeamMetric, String) -> Void
     var onScoreChange: (Int, Int) -> Void
+    var onDelete: (Day) -> Void
+    var days: [Day]
+    var historyDays: Int
+
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .center, spacing: 18) {
-            let defaultAccent = Color(UIColor.systemFill)
-            let homeAccent = themeManager.selectedTheme == .multiColour ? Color.yellow : defaultAccent
-            let awayAccent = themeManager.selectedTheme == .multiColour ? Color.indigo : defaultAccent
+        VStack(spacing: 0) {
+            VStack(alignment: .center, spacing: 18) {
+                let defaultAccent = Color(UIColor.systemFill)
+                let homeAccent = themeManager.selectedTheme == .multiColour ? Color.yellow : defaultAccent
+                let awayAccent = themeManager.selectedTheme == .multiColour ? Color.indigo : defaultAccent
 
-            HStack(spacing: 12) {
-                ScoreBox(title: "Home", value: $homeScore, accent: homeAccent)
-                ScoreBox(title: "Away", value: $awayScore, accent: awayAccent)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
+                HStack(spacing: 12) {
+                    ScoreBox(title: "Home", value: $homeScore, accent: homeAccent)
+                    ScoreBox(title: "Away", value: $awayScore, accent: awayAccent)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
 
-            LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(rows(for: metrics), id: \.self) { row in
-                    HStack(spacing: 12) {
-                        ForEach(row) { metric in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(metric.name)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(rows(for: metrics), id: \.self) { row in
+                        HStack(spacing: 12) {
+                            ForEach(row) { metric in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(metric.name)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
 
-                                TextField(metric.name, text: valueBinding(for: metric), prompt: Text("Enter value…").foregroundStyle(.secondary))
-                                    .textInputAutocapitalization(.none)
-                                    .keyboardType(.decimalPad)
-                                    .focused(focusBinding)
-                                    .padding()
-                                    .background(Color(UIColor.systemFill), in: RoundedRectangle(cornerRadius: 16))
+                                    TextField(metric.name, text: valueBinding(for: metric), prompt: Text("Enter value…").foregroundStyle(.secondary))
+                                        .textInputAutocapitalization(.none)
+                                        .keyboardType(.decimalPad)
+                                        .focused(focusBinding)
+                                        .padding()
+                                        .background(Color(UIColor.systemFill), in: RoundedRectangle(cornerRadius: 16))
+                                }
+                                .frame(maxWidth: .infinity)
                             }
-                            .frame(maxWidth: .infinity)
-                        }
 
-                        if row.count == 1 {
-                            Spacer(minLength: 0)
+                            if row.count == 1 {
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
                 }
+
+                if !days.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(metrics) { metric in
+                            TeamMetricGraph(
+                                metric: metric,
+                                days: days,
+                                historyDays: historyDays,
+                                anchorDate: selectedDate,
+                                accentOverride: themeManager.selectedTheme.accent(for: colorScheme)
+                            )
+                            .frame(height: 140)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+                        }
+
+                        // Daily Details List
+                        let weekDates = teamWeekDates(anchor: selectedDate, historyDays: historyDays)
+                        let validDates = weekDates.filter { d in
+                            days.contains { day in
+                                Calendar.current.isDate(day.date, inSameDayAs: d) &&
+                                (day.teamHomeScore > 0 || day.teamAwayScore > 0 || !day.teamMetricValues.isEmpty)
+                            }
+                        }
+
+                        VStack(spacing: 0) {
+                            ForEach(validDates, id: \.self) { date in
+                                let day = days.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }) ?? Day() // Should find it
+
+                                Section(header:
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(DateFormatter.sportWeekdayFull.string(from: date))
+                                                .font(.subheadline.weight(.semibold))
+                                            Text(DateFormatter.sportLongDate.string(from: date))
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 8)
+                                ) {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            if day.teamHomeScore > 0 || day.teamAwayScore > 0 {
+                                                Text("Score: \(day.teamHomeScore) - \(day.teamAwayScore)")
+                                                    .font(.caption.weight(.bold))
+                                            }
+
+                                            ForEach(day.teamMetricValues, id: \.id) { val in
+                                                // Only show metrics that are currently configured
+                                                if let m = metrics.first(where: { $0.id == val.metricId }) {
+                                                    HStack(spacing: 6) {
+                                                        Text(m.name)
+                                                            .font(.caption.weight(.semibold))
+                                                            .foregroundStyle(.secondary)
+                                                        
+                                                        // Format value
+                                                        let dVal = val.value
+                                                        let isInt = floor(dVal) == dVal
+                                                        Text(isInt ? "\(Int(dVal))" : String(format: "%.2f", dVal))
+                                                            .font(.caption)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Spacer()
+
+                                        Button {
+                                            onDelete(day)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .font(.callout)
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.vertical, 8)
+                                    if date != validDates.last {
+                                        Divider()
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                    }
+                    .padding(.horizontal, 4)
+                }
             }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 18)
+            .glassEffect(in: .rect(cornerRadius: 16.0))
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 18)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
         .onAppear(perform: syncValueStore)
         .onChange(of: metrics) { _, _ in syncValueStore() }
         .onChange(of: homeScore) { _, _ in onScoreChange(homeScore, awayScore) }
         .onChange(of: awayScore) { _, _ in onScoreChange(homeScore, awayScore) }
+    }
+
+    private func teamWeekDates(anchor: Date, historyDays: Int) -> [Date] {
+        let cal = Calendar.current
+        let anchorDay = cal.startOfDay(for: anchor)
+        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: anchorDay)
+        comps.weekday = 2 // Monday
+        guard let startOfWeek = cal.date(from: comps) else { return [] }
+        return (0..<historyDays).compactMap { offset in
+            cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: startOfWeek))
+        }
     }
 
     private func valueBinding(for metric: TeamMetric) -> Binding<String> {
@@ -4041,3 +4202,93 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         locationContinuation = nil
     }
 }
+
+// MARK: - Team Metric Graph
+
+struct TeamMetricGraph: View {
+    let metric: TeamMetric
+    let days: [Day]
+    let historyDays: Int
+    let anchorDate: Date
+    var accentOverride: Color? = nil
+
+    private var cal: Calendar { Calendar.current }
+
+    private var displayDates: [Date] {
+        let anchor = cal.startOfDay(for: anchorDate)
+        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: anchor)
+        comps.weekday = 2 // Monday
+        guard let startOfWeek = cal.date(from: comps) else { return [] }
+        return (0..<historyDays).compactMap { offset in
+            cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: startOfWeek))
+        }
+    }
+
+    private func value(for day: Day) -> Double {
+        if let val = day.teamMetricValues.first(where: { $0.metricId == metric.id }) {
+            return val.value
+        }
+        return 0
+    }
+
+    private var dailyTotals: [(date: Date, total: Double)] {
+        let grouped = Dictionary(grouping: days) { cal.startOfDay(for: $0.date) }
+        return displayDates.map { dayDate in
+            let dayObj = grouped[dayDate]?.first
+            let val = dayObj.map { value(for: $0) } ?? 0
+            return (date: dayDate, total: val)
+        }
+    }
+
+    private class DateFormatters {
+        static let shortDate: DateFormatter = {
+            let df = DateFormatter()
+            df.dateFormat = "EEE d" // weekday short + day number (Mon 22)
+            return df
+        }()
+    }
+
+    var body: some View {
+        let displayColor = accentOverride ?? Color.accentColor
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(metric.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(displayColor)
+                
+                Spacer()
+            }
+            .padding(.bottom, 4)
+
+            Chart {
+                ForEach(dailyTotals, id: \.date) { item in
+                    BarMark(
+                        x: .value("Day", DateFormatters.shortDate.string(from: item.date)),
+                        y: .value(metric.name, item.total)
+                    )
+                    .foregroundStyle(displayColor)
+                    .cornerRadius(4)
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading)
+            }
+            .chartXAxis {
+                let labels = displayDates.enumerated().compactMap { idx, d in
+                    (idx % max(1, historyDays / 6) == 0) ? DateFormatters.shortDate.string(from: d) : nil
+                }
+                AxisMarks(values: labels) { value in
+                    AxisGridLine()
+                    AxisValueLabel() {
+                        if let label = value.as(String.self) {
+                            Text(label)
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

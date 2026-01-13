@@ -137,19 +137,24 @@ struct RootView: View {
             .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
             // If the user purchases a subscription, clear any stuck proPeriodEnd overrides
             .onChange(of: subscriptionManager.purchasedProductIDs) { _, ids in
+                // Only clear any manual `proPeriodEnd` overrides once entitlements
+                // or trial flags are confirmed to avoid transient UI downgrades.
                 if !ids.isEmpty, let uid = Auth.auth().currentUser?.uid {
-                    // Check if we have a lingering override
-                    if let account = accounts.first, account.proPeriodEnd != nil {
-                         print("RootView: Subscription detected, clearing valid proPeriodEnd override.")
-                         accountFirestoreService.updateProPeriodEnd(for: uid, date: nil) { _ in
-                             // Also update local so UI reflects it immediately if needed
-                             // (though upsert usually handles this via listeners, manual update is safer UI-wise)
-                             account.proPeriodEnd = nil
-                         }
-                    } else if let fetched = fetchAccount(), fetched.proPeriodEnd != nil {
-                        // Fallback check against fetched account
-                        print("RootView: Subscription detected (fallback), clearing valid proPeriodEnd override.")
-                        accountFirestoreService.updateProPeriodEnd(for: uid, date: nil)
+                    if subscriptionManager.hasProAccess || subscriptionManager.isTrialActive {
+                        // Check if we have a lingering override
+                        if let account = accounts.first, account.proPeriodEnd != nil {
+                            print("RootView: Subscription confirmed, clearing valid proPeriodEnd override.")
+                            accountFirestoreService.updateProPeriodEnd(for: uid, date: nil) { _ in
+                                // Also update local so UI reflects it immediately if needed
+                                account.proPeriodEnd = nil
+                            }
+                        } else if let fetched = fetchAccount(), fetched.proPeriodEnd != nil {
+                            // Fallback check against fetched account
+                            print("RootView: Subscription confirmed (fallback), clearing valid proPeriodEnd override.")
+                            accountFirestoreService.updateProPeriodEnd(for: uid, date: nil)
+                        }
+                    } else {
+                        print("RootView: Purchased product IDs updated but entitlements not yet confirmed; deferring proPeriodEnd clear.")
                     }
                 }
             }

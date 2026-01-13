@@ -56,6 +56,14 @@ struct MapSection: View {
                         }
                     }
                 }
+
+                if let userCoordinate = locationManager.lastLocation?.coordinate {
+                    Annotation("You", coordinate: userCoordinate) {
+                        UserLocationAnnotationView()
+                            .environmentObject(themeManager)
+                    }
+                    .annotationTitles(.hidden)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .allowsHitTesting(false)
@@ -91,11 +99,8 @@ struct MapSection: View {
                 // updates will be ignored to prevent jumping.
                 locationManager.requestLocation()
             } else {
-                // No annotations: do not auto-center the map when the device
-                // location becomes available. We still request location so the
-                // user's blue dot may appear, but keep `ignoreLocationUpdates`
-                // true to avoid an animated jump to the user's location.
-                locationManager.ignoreLocationUpdates = true
+                // No annotations: center on the user's location when available.
+                locationManager.ignoreLocationUpdates = false
                 locationManager.requestLocation()
             }
         }
@@ -422,65 +427,11 @@ private struct FullScreenMapView: View {
                 }
 
                 VStack {
-                    HStack {
-                        Button(action: { isPresented = false }) {
-                            ZStack {
-                                Image(systemName: "chevron.backward")
-                                    .foregroundStyle(themeAccent)
-                                    .frame(width: 45, height: 45)
-                                    .font(.system(size: 20))
-                            }
-                            .background(.thickMaterial, in: .rect(cornerRadius: 10))
-                        }
-
-                        Spacer()
-
-                        // Jump to user's current location
-                        Button(action: {
-                            if let loc = locationManager.lastLocation {
-                                let span = MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
-                                let region = MKCoordinateRegion(center: loc.coordinate, span: span)
-                                DispatchQueue.main.async {
-                                    locationManager.ignoreLocationUpdates = true
-                                    withAnimation(.easeInOut(duration: 0.6)) {
-                                        locationManager.cameraPosition = .region(region)
-                                    }
-                                    // Mark that the camera moved so the return button enables
-                                    hasMovedFromInitial = true
-                                }
-                            } else {
-                                // Trigger a location request so we can obtain the blue dot
-                                locationManager.requestLocation()
-                            }
-                        }) {
-                            ZStack {
-                                Image(systemName: "location")
-                                    .foregroundStyle(themeAccent)
-                                    .frame(width: 45, height: 45)
-                                    .font(.system(size: 18))
-                            }
-                            .background(.thickMaterial, in: .rect(cornerRadius: 10))
-                        }
-
-                        Button {
-                            editorSeedDate = Date()
-                            editingEvent = ItineraryEvent(name: "", notes: "", date: editorSeedDate)
-                        } label: {
-                            Text("Add")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(themeAccent)
-                                .frame(width: 45, height: 45)
-                                .background(.thickMaterial, in: .rect(cornerRadius: 10))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-
                     Spacer()
 
                     // Bottom-centered capsule to return to events (shown when
-                    // we have events; disabled until the user moves the camera)
-                    if !filteredEvents.isEmpty {
+                    // we have events; hidden until the user moves the camera)
+                    if !filteredEvents.isEmpty && hasMovedFromInitial {
                         Button(action: {
                             let region = regionForEvents(filteredEvents)
                             DispatchQueue.main.async {
@@ -490,7 +441,9 @@ private struct FullScreenMapView: View {
                                 }
                                 // After returning to events, consider this the new initial
                                 initialCamera = .region(region)
-                                hasMovedFromInitial = false
+                                withAnimation {
+                                    hasMovedFromInitial = false
+                                }
                             }
                         }) {
                             Text("Jump to Events")
@@ -501,13 +454,11 @@ private struct FullScreenMapView: View {
                                 .background(.thickMaterial, in: Capsule())
                         }
                         .buttonStyle(.plain)
-                        .disabled(!hasMovedFromInitial)
-                        .opacity(hasMovedFromInitial ? 1.0 : 0.5)
-                        .scaleEffect(hasMovedFromInitial ? 1.0 : 0.96)
-                        .animation(.easeInOut(duration: 0.22), value: hasMovedFromInitial)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                         .padding(.bottom, 20)
                     }
                 }
+                .animation(.spring(), value: hasMovedFromInitial)
                 // Observe camera changes to detect when the user moved away
                 .onChange(of: locationManager.cameraPosition) { _, new in
                     guard let initial = initialCamera else { return }
@@ -519,7 +470,52 @@ private struct FullScreenMapView: View {
             .sheet(isPresented: $isShowingPOISheet) {
                 POIDetailSheet(selection: tappedPOI, isResolving: isResolvingPOI)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isPresented = false
+                    } label: {
+                        Image(systemName: "chevron.backward")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(themeAccent)
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 20) {
+                        if locationManager.lastLocation != nil {
+                            Button {
+                                if let loc = locationManager.lastLocation {
+                                    let span = MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                                    let region = MKCoordinateRegion(center: loc.coordinate, span: span)
+                                    DispatchQueue.main.async {
+                                        locationManager.ignoreLocationUpdates = true
+                                        withAnimation(.easeInOut(duration: 0.6)) {
+                                            locationManager.cameraPosition = .region(region)
+                                        }
+                                        hasMovedFromInitial = true
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "location")
+                                    .foregroundStyle(themeAccent)
+                            }
+                            .padding(.leading, 8)
+                            .transition(.opacity.combined(with: .scale))
+                        }
+                        
+                        Button {
+                            editorSeedDate = Date()
+                            editingEvent = ItineraryEvent(name: "", notes: "", date: editorSeedDate)
+                        } label: {
+                            Text("Add")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(themeAccent)
+                        }
+                    }
+                    .animation(.spring(), value: locationManager.lastLocation != nil)
+                }
+            }
             .navigationDestination(item: $selectedEvent) { event in
                 ItineraryDetailView(
                     event: event,

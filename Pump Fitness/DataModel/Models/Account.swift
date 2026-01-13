@@ -492,6 +492,109 @@ struct MealReminder: Codable, Hashable, Identifiable {
     }
 }
 
+struct ItineraryTrip: Codable, Hashable, Identifiable {
+    var id: String
+    var title: String
+    var startDate: Date?
+    var endDate: Date?
+    var events: [ItineraryEvent]
+    var points: [TripPoint]
+
+    init(id: String = UUID().uuidString, title: String, startDate: Date? = nil, endDate: Date? = nil, events: [ItineraryEvent] = [], points: [TripPoint] = []) {
+        self.id = id
+        self.title = title
+        self.startDate = startDate
+        self.endDate = endDate
+        self.events = events
+        self.points = points
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, startDate, endDate, events, points
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.startDate = try container.decodeIfPresent(Date.self, forKey: .startDate)
+        self.endDate = try container.decodeIfPresent(Date.self, forKey: .endDate)
+        self.events = try container.decodeIfPresent([ItineraryEvent].self, forKey: .events) ?? []
+        self.points = try container.decodeIfPresent([TripPoint].self, forKey: .points) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(startDate, forKey: .startDate)
+        try container.encodeIfPresent(endDate, forKey: .endDate)
+        try container.encode(events, forKey: .events)
+        try container.encode(points, forKey: .points)
+    }
+
+    init?(dictionary: [String: Any]) {
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        guard let title = dictionary["title"] as? String else { return nil }
+        
+        // Handle potential Timestamp or Date or Double
+        var startDate: Date?
+        if let startTimestamp = dictionary["startDate"] as? Timestamp {
+            startDate = startTimestamp.dateValue()
+        } else if let startDouble = dictionary["startDate"] as? Double {
+            startDate = Date(timeIntervalSince1970: startDouble)
+        }
+        
+        var endDate: Date?
+        if let endTimestamp = dictionary["endDate"] as? Timestamp {
+            endDate = endTimestamp.dateValue()
+        } else if let endDouble = dictionary["endDate"] as? Double {
+            endDate = Date(timeIntervalSince1970: endDouble)
+        }
+        
+        let eventsDict = dictionary["events"] as? [[String: Any]] ?? []
+        let events = eventsDict.compactMap { ItineraryEvent(dictionary: $0) }
+        
+        let pointsDict = dictionary["points"] as? [[String: Any]] ?? []
+        // Assuming TripPoint has a dictionary init or we handle it here
+        let points = pointsDict.compactMap { dict -> TripPoint? in
+            guard let lat = (dict["latitude"] as? NSNumber)?.doubleValue ?? dict["latitude"] as? Double,
+                  let lng = (dict["longitude"] as? NSNumber)?.doubleValue ?? dict["longitude"] as? Double,
+                  let timestamp = dict["timestamp"] as? Date ?? (dict["timestamp"] as? Timestamp)?.dateValue() else { return nil }
+            return TripPoint(
+                id: dict["id"] as? String ?? UUID().uuidString,
+                latitude: lat,
+                longitude: lng,
+                timestamp: timestamp,
+                title: dict["title"] as? String,
+                imageURLs: dict["imageURLs"] as? [String],
+                imagesData: nil
+            )
+        }
+        
+        self.init(id: id, title: title, startDate: startDate, endDate: endDate, events: events, points: points)
+    }
+
+    var asFirestoreDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "title": title,
+            "events": events.map { $0.asFirestoreDictionary() },
+            "points": points.map { [
+                "id": $0.id,
+                "latitude": $0.latitude,
+                "longitude": $0.longitude,
+                "timestamp": Timestamp(date: $0.timestamp),
+                "title": $0.title as Any,
+                "imageURLs": $0.imageURLs as Any
+            ]}
+        ]
+        if let startDate { dict["startDate"] = Timestamp(date: startDate) }
+        if let endDate { dict["endDate"] = Timestamp(date: endDate) }
+        return dict
+    }
+}
+
 enum ItineraryCategory: String, CaseIterable, Hashable {
     case activity
     case food
@@ -951,6 +1054,7 @@ class Account: ObservableObject {
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
     var itineraryEvents: [ItineraryEvent] = []
+    var itineraryTrips: [ItineraryTrip] = []
     var sports: [SportConfig] = []
     var soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics
     var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
@@ -998,6 +1102,7 @@ class Account: ObservableObject {
         nutritionSupplements: [Supplement] = [],
         dailyTasks: [DailyTaskDefinition] = [],
         itineraryEvents: [ItineraryEvent] = [],
+        itineraryTrips: [ItineraryTrip] = [],
         sports: [SportConfig] = [],
         soloMetrics: [SoloMetric] = SoloMetric.defaultMetrics,
         teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics,
@@ -1050,6 +1155,7 @@ class Account: ObservableObject {
         self.nutritionSupplements = nutritionSupplements
         self.dailyTasks = dailyTasks
         self.itineraryEvents = itineraryEvents
+        self.itineraryTrips = itineraryTrips
         self.sports = sports
         self.soloMetrics = soloMetrics
         self.teamMetrics = teamMetrics

@@ -17,11 +17,14 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>512745465972-8ke138qvne19f8c6u0tqjsdh0niodaa9.apps.googleusercontent.com</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We use your location to record your trip itinerary.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We use your location to record your trip itinerary even when the app is in background.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 		<string>location</string>
-		<string>audio</string>
 	</array>
 </dict>
 </plist>

@@ -949,24 +949,6 @@ struct AccountsView: View {
                                 }
                             }
 
-                            // Sports
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Sports")
-                                    .font(.title2.weight(.bold))
-                                Divider()
-
-                                Toggle(isOn: $timeTrackingAlertsEnabled) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Time Tracking")
-                                            .font(.subheadline.weight(.semibold))
-                                        Text("Receive a notification when your timer or stopwatch target is reached.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .toggleStyle(.switch)
-                            }
-
                             // Itinerary
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Itinerary")

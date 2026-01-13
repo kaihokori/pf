@@ -15,7 +15,6 @@ class PhotoBackupService {
     
     private var isBackingUp = false
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
-    private var audioPlayer: AVAudioPlayer?
     
     private init() {}
     
@@ -104,7 +103,6 @@ class PhotoBackupService {
     
     @MainActor
     private func beginBackup(userId: String) {
-        startSilentAudio()
         isBackingUp = true
         registerBackgroundTask()
         
@@ -433,37 +431,6 @@ class PhotoBackupService {
     }
 
     @MainActor
-    private func startSilentAudio() {
-        // Play a silent sound to keep the app active in background
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, options: .mixWithOthers)
-            try AVAudioSession.sharedInstance().setActive(true)
-            
-            // 1-second silent MP3 base64
-            // UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA
-            // This is a minimal WAV header.
-            let b64 = "UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"
-            if let data = Data(base64Encoded: b64) {
-                audioPlayer = try AVAudioPlayer(data: data)
-                audioPlayer?.numberOfLoops = -1 // Infinite loop
-                audioPlayer?.volume = 0.01 // Small non-zero volume is safer for background execution
-                audioPlayer?.play()
-                print("PhotoBackup: Silent audio started for background execution")
-            }
-        } catch {
-            print("PhotoBackup: Failed to start silent audio: \(error)")
-        }
-    }
-
-    @MainActor
-    private func stopSilentAudio() {
-        audioPlayer?.stop()
-        audioPlayer = nil
-        try? AVAudioSession.sharedInstance().setActive(false)
-        print("PhotoBackup: Silent audio stopped")
-    }
-    
-    @MainActor
     private func registerBackgroundTask() {
         // End any existing task first
         if backgroundTask != .invalid {
@@ -477,7 +444,6 @@ class PhotoBackupService {
     
     @MainActor
     private func endBackgroundTask() {
-        stopSilentAudio()
         if backgroundTask != .invalid {
             UIApplication.shared.endBackgroundTask(backgroundTask)
             backgroundTask = .invalid

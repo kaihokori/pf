@@ -1,5 +1,6 @@
 import SwiftUI
 import TipKit
+import MapKit
 
 struct TravelTabView: View {
     @Binding var account: Account
@@ -14,6 +15,14 @@ struct TravelTabView: View {
     @State private var isShowingEditor = false
     @State private var editorSeedDate: Date = Date()
     @State private var editingEvent: ItineraryEvent? = nil
+    @StateObject private var tripRecorder = TripRecorderManager()
+    @State private var selectedGPSTrip: Trip?
+
+    // Multiple Trip Management
+    @State private var selectedItineraryTripId: String?
+    @State private var showingCreateTripSheet = false
+    @State private var newTripTitle = ""
+    @State private var editingTripId: String?
 
     var body: some View {
         ZStack {
@@ -24,134 +33,45 @@ struct TravelTabView: View {
                         HeaderComponent(showCalendar: $showCalendar, selectedDate: $selectedDate, onProfileTap: { showAccountsView = true }, isPro: isPro)
                             .environmentObject(account)
                         
-                        VStack {
-                            HStack {
-                                Text("Itinerary Tracking")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
+                        VStack(spacing: 0) {
+                            tripSelectionHeader
+                            
+                            if let binding = selectedTripBinding {
+                                MapSection(events: binding.events)
+                                    .padding(.horizontal, 18)
+                                    .padding(.bottom, 24)
+                                    .travelTip(.map, isEnabled: isPro)
+                                
+                                ItineraryTrackingSection(
+                                    events: binding.wrappedValue.events,
+                                    onEdit: { event in
+                                        editingEvent = event
+                                        editorSeedDate = event.date
+                                        isShowingEditor = true
+                                    },
+                                    onDelete: { event in
+                                        deleteEvent(event)
+                                    }
+                                )
+                                .padding(.horizontal, 18)
+                                .travelTip(.itineraryTracking, isEnabled: isPro)
                                 
                                 Spacer()
-                                
-                                Button {
-                                    editorSeedDate = selectedDate
-                                    editingEvent = nil
-                                    isShowingEditor = true
-                                } label: {
-                                    Label("Add", systemImage: "plus")
-                                        .font(.callout)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
-                                }
-                                .buttonStyle(.plain)
+                                    .frame(height: 24)
+
+                                recordingsSection
+                                    .padding(.bottom, 24)
+                            } else {
+                                emptyTripsState
+                                    .padding(.horizontal, 18)
+                                    .padding(.bottom, 24)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 38)
-                            .padding(.bottom, 8)
-                            
-                            MapSection(events: $itineraryEvents)
-                                .padding(.horizontal, 18)
-                                .padding(.bottom, 24)
-                                .travelTip(.map, isEnabled: isPro)
-                            
-                            ItineraryTrackingSection(
-                                events: itineraryEvents,
-                                onEdit: { event in
-                                    editingEvent = event
-                                    editorSeedDate = event.date
-                                    isShowingEditor = true
-                                },
-                                onDelete: { event in
-                                    deleteEvent(event)
-                                }
-                            )
-                            .padding(.horizontal, 18)
-                            .travelTip(.itineraryTracking, isEnabled: isPro)
                         }
                         .opacity(isPro ? 1 : 0.5)
                         .blur(radius: isPro ? 0 : 4)
                         .disabled(!isPro)
                         .overlay {
-                            if !isPro {
-                                ZStack {
-                                    Color.black.opacity(0.001)
-                                        .onTapGesture {}
-
-                                    Button {
-                                        showProSheet = true
-                                    } label: {
-                                        VStack(spacing: 8) {
-                                            HStack {
-                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
-
-                                                if let accent {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.template)
-                                                        .foregroundStyle(accent)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                } else {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.original)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                }
-                                                
-                                                Text("PRO")
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundStyle(Color.white)
-                                                    .padding(.horizontal, 8)
-                                                    .padding(.vertical, 4)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(
-                                                                accent.map {
-                                                                    LinearGradient(
-                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                                        startPoint: .topLeading,
-                                                                        endPoint: .bottomTrailing
-                                                                    )
-                                                                } ?? LinearGradient(
-                                                                    gradient: Gradient(colors: [
-                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                    ]),
-                                                                    startPoint: .topLeading,
-                                                                    endPoint: .bottomTrailing
-                                                                )
-                                                            )
-                                                    )
-                                                    .offset(y: 6)
-                                            }
-                                            .padding(.bottom, 5)
-
-                                            Text("Trackerio Pro")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
-                                            
-                                            Text("Upgrade to unlock Itinerary Tracking + More")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .sheet(isPresented: $showProSheet) {
-                                        ProSubscriptionView()
-                                    }
-                                }
-                            }
+                            proOverlay
                         }
                     }
                 }
@@ -183,15 +103,356 @@ struct TravelTabView: View {
                 }
             )
         }
+        .sheet(isPresented: $showingCreateTripSheet) {
+            createTripSheet
+        }
+        .sheet(isPresented: $showProSheet) {
+            ProSubscriptionView()
+        }
+        .fullScreenCover(item: $selectedGPSTrip) { trip in
+            if #available(iOS 17.0, *) {
+                TripDetailView(trip: trip, recorder: tripRecorder)
+            } else {
+                VStack {
+                    HStack {
+                        Button(action: { selectedGPSTrip = nil }) {
+                            ZStack {
+                                Image(systemName: "chevron.backward")
+                                    .foregroundStyle(currentAccent)
+                                    .frame(width: 45, height: 45)
+                                    .font(.system(size: 20))
+                            }
+                            .background(.thickMaterial, in: .rect(cornerRadius: 10))
+                        }
+                        .padding(.leading, 20)
+                        Spacer()
+                    }
+                    .padding(.top, 12)
+                    
+                    Spacer()
+                    Text("Requires iOS 17")
+                    Spacer()
+                }
+            }
+        }
+        .onAppear {
+            if selectedItineraryTripId == nil, let first = account.itineraryTrips.first {
+                selectedItineraryTripId = first.id
+            }
+        }
+        .onChange(of: account.itineraryTrips) { _, trips in
+            if let id = selectedItineraryTripId, !trips.contains(where: { $0.id == id }) {
+                selectedItineraryTripId = trips.first?.id
+            } else if selectedItineraryTripId == nil, let first = trips.first {
+                selectedItineraryTripId = first.id
+            }
+        }
+        .onChange(of: tripRecorder.currentTrip) { _, newTrip in
+            guard let newTrip = newTrip, let itineraryId = newTrip.itineraryTripId else { return }
+            if let index = account.itineraryTrips.firstIndex(where: { $0.id == itineraryId }) {
+                // Sync points from the GPS recorder to the main Account model
+                account.itineraryTrips[index].points = newTrip.points
+            }
+        }
+        .onChange(of: selectedItineraryTripId) { _, _ in
+            if tripRecorder.isRecording {
+                tripRecorder.stopTrip()
+            }
+        }
     }
 }
 
 private extension TravelTabView {
+    @ViewBuilder
+    var tripSelectionHeader: some View {
+        HStack {
+            Menu {
+                ForEach(account.itineraryTrips.sorted(by: { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending })) { trip in
+                    Button {
+                        selectedItineraryTripId = trip.id
+                    } label: {
+                        Label(trip.title, systemImage: "suitcase")
+                    }
+                }
+                
+                Divider()
+                
+                if let id = selectedItineraryTripId {
+                    Button {
+                        if let trip = account.itineraryTrips.first(where: { $0.id == id }) {
+                            editingTripId = id
+                            newTripTitle = trip.title
+                            showingCreateTripSheet = true
+                        }
+                    } label: {
+                        Label("Edit Trip Details", systemImage: "pencil")
+                    }
+
+                    Button(role: .destructive) {
+                        if let index = account.itineraryTrips.firstIndex(where: { $0.id == id }) {
+                            account.itineraryTrips.remove(at: index)
+                            selectedItineraryTripId = account.itineraryTrips.first?.id
+                        }
+                    } label: {
+                        Label("Delete Current Trip", systemImage: "trash")
+                    }
+                }
+                
+                Divider()
+                
+                Button {
+                    editingTripId = nil
+                    newTripTitle = ""
+                    showingCreateTripSheet = true
+                } label: {
+                    Label("Create New Trip", systemImage: "plus")
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(currentTripTitle)
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.subheadline)
+                }
+            }
+            .foregroundStyle(.primary)
+            .tint(.primary)
+            
+            Spacer()
+            
+            if selectedItineraryTripId != nil {
+                Button {
+                    editorSeedDate = selectedDate
+                    editingEvent = nil
+                    isShowingEditor = true
+                } label: {
+                    Label("Add Event", systemImage: "plus")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 24)
+        .padding(.bottom, 16)
+    }
+
+    @ViewBuilder
+    var recordingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Journey Recordings")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if tripRecorder.isRecording {
+                    Button {
+                        withAnimation {
+                            tripRecorder.stopTrip()
+                        }
+                    } label: {
+                        Label("Stop", systemImage: "stop.circle.fill")
+                            .font(.callout)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                } else {
+                    Button {
+                        withAnimation {
+                            tripRecorder.startTrip(itineraryTripId: selectedItineraryTripId)
+                        }
+                    } label: {
+                        Label("Record", systemImage: "record.circle.fill")
+                            .font(.callout)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                }
+            }
+            .padding(.horizontal, 18)
+
+            let tripRecordings: [Trip] = {
+                var recordings = tripRecorder.pastTrips.filter { $0.itineraryTripId == selectedItineraryTripId }
+                if let currentTrip = tripRecorder.currentTrip, currentTrip.itineraryTripId == selectedItineraryTripId {
+                    recordings.removeAll(where: { $0.id == currentTrip.id })
+                    recordings.insert(currentTrip, at: 0)
+                }
+                return recordings
+            }()
+            
+            if tripRecordings.isEmpty && !tripRecorder.isRecording {
+                 VStack(alignment: .leading, spacing: 8) {
+                      Label("No recordings yet for this trip.", systemImage: "map")
+                          .font(.headline.weight(.semibold))
+                          .foregroundStyle(.primary)
+                      Text("Start recording your journey by tapping the record button above.")
+                          .font(.subheadline)
+                          .foregroundStyle(.secondary)
+                  }
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .padding(16)
+                  .glassEffect(in: .rect(cornerRadius: 16.0))
+                  .padding(.horizontal, 18)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+                    ForEach(tripRecordings) { trip in
+                        Button {
+                            selectedGPSTrip = trip
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Map(initialPosition: (trip.points.isEmpty && trip.isActive) ? .userLocation(fallback: .automatic) : .region(trip.region), interactionModes: []) {
+                                    if !trip.points.isEmpty {
+                                        MapPolyline(coordinates: trip.points.map { $0.coordinate })
+                                            .stroke(.blue, lineWidth: 3)
+                                    }
+                                }
+                                .aspectRatio(1.5, contentMode: .fit)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .strokeBorder(Color.secondary.opacity(0.1), lineWidth: 1)
+                                    )
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(trip.displayTitle(in: tripRecorder.pastTrips))
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .lineLimit(1)
+                                        .foregroundStyle(.primary)
+                                    Text("\(trip.points.count) points")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(10)
+                            .glassEffect(in: .rect(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 18)
+            }
+        }
+    }
+
+    @ViewBuilder
+    var proOverlay: some View {
+        if !isPro {
+            ZStack {
+                Color.black.opacity(0.001)
+                    .onTapGesture {}
+
+                Button {
+                    showProSheet = true
+                } label: {
+                    VStack(spacing: 8) {
+                        HStack {
+                            let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                            if let accent {
+                                Image("logo")
+                                    .resizable()
+                                    .renderingMode(.template)
+                                    .foregroundStyle(accent)
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(height: 40)
+                                    .padding(.leading, 4)
+                                    .offset(y: 6)
+                            } else {
+                                Image("logo")
+                                    .resizable()
+                                    .renderingMode(.original)
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(height: 40)
+                                    .padding(.leading, 4)
+                                    .offset(y: 6)
+                            }
+                            
+                            Text("PRO")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(
+                                            accent.map {
+                                                LinearGradient(
+                                                    gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            } ?? LinearGradient(
+                                                gradient: Gradient(colors: [
+                                                    Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                    Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                ]),
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                )
+                                .offset(y: 6)
+                        }
+                        .padding(.bottom, 5)
+
+                        Text("Trackerio Pro")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        
+                        Text("Upgrade to unlock Itinerary Tracking + More")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                    .padding(24)
+                    .glassEffect(in: .rect(cornerRadius: 24))
+                    .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     var currentAccent: Color {
         if themeManager.selectedTheme == .multiColour {
             return .accentColor
         }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+    
+    var currentTripTitle: String {
+        if let id = selectedItineraryTripId, let trip = account.itineraryTrips.first(where: { $0.id == id }) {
+            return trip.title
+        }
+        return "No Trip Selected"
+    }
+
+    var selectedTripBinding: Binding<ItineraryTrip>? {
+        guard let id = selectedItineraryTripId,
+              let index = account.itineraryTrips.firstIndex(where: { $0.id == id })
+        else { return nil }
+        return $account.itineraryTrips[index]
     }
 
     @ViewBuilder
@@ -203,27 +464,97 @@ private extension TravelTabView {
                 .ignoresSafeArea()
         }
     }
+    
+    var emptyTripsState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "airplane.circle.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            Text("No Upcoming Trips")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Text("Create a trip to start adding itinerary events.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            
+            Button {
+                showingCreateTripSheet = true
+            } label: {
+                Text("Create Trip")
+                    .fontWeight(.medium)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(32)
+        .glassEffect(in: .rect(cornerRadius: 16))
+    }
+    
+    var createTripSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Trip Details") {
+                    TextField("Trip Title (e.g. Paris 2024)", text: $newTripTitle)
+                }
+            }
+            .navigationTitle(editingTripId == nil ? "New Trip" : "Edit Trip")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingCreateTripSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(editingTripId == nil ? "Create" : "Save") {
+                        if let id = editingTripId, let index = account.itineraryTrips.firstIndex(where: { $0.id == id }) {
+                            account.itineraryTrips[index].title = newTripTitle.isEmpty ? "Untitled Trip" : newTripTitle
+                        } else {
+                            let newTrip = ItineraryTrip(
+                                title: newTripTitle.isEmpty ? "New Trip" : newTripTitle,
+                                events: []
+                            )
+                            account.itineraryTrips.append(newTrip)
+                            selectedItineraryTripId = newTrip.id
+                        }
+                        showingCreateTripSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
 
     private func upsertEvent(_ event: ItineraryEvent) {
-        var updated = itineraryEvents
-        if let idx = updated.firstIndex(where: { $0.id == event.id }) {
-            updated[idx] = event
+        guard let id = selectedItineraryTripId,
+              let index = account.itineraryTrips.firstIndex(where: { $0.id == id })
+        else { return }
+        
+        var updatedEvents = account.itineraryTrips[index].events
+        if let idx = updatedEvents.firstIndex(where: { $0.id == event.id }) {
+            updatedEvents[idx] = event
         } else {
-            updated.append(event)
+            updatedEvents.append(event)
         }
-        updated.sort { $0.date < $1.date }
-        itineraryEvents = updated
+        updatedEvents.sort { $0.date < $1.date }
+        account.itineraryTrips[index].events = updatedEvents
         
         if UserDefaults.standard.object(forKey: "alerts.itineraryEnabled") as? Bool ?? true {
-            NotificationsHelper.scheduleItineraryNotifications(updated)
+            NotificationsHelper.scheduleItineraryNotifications(updatedEvents)
         }
     }
 
     private func deleteEvent(_ event: ItineraryEvent) {
-        itineraryEvents.removeAll { $0.id == event.id }
+        guard let id = selectedItineraryTripId,
+              let index = account.itineraryTrips.firstIndex(where: { $0.id == id })
+        else { return }
+        
+        var updatedEvents = account.itineraryTrips[index].events
+        updatedEvents.removeAll { $0.id == event.id }
+        account.itineraryTrips[index].events = updatedEvents
         
         if UserDefaults.standard.object(forKey: "alerts.itineraryEnabled") as? Bool ?? true {
-            NotificationsHelper.scheduleItineraryNotifications(itineraryEvents)
+            NotificationsHelper.scheduleItineraryNotifications(updatedEvents)
         }
     }
 }
@@ -262,11 +593,23 @@ struct TravelTips {
             Action(id: "finish", title: "Finish")
         }
     }
+
+    struct JourneyRecordingGuidanceTip: Tip {
+        var title: Text { Text("Capture Your Journey") }
+        var message: Text? { Text("Move around to capture where you've gone on your trip! Points are recorded as you travel.") }
+        var image: Image? { Image(systemName: "figure.walk") }
+        
+        var options: [Option] {
+            MaxDisplayCount(9999)
+            IgnoresDisplayFrequency(true)
+        }
+    }
 }
 
 enum TravelTipType {
     case map
     case itineraryTracking
+    case recordingGuidance
 }
 
 extension View {
@@ -302,6 +645,72 @@ extension View {
                     onStepChange?(2)
                 }
             }
+        case .recordingGuidance:
+            // This tip is now displayed inline via TipView in TripDetailView
+            // and no longer needs a popover modifier here, but we keep the case
+            // to satisfy the enum switch if called elsewhere.
+            EmptyView()
         }
+    }
+}
+
+struct TripRowView: View {
+    let trip: Trip
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(trip.title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                
+                Text("\(trip.points.count) points")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .glassEffect(in: .rect(cornerRadius: 16.0))
+    }
+}
+
+private extension Trip {
+    var region: MKCoordinateRegion {
+        guard !points.isEmpty else {
+            // Fallback to a wider view of a sensible default if no points exist yet.
+            // The grid map will try to use .userLocation if trip is active anyway.
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+                span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
+            )
+        }
+        
+        let latitudes = points.map { $0.latitude }
+        let longitudes = points.map { $0.longitude }
+        
+        let minLat = latitudes.min()!
+        let maxLat = latitudes.max()!
+        let minLon = longitudes.min()!
+        let maxLon = longitudes.max()!
+        
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        
+        // Add 10% padding
+        let latDelta = max(0.01, (maxLat - minLat) * 1.2)
+        let lonDelta = max(0.01, (maxLon - minLon) * 1.2)
+        
+        return MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
+        )
     }
 }

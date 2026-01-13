@@ -349,6 +349,7 @@ struct WorkoutTabView: View {
     @AppStorage("alerts.weeklyProgressTime") private var weeklyProgressTime: Double = 9 * 3600
     @AppStorage("alerts.dailyCheckInTime") private var dailyCheckInTime: Double = 18 * 3600
     @State private var showingAdjustSheet: Bool = false
+    @State private var showSubmitDataSheet: Bool = false
     @State private var adjustTarget: String? = nil
     // raw HealthKit readings (kept separate from any manual adjustments)
     @State private var hkCaloriesValue: Double? = nil
@@ -535,11 +536,6 @@ struct WorkoutTabView: View {
                         )
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            adjustTarget = "calories"
-                            refreshHealthKitValues(applyToState: false, persist: false)
-                            showingAdjustSheet = true
-                        }
 
                         // Second row: Steps and Distance
                         HStack(alignment: .top, spacing: 12) {
@@ -553,11 +549,6 @@ struct WorkoutTabView: View {
                             )
                             .frame(maxWidth: .infinity)
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                adjustTarget = "steps"
-                                refreshHealthKitValues(applyToState: false, persist: false)
-                                showingAdjustSheet = true
-                            }
 
                             ActivityProgressCard(
                                 title: "Distance Travelled",
@@ -569,11 +560,6 @@ struct WorkoutTabView: View {
                             )
                             .frame(maxWidth: .infinity)
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                adjustTarget = "walking"
-                                refreshHealthKitValues(applyToState: false, persist: false)
-                                showingAdjustSheet = true
-                            }
                         }
                     }
                     .padding(.horizontal, 18)
@@ -592,6 +578,25 @@ struct WorkoutTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 8)
                     }
+
+                    Button {
+                        showSubmitDataSheet = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Spacer()
+                            Label("Submit Data", systemImage: "paperplane.fill")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                        }
+                        .padding(.vertical, 18)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(accentOverride ?? .orange, in: RoundedRectangle(cornerRadius: 18))
+                    }
+                    .padding(.horizontal, 18)
+                    .buttonStyle(.plain)
+                    .contentShape(RoundedRectangle(cornerRadius: 16.0))
+                    .padding(.top, 16)
                     
                     HStack {
                         Text("Workout Supplement Tracking")
@@ -865,6 +870,8 @@ struct WorkoutTabView: View {
                                 }
                             }
                     }
+                    
+                    // Sports Tracking
 
                     // Coaching inquiry card
                     CoachingInquiryCTA()
@@ -918,6 +925,17 @@ struct WorkoutTabView: View {
                 showRestDaySheet = false
             }
             .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showSubmitDataSheet) {
+            DailyActivityEntrySheet(
+                hkCalories: hkCaloriesValue,
+                hkSteps: hkStepsValue,
+                hkDistance: hkDistanceValue
+            ) { target, isAdd, valString in
+                handleAdjustAction(isAddition: isAdd, valueString: valString, target: target)
+            }
+            .presentationDetents([.medium])
+            .accentColor(accentOverride ?? .orange)
         }
         .sheet(isPresented: $showingAdjustSheet) {
             let hkVal: Double? = {

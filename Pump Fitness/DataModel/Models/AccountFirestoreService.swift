@@ -99,6 +99,7 @@ class AccountFirestoreService {
                     nutritionSupplements: resolvedNutritionSupplements,
                     dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) },
                     itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) },
+                    itineraryTrips: (data["itineraryTrips"] as? [[String: Any]] ?? []).compactMap { ItineraryTrip(dictionary: $0) },
                     sports: (data["sports"] as? [[String: Any]] ?? []).compactMap { SportConfig(dictionary: $0) },
                     // Preserve empty remote soloMetrics arrays rather than substituting defaults.
                     soloMetrics: soloMetricDefs,
@@ -336,6 +337,7 @@ class AccountFirestoreService {
         let mealSchedule = account.mealSchedule
         let mealCatalog = account.mealCatalog
         let itineraryEvents = account.itineraryEvents
+        let itineraryTrips = account.itineraryTrips
         let activityLevel = account.activityLevel
         let googleRefreshToken = account.googleRefreshToken
 
@@ -437,7 +439,8 @@ class AccountFirestoreService {
             data["mealCatalog"] = mealCatalog.map { $0.asDictionary }
             // Persist itinerary events even when empty so deletions propagate.
             data["itineraryEvents"] = itineraryEvents.map { $0.asFirestoreDictionary() }
-
+            data["itineraryTrips"] = itineraryTrips.map { $0.asFirestoreDictionary }
+            
             // Handle activityLevel carefully: avoid writing a default 'sedentary'
             // value into Firestore on initial saves (e.g. app launch). If the
             // activity is 'sedentary' and the remote document doesn't already

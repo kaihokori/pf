@@ -388,6 +388,15 @@ struct SportsTabView: View {
                             }
                             .padding(.bottom, 24)
                             .padding(.top, 16)
+                            
+                            // Attribution
+                            Link(destination: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!) {
+                                Text("Source:  Weather")
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                         }
                     }
                 }
@@ -597,255 +606,144 @@ struct SportsTabView: View {
                                         }
                                     })
                             }
-
-                            VStack {
-                                HStack {
-                                    Text("Time Tracking")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
-
-                                    Spacer()
-
-                                    Button {
-                                        showTimeTrackingEditor = true
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                            .font(.callout)
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 18)
-                                .padding(.top, 38)
-                                .padding(.bottom, 8)
-
-                                TimeTrackingSection(
-                                    accentColorOverride: accentOverride,
-                                    config: $timeTrackingConfig
-                                )
-                                .padding(.horizontal, 18)
-                                .padding(.top, -45)
-                                .padding(.bottom, -40)
-                            }
-                            .opacity(isPro ? 1 : 0.5)
-                            .blur(radius: isPro ? 0 : 4)
-                            .disabled(!isPro)
-                            .overlay {
-                                if !isPro {
-                                    ZStack {
-                                        Color.black.opacity(0.001) // Capture taps
-                                            .onTapGesture {
-                                                // Optional: Trigger upgrade flow
-                                            }
-                                        
-                                        VStack(spacing: 8) {
-                                            HStack {
-                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
-
-                                                if let accent {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.template)
-                                                        .foregroundStyle(accent)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                } else {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.original)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                }
-                                                
-                                                Text("PRO")
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundStyle(Color.white)
-                                                    .padding(.horizontal, 8)
-                                                    .padding(.vertical, 4)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(
-                                                                accent.map {
-                                                                    LinearGradient(
-                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                                        startPoint: .topLeading,
-                                                                        endPoint: .bottomTrailing
-                                                                    )
-                                                                } ?? LinearGradient(
-                                                                    gradient: Gradient(colors: [
-                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                    ]),
-                                                                    startPoint: .topLeading,
-                                                                    endPoint: .bottomTrailing
-                                                                )
-                                                            )
-                                                    )
-                                                    .offset(y: 6)
-                                            }
-                                            .padding(.bottom, 5)
-                                            
-                                            Text("Trackerio Pro")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
-                                            
-                                            Text("Upgrade to unlock Time Tracking + More")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                                    }
-                                }
-                            }
                             
-                            VStack {
-                                HStack {
-                                    Text("Team Play Tracking")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
-                                        .sportsTip(.teamAndSoloPlay, isEnabled: isPro, onStepChange: { step in
-                                            if step == 2 {
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                    withAnimation {
-                                                        proxy.scrollTo("editPlays", anchor: .center)
-                                                    }
-                                                }
-                                            }
-                                        })
-                                        .id("teamPlay")
+                            // VStack {
+                            //     HStack {
+                            //         Text("Team Play Tracking")
+                            //             .font(.title3)
+                            //             .fontWeight(.semibold)
+                            //             .foregroundStyle(.primary)
+                            //             .sportsTip(.teamAndSoloPlay, isEnabled: isPro, onStepChange: { step in
+                            //                 if step == 2 {
+                            //                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            //                         withAnimation {
+                            //                             proxy.scrollTo("editPlays", anchor: .center)
+                            //                         }
+                            //                     }
+                            //                 }
+                            //             })
+                            //             .id("teamPlay")
 
-                                    Spacer()
+                            //         Spacer()
 
-                                    Button {
-                                        showTeamMetricsEditor = true
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                            .font(.callout)
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    }
-                                    .sportsTip(.editPlays, isEnabled: isPro, onStepChange: { step in
-                                        if step == 3 {
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                withAnimation {
-                                                    proxy.scrollTo("editSports", anchor: .center)
-                                                }
-                                            }
-                                        }
-                                    })
-                                    .id("editPlays")
-                                    .buttonStyle(.plain)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 18)
-                                .padding(.top, 38)
-                                .padding(.bottom, 8)
+                            //         Button {
+                            //             showTeamMetricsEditor = true
+                            //         } label: {
+                            //             Label("Edit", systemImage: "pencil")
+                            //                 .font(.callout)
+                            //                 .fontWeight(.medium)
+                            //                 .padding(.horizontal, 12)
+                            //                 .padding(.vertical, 8)
+                            //                 .glassEffect(in: .rect(cornerRadius: 18.0))
+                            //         }
+                            //         .sportsTip(.editPlays, isEnabled: isPro, onStepChange: { step in
+                            //             if step == 3 {
+                            //                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            //                     withAnimation {
+                            //                         proxy.scrollTo("editSports", anchor: .center)
+                            //                     }
+                            //                 }
+                            //             }
+                            //         })
+                            //         .id("editPlays")
+                            //         .buttonStyle(.plain)
+                            //     }
+                            //     .frame(maxWidth: .infinity, alignment: .leading)
+                            //     .padding(.horizontal, 18)
+                            //     .padding(.top, 38)
+                            //     .padding(.bottom, 8)
 
-                                TeamPlaySection(
-                                    selectedDate: selectedDate,
-                                    metrics: $teamMetrics,
-                                    metricValues: $teamMetricValuesStore,
-                                    homeScore: $teamHomeScore,
-                                    awayScore: $teamAwayScore,
-                                    focusBinding: $teamInputsFocused,
-                                    onValueChange: handleTeamMetricValueChange,
-                                    onScoreChange: handleTeamScoreChange,
-                                    onDelete: handleTeamDelete,
-                                    days: teamHistoryDays,
-                                    historyDays: historyDays
-                                )
-                                .padding(.horizontal, 18)
-                            }
-                            .opacity(isPro ? 1 : 0.5)
-                            .blur(radius: isPro ? 0 : 4)
-                            .disabled(!isPro)
-                            .overlay {
-                                if !isPro {
-                                    ZStack {
-                                        Color.black.opacity(0.001) // Capture taps
-                                            .onTapGesture {
-                                                // Optional: Trigger upgrade flow
-                                            }
+                            //     TeamPlaySection(
+                            //         selectedDate: selectedDate,
+                            //         metrics: $teamMetrics,
+                            //         metricValues: $teamMetricValuesStore,
+                            //         homeScore: $teamHomeScore,
+                            //         awayScore: $teamAwayScore,
+                            //         focusBinding: $teamInputsFocused,
+                            //         onValueChange: handleTeamMetricValueChange,
+                            //         onScoreChange: handleTeamScoreChange,
+                            //         onDelete: handleTeamDelete,
+                            //         days: teamHistoryDays,
+                            //         historyDays: historyDays
+                            //     )
+                            //     .padding(.horizontal, 18)
+                            // }
+                            // .opacity(isPro ? 1 : 0.5)
+                            // .blur(radius: isPro ? 0 : 4)
+                            // .disabled(!isPro)
+                            // .overlay {
+                            //     if !isPro {
+                            //         ZStack {
+                            //             Color.black.opacity(0.001) // Capture taps
+                            //                 .onTapGesture {
+                            //                     // Optional: Trigger upgrade flow
+                            //                 }
                                         
-                                        VStack(spacing: 8) {
-                                            HStack {
-                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+                            //             VStack(spacing: 8) {
+                            //                 HStack {
+                            //                     let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
 
-                                                if let accent {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.template)
-                                                        .foregroundStyle(accent)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                } else {
-                                                    Image("logo")
-                                                        .resizable()
-                                                        .renderingMode(.original)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(height: 40)
-                                                        .padding(.leading, 4)
-                                                        .offset(y: 6)
-                                                }
+                            //                     if let accent {
+                            //                         Image("logo")
+                            //                             .resizable()
+                            //                             .renderingMode(.template)
+                            //                             .foregroundStyle(accent)
+                            //                             .aspectRatio(contentMode: .fit)
+                            //                             .frame(height: 40)
+                            //                             .padding(.leading, 4)
+                            //                             .offset(y: 6)
+                            //                     } else {
+                            //                         Image("logo")
+                            //                             .resizable()
+                            //                             .renderingMode(.original)
+                            //                             .aspectRatio(contentMode: .fit)
+                            //                             .frame(height: 40)
+                            //                             .padding(.leading, 4)
+                            //                             .offset(y: 6)
+                            //                     }
                                                 
-                                                Text("PRO")
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundStyle(Color.white)
-                                                    .padding(.horizontal, 8)
-                                                    .padding(.vertical, 4)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                            .fill(
-                                                                accent.map {
-                                                                    LinearGradient(
-                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                                        startPoint: .topLeading,
-                                                                        endPoint: .bottomTrailing
-                                                                    )
-                                                                } ?? LinearGradient(
-                                                                    gradient: Gradient(colors: [
-                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                    ]),
-                                                                    startPoint: .topLeading,
-                                                                    endPoint: .bottomTrailing
-                                                                )
-                                                            )
-                                                    )
-                                                    .offset(y: 6)
-                                            }
-                                            .padding(.bottom, 5)
+                            //                     Text("PRO")
+                            //                         .font(.subheadline)
+                            //                         .fontWeight(.semibold)
+                            //                         .foregroundStyle(Color.white)
+                            //                         .padding(.horizontal, 8)
+                            //                         .padding(.vertical, 4)
+                            //                         .background(
+                            //                             RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            //                                 .fill(
+                            //                                     accent.map {
+                            //                                         LinearGradient(
+                            //                                             gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                            //                                             startPoint: .topLeading,
+                            //                                             endPoint: .bottomTrailing
+                            //                                         )
+                            //                                     } ?? LinearGradient(
+                            //                                         gradient: Gradient(colors: [
+                            //                                             Color(red: 0.74, green: 0.43, blue: 0.97),
+                            //                                             Color(red: 0.83, green: 0.99, blue: 0.94)
+                            //                                         ]),
+                            //                                         startPoint: .topLeading,
+                            //                                         endPoint: .bottomTrailing
+                            //                                     )
+                            //                                 )
+                            //                         )
+                            //                         .offset(y: 6)
+                            //                 }
+                            //                 .padding(.bottom, 5)
                                             
-                                            Text("Trackerio Pro")
-                                                .font(.headline)
-                                                .foregroundStyle(.primary)
+                            //                 Text("Trackerio Pro")
+                            //                     .font(.headline)
+                            //                     .foregroundStyle(.primary)
                                             
-                                            Text("Upgrade to unlock Team Play Tracking + More")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                                    }
-                                }
-                            }
+                            //                 Text("Upgrade to unlock Team Play Tracking + More")
+                            //                     .font(.caption)
+                            //                     .foregroundStyle(.secondary)
+                            //             }
+                            //             .padding()
+                            //             .glassEffect(in: .rect(cornerRadius: 16.0))
+                            //         }
+                            //     }
+                            // }
 
                             // VStack {
                             //     HStack {
@@ -1071,6 +969,16 @@ struct SportsTabView: View {
                                                 .contentShape(RoundedRectangle(cornerRadius: 16.0))
                                             }
 
+                                            HStack {
+                                                Image(systemName: "chart.bar.xaxis")
+                                                    .foregroundStyle(.secondary)
+                                                Text("Metrics Overview")
+                                                    .font(.caption.weight(.bold))
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(.horizontal, 4)
+                                            .padding(.top, 12)
+
                                             ForEach(sport.metrics) { metric in
                                                 SportMetricGraph(
                                                     metric: metric,
@@ -1091,61 +999,33 @@ struct SportsTabView: View {
                                                 sportRecords.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: d) })
                                             }
 
-                                            VStack(spacing: 0) {
-                                                ForEach(daysWithRecords, id: \.self) { day in
+                                            HStack {
+                                                Image(systemName: "clock.arrow.circlepath")
+                                                    .foregroundStyle(.secondary)
+                                                Text("Recent Records")
+                                                    .font(.caption.weight(.bold))
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(.horizontal, 4)
+                                            .padding(.top, 12)
+
+                                            VStack(spacing: 12) {
+                                                ForEach(daysWithRecords.reversed(), id: \.self) { day in
                                                     let dayRecords = sportRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
-
-                                                    Section(header:
-                                                        HStack {
-                                                            VStack(alignment: .leading, spacing: 2) {
-                                                                Text(DateFormatter.sportWeekdayFull.string(from: day))
-                                                                    .font(.subheadline.weight(.semibold))
-                                                                Text(DateFormatter.sportLongDate.string(from: day))
-                                                                    .font(.caption2)
-                                                                    .foregroundStyle(.secondary)
+                                                    ForEach(dayRecords.reversed(), id: \.id) { record in
+                                                        SportRecordCard(
+                                                            date: day,
+                                                            record: record,
+                                                            onEdit: {
+                                                                editingSportRecord = record
+                                                                dataEntrySportIndex = idx
+                                                                dataEntryDefaultDate = record.date
+                                                            },
+                                                            onDelete: {
+                                                                sportActivities.removeAll { $0.id == record.id }
+                                                                rebuildSports()
                                                             }
-                                                            Spacer()
-                                                        }
-                                                        .padding(.vertical, 8)
-                                                    ) {
-                                                        ForEach(dayRecords, id: \.id) { record in
-                                                            HStack(alignment: .top, spacing: 12) {
-                                                                VStack(alignment: .leading, spacing: 6) {
-                                                                    ForEach(record.values, id: \.id) { val in
-                                                                        HStack(spacing: 6) {
-                                                                            Text(val.label)
-                                                                                .font(.caption.weight(.semibold))
-                                                                                .foregroundStyle(.secondary)
-                                                                            Text(formatMetricValue(val))
-                                                                                .font(.caption)
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                Spacer()
-
-                                                                Menu {
-                                                                    Button("Edit") {
-                                                                        editingSportRecord = record
-                                                                        dataEntrySportIndex = idx
-                                                                        dataEntryDefaultDate = record.date
-                                                                    }
-                                                                    Button("Delete", role: .destructive) {
-                                                                        sportActivities.removeAll { $0.id == record.id }
-                                                                        rebuildSports()
-                                                                    }
-                                                                } label: {
-                                                                    Image(systemName: "ellipsis.circle")
-                                                                        .font(.callout)
-                                                                        .foregroundStyle(.primary)
-                                                                }
-                                                                .menuStyle(.borderlessButton)
-                                                            }
-                                                            .padding(.vertical, 8)
-                                                            if record.id != dayRecords.last?.id {
-                                                                Divider()
-                                                            }
-                                                        }
+                                                        )
                                                     }
                                                 }
                                             }
@@ -1256,12 +1136,6 @@ struct SportsTabView: View {
                 AccountsView(account: $account)
             }
         }
-        .sheet(isPresented: $showTimeTrackingEditor) {
-            TimeTrackingEditorSheet(config: $timeTrackingConfig) { updated in
-                timeTrackingConfig = updated
-                persistTimeTrackingConfig(updated)
-            }
-        }
         .sheet(isPresented: $showTeamMetricsEditor) {
             TeamPlayMetricsEditorSheet(metrics: $teamMetrics, isPro: isPro) { updated in
                 persistTeamMetrics(updated)
@@ -1339,13 +1213,9 @@ struct SportsTabView: View {
         }
         .onAppear {
             rebuildSports()
-            loadTimeTrackingConfigFromStorage()
             loadTeamMetricsFromAccount()
             loadSoloMetricsFromAccount()
             loadDayForSelectedDate()
-        }
-        .task {
-            await weatherModel.refresh(for: selectedDate)
         }
         .onChange(of: selectedDate) { _, newValue in
             Task { await weatherModel.refresh(for: newValue) }
@@ -1380,25 +1250,100 @@ struct SportsTabView: View {
             )
         }
     }
-}
 
-// MARK: - Time tracking persistence
-private extension SportsTabView {
-    func loadTimeTrackingConfigFromStorage() {
-        guard !hasLoadedTimeTrackingConfig else { return }
-        defer { hasLoadedTimeTrackingConfig = true }
-        guard !storedTimeTrackingConfigJSON.isEmpty, let data = storedTimeTrackingConfigJSON.data(using: .utf8) else {
-            persistTimeTrackingConfig(timeTrackingConfig)
-            return
-        }
-        if let decoded = try? JSONDecoder().decode(TimeTrackingConfig.self, from: data) {
-            timeTrackingConfig = decoded
-        }
-    }
+    private struct SportRecordCard: View {
+        let date: Date
+        let record: SportActivityRecord
+        let onEdit: () -> Void
+        let onDelete: () -> Void
 
-    func persistTimeTrackingConfig(_ config: TimeTrackingConfig) {
-        if let data = try? JSONEncoder().encode(config), let json = String(data: data, encoding: .utf8) {
-            storedTimeTrackingConfigJSON = json
+        @Environment(\.colorScheme) private var colorScheme
+
+        var body: some View {
+            VStack(spacing: 0) {
+                // Header with Date and Actions
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(DateFormatter.sportWeekdayFull.string(from: date).uppercased())
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(DateFormatter.sportLongDate.string(from: date))
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.primary)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        Button(action: onEdit) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.blue.opacity(0.8))
+                                .padding(8)
+                                .background(.blue.opacity(0.1), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.red.opacity(0.8))
+                                .padding(8)
+                                .background(.red.opacity(0.1), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+                .background(Color(UIColor.secondarySystemFill).opacity(0.5))
+
+                // Content
+                HStack(spacing: 0) {
+                    if record.values.isEmpty {
+                        Text("No metrics recorded")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 12)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80, maximum: .infinity), spacing: 8)], spacing: 8) {
+                            ForEach(record.values, id: \.id) { val in
+                                VStack(spacing: 2) {
+                                    Text(val.label)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+
+                                    Text(formatMetricValue(val))
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.primary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(Color(UIColor.systemBackground).opacity(colorScheme == .dark ? 0.2 : 0.5))
+                                .cornerRadius(6)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+            }
+            .background(Color(UIColor.secondarySystemFill))
+            .cornerRadius(12)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        }
+
+        private func formatMetricValue(_ value: SportMetricValue) -> String {
+            let intVal = Int(value.value)
+            let numberString: String
+            if Double(intVal) == value.value {
+                numberString = String(intVal)
+            } else {
+                numberString = String(format: "%.2f", value.value)
+            }
+            if value.unit.isEmpty { return numberString }
+            return "\(numberString) \(value.unit)"
         }
     }
 }
@@ -2216,20 +2161,20 @@ fileprivate struct TeamPlaySection: View {
 
                 if !days.isEmpty {
                     VStack(spacing: 0) {
-                        ForEach(metrics) { metric in
-                            TeamMetricGraph(
-                                metric: metric,
-                                days: days,
-                                historyDays: historyDays,
-                                anchorDate: selectedDate,
-                                accentOverride: themeManager.selectedTheme.accent(for: colorScheme)
-                            )
-                            .frame(height: 140)
-                            .padding(.top, 12)
-                            .padding(.bottom, 8)
-                        }
+                        // ForEach(metrics) { metric in
+                        //     TeamMetricGraph(
+                        //         metric: metric,
+                        //         days: days,
+                        //         historyDays: historyDays,
+                        //         anchorDate: selectedDate,
+                        //         accentOverride: themeManager.selectedTheme.accent(for: colorScheme)
+                        //     )
+                        //     .frame(height: 140)
+                        //     .padding(.top, 12)
+                        //     .padding(.bottom, 8)
+                        // }
 
-                        // Daily Details List
+                        // Match Log
                         let weekDates = teamWeekDates(anchor: selectedDate, historyDays: historyDays)
                         let validDates = weekDates.filter { d in
                             days.contains { day in
@@ -2237,67 +2182,32 @@ fileprivate struct TeamPlaySection: View {
                                 (day.teamHomeScore > 0 || day.teamAwayScore > 0 || !day.teamMetricValues.isEmpty)
                             }
                         }
+                        
+                        // Show history if any
+                        if !validDates.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Image(systemName: "list.bullet.rectangle.portrait")
+                                        .foregroundStyle(.secondary)
+                                    Text("RECENT MATCH LOG")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 4)
+                                .padding(.top, 12)
 
-                        VStack(spacing: 0) {
-                            ForEach(validDates, id: \.self) { date in
-                                let day = days.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }) ?? Day() // Should find it
-
-                                Section(header:
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(DateFormatter.sportWeekdayFull.string(from: date))
-                                                .font(.subheadline.weight(.semibold))
-                                            Text(DateFormatter.sportLongDate.string(from: date))
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(.vertical, 8)
-                                ) {
-                                    HStack(alignment: .top, spacing: 12) {
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            if day.teamHomeScore > 0 || day.teamAwayScore > 0 {
-                                                Text("Score: \(day.teamHomeScore) - \(day.teamAwayScore)")
-                                                    .font(.caption.weight(.bold))
-                                            }
-
-                                            ForEach(day.teamMetricValues, id: \.id) { val in
-                                                // Only show metrics that are currently configured
-                                                if let m = metrics.first(where: { $0.id == val.metricId }) {
-                                                    HStack(spacing: 6) {
-                                                        Text(m.name)
-                                                            .font(.caption.weight(.semibold))
-                                                            .foregroundStyle(.secondary)
-                                                        
-                                                        // Format value
-                                                        let dVal = val.value
-                                                        let isInt = floor(dVal) == dVal
-                                                        Text(isInt ? "\(Int(dVal))" : String(format: "%.2f", dVal))
-                                                            .font(.caption)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Spacer()
-
-                                        Button {
-                                            onDelete(day)
-                                        } label: {
-                                            Image(systemName: "trash")
-                                                .font(.callout)
-                                                .foregroundStyle(.red)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding(.vertical, 8)
-                                    if date != validDates.last {
-                                        Divider()
-                                    }
+                                // Show newest first for "latest matches" feel
+                                ForEach(validDates.reversed(), id: \.self) { date in
+                                    let day = days.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }) ?? Day()
+                                    TeamMatchCard(
+                                        date: date,
+                                        day: day,
+                                        metrics: metrics,
+                                        onDelete: { onDelete(day) }
+                                    )
                                 }
                             }
                         }
-                        .padding(.horizontal, 8)
                     }
                     .padding(.horizontal, 4)
                 }
@@ -2344,6 +2254,114 @@ fileprivate struct TeamPlaySection: View {
     private func rows(for items: [TeamMetric]) -> [[TeamMetric]] {
         stride(from: 0, to: items.count, by: 2).map { idx in
             Array(items[idx..<min(idx + 2, items.count)])
+        }
+    }
+
+    private struct TeamMatchCard: View {
+        let date: Date
+        let day: Day
+        let metrics: [TeamMetric]
+        let onDelete: () -> Void
+
+        @Environment(\.colorScheme) private var colorScheme
+
+        var body: some View {
+            VStack(spacing: 0) {
+                // Header with Date and Delete
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(DateFormatter.sportWeekdayFull.string(from: date).uppercased())
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(DateFormatter.sportLongDate.string(from: date))
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.primary)
+                    }
+
+                    Spacer()
+
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.callout)
+                            .foregroundStyle(.red.opacity(0.8))
+                            .padding(8)
+                            .background(.red.opacity(0.1), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(Color(UIColor.secondarySystemFill).opacity(0.5))
+
+                // Content
+                HStack(spacing: 0) {
+                    // Score Section (Left)
+                    if day.teamHomeScore > 0 || day.teamAwayScore > 0 {
+                        VStack(spacing: 4) {
+                            Text("\(day.teamHomeScore)-\(day.teamAwayScore)")
+                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .foregroundStyle(
+                                    day.teamHomeScore >= day.teamAwayScore ? .primary : .secondary
+                                )
+
+                            Text("SCORE")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.secondary)
+                                .tracking(1)
+                        }
+                        .frame(width: 80)
+                        .padding(.trailing, 12)
+                        .overlay(alignment: .trailing) {
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.2))
+                                .frame(width: 1)
+                                .padding(.vertical, 4)
+                        }
+                    }
+
+                    // Metrics Grid (Right)
+                    let vals = day.teamMetricValues.filter { v in metrics.contains(where: { $0.id == v.metricId }) }
+
+                    if vals.isEmpty && (day.teamHomeScore > 0 || day.teamAwayScore > 0) {
+                         // Only score, space is fine
+                         Spacer()
+                    } else if vals.isEmpty {
+                        Text("No detailed stats")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 12)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80, maximum: .infinity), spacing: 8)], spacing: 8) {
+                            ForEach(vals, id: \.id) { val in
+                                if let m = metrics.first(where: { $0.id == val.metricId }) {
+                                    VStack(spacing: 2) {
+                                        Text(m.name)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.8)
+
+                                        let dVal = val.value
+                                        let isInt = floor(dVal) == dVal
+                                        Text(isInt ? "\(Int(dVal))" : String(format: "%.2f", dVal))
+                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(.primary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(Color(UIColor.systemBackground).opacity(colorScheme == .dark ? 0.2 : 0.5))
+                                    .cornerRadius(6)
+                                }
+                            }
+                        }
+                        .padding(.leading, 12)
+                    }
+                }
+                .padding(12)
+            }
+            .background(Color(UIColor.secondarySystemFill))
+            .cornerRadius(12)
+            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
         }
     }
 
@@ -3725,34 +3743,6 @@ struct SportsTips {
         }
     }
 
-    struct TeamAndSoloPlayTip: Tip {
-        var title: Text { Text("Team and Solo Play") }
-        var message: Text? { Text("Manually note your sessions.") }
-        var image: Image? { Image(systemName: "figure.run") }
-        
-        var rules: [Rule] {
-            #Rule(SportsTips.$currentStep) { $0 == 1 }
-        }
-        
-        var actions: [Action] {
-            Action(id: "next", title: "Next")
-        }
-    }
-
-    struct EditPlaysTip: Tip {
-        var title: Text { Text("Edit Plays") }
-        var message: Text? { Text("Tap Edit to add and remove fields.") }
-        var image: Image? { Image(systemName: "pencil") }
-        
-        var rules: [Rule] {
-            #Rule(SportsTips.$currentStep) { $0 == 2 }
-        }
-        
-        var actions: [Action] {
-            Action(id: "next", title: "Next")
-        }
-    }
-
     struct EditSportsTip: Tip {
         var title: Text { Text("Edit Sports") }
         var message: Text? { Text("Tap Edit to add and remove sports you play.") }
@@ -3783,8 +3773,6 @@ struct SportsTips {
 }
 
 enum SportsTipType {
-    case teamAndSoloPlay
-    case editPlays
     case editSports
     case sportsTracking
     case weather
@@ -3815,20 +3803,6 @@ extension View {
                 if action.id == "next" {
                     SportsTips.currentStep = 1
                     onStepChange?(1)
-                }
-            }
-        case .teamAndSoloPlay:
-            self.popoverTip(SportsTips.TeamAndSoloPlayTip()) { action in
-                if action.id == "next" {
-                    SportsTips.currentStep = 2
-                    onStepChange?(2)
-                }
-            }
-        case .editPlays:
-            self.popoverTip(SportsTips.EditPlaysTip()) { action in
-                if action.id == "next" {
-                    SportsTips.currentStep = 3
-                    onStepChange?(3)
                 }
             }
         case .editSports:

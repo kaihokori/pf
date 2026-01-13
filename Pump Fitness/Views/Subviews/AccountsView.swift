@@ -764,7 +764,7 @@ struct AccountsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
-                    ScrollView(showsIndicators: true) {
+                    ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 20) {
                             // Nutrition
                             VStack(alignment: .leading, spacing: 12) {

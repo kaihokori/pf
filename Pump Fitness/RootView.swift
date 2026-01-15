@@ -2738,6 +2738,8 @@ private extension RootView {
                                 value: AppTab.workout
                             ) {
                                 WorkoutTabView(
+                                    sportConfigs: $sportsConfigs,
+                                    sportActivities: $sportActivities,
                                     account: accountBinding,
                                     selectedDate: $selectedDate,
                                     caloriesBurnGoal: $caloriesBurnGoal,
@@ -2793,8 +2795,6 @@ private extension RootView {
                             ) {
                                 SportsTabView(
                                     account: accountBinding,
-                                    sportConfigs: $sportsConfigs,
-                                    sportActivities: $sportActivities,
                                     selectedDate: $selectedDate,
                                     isPro: isPro,
                                     weatherModel: weatherModel

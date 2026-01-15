@@ -1433,7 +1433,7 @@ struct ItineraryEventEditorView: View {
                 Text("PDF")
                     .font(.subheadline.weight(.semibold))
                 
-                if let data = selectedPDFData {
+                if selectedPDFData != nil {
                     VStack(spacing: 8) {
                         Image(systemName: "doc.fill")
                             .font(.title3)

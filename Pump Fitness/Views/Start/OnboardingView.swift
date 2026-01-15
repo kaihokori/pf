@@ -343,6 +343,14 @@ struct OnboardingView: View {
             SportConfig(id: sport.id, name: sport.name, colorHex: resolvedColor(sport.colorHex), metrics: sport.metrics)
         }
         account.itineraryEvents = viewModel.itineraryEvents
+        
+        // Ensure a default trip exists if none present
+        if account.itineraryTrips.isEmpty {
+            account.itineraryTrips = [
+                ItineraryTrip(title: "My Trip", events: viewModel.itineraryEvents)
+            ]
+        }
+        
         account.expenseCurrencySymbol = account.expenseCurrencySymbol.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Account.deviceCurrencySymbol : account.expenseCurrencySymbol
         
         // Only update weight groups if user selected some, otherwise keep defaults or existing
@@ -786,7 +794,7 @@ private struct AccountSetupStepView: View {
             Button(action: { showActivityExplainer = true }) {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
-                    Text("Tap for Explanation")
+                    Text("Tap for Explanation and Source")
                     Spacer()
                 }
                 .font(.footnote)
@@ -851,13 +859,13 @@ private struct NutritionTrackingStepView: View {
                     .padding()
                     .surfaceCard(12)
 
-                    // Tap for Explanation (opens Maintenance Calories Explainer)
+                    // Tap for Explanation and Source (opens Maintenance Calories Explainer)
                     Button(action: {
                         showMaintenanceExplainer = true
                     }) {
                         HStack(spacing: 6) {
                             Image(systemName: "info.circle")
-                            Text("Tap for Explanation")
+                            Text("Tap for Explanation and Source")
                             Spacer()
                         }
                         .font(.footnote)
@@ -884,7 +892,7 @@ private struct NutritionTrackingStepView: View {
             Button(action: { showWeightGoalExplainer = true }) {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
-                    Text("Tap for Explanation")
+                    Text("Tap for Explanation and Source")
                     Spacer()
                 }
                 .font(.footnote)
@@ -909,7 +917,7 @@ private struct NutritionTrackingStepView: View {
             Button(action: { showMacroStrategyExplainer = true }) {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle")
-                    Text("Tap for Explanation")
+                    Text("Tap for Explanation and Source")
                     Spacer()
                 }
                 .font(.footnote)
@@ -1210,9 +1218,9 @@ private struct NutritionTrackingStepView: View {
             }
             
             // Quick Add - hide presets that are already tracked (defaults + custom)
-            let trackedNames = Set(viewModel.customMacros.map { $0.name.lowercased() } + ["Protein", "Carbs", "Fats", "Water"].map { $0.lowercased() })
+            let trackedNames = Set(viewModel.customMacros.map { $0.name.lowercased() } + ["Protein", "Carbs", "Carbohydrates", "Fats", "Water", "Water Intake", "Fiber", "Fibre"].map { $0.lowercased() })
             let availableMacroPresets = MacroPreset.allCases.filter { preset in
-                !trackedNames.contains(preset.displayName.lowercased())
+                !trackedNames.contains(preset.displayName.lowercased()) && !trackedNames.contains(preset.rawValue.lowercased())
             }
 
             if !availableMacroPresets.isEmpty {
@@ -1309,27 +1317,41 @@ private struct NutritionTrackingStepView: View {
     private func addPresetMacro(_ preset: MacroPreset) {
         // Parse allowedLabel like "100g" or "2500mL" into numeric target and unit
         let allowed = preset.allowedLabel(for: viewModel.selectedGender)
-        let digits = allowed.unicodeScalars.filter { CharacterSet(charactersIn: "0123456789.").contains($0) }
-        let suffixScalars = allowed.unicodeScalars.filter { !CharacterSet(charactersIn: "0123456789.").contains($0) }
-        let numberString = String(String.UnicodeScalarView(digits))
-        let suffix = String(String.UnicodeScalarView(suffixScalars)).trimmingCharacters(in: .whitespacesAndNewlines)
-        let targetValue = Double(numberString) ?? 0
+        
+        // Improved parsing for ranges and prefixes like <=
+        let cleanAllowed = allowed
+            .replacingOccurrences(of: "≤", with: "")
+            .replacingOccurrences(of: "≥", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        
+        let components = cleanAllowed.components(separatedBy: CharacterSet(charactersIn: " –-"))
+        let numberPart = components.first { Double($0) != nil } ?? "0"
+        let targetValue = Double(numberPart) ?? 0
+        
+        let unit = allowed.contains("mg") ? "mg" : (allowed.contains("mcg") ? "mcg" : (allowed.contains("mL") ? "mL" : "g"))
 
         let colorHex: String = {
             switch preset {
-            case .protein: return "#D84A4A"
-            case .carbs: return "#E6C84F"
-            case .fats: return "#E39A3B"
-            case .fibre: return "#4CAF6A"
-            case .water: return "#4A7BD0"
-            case .sodium: return "#4FB6C6"
-            case .potassium: return "#7A5FD1"
-            case .sugar: return "#C85FA8"
-            case .cholesterol: return "#2a65edff"
+            case .protein: return ColorPalette.defaultColors[0]
+            case .carbs: return ColorPalette.defaultColors[1]
+            case .fats: return ColorPalette.defaultColors[2]
+            case .fibre: return ColorPalette.defaultColors[3]
+            case .water: return ColorPalette.defaultColors[4]
+            case .sodium: return ColorPalette.defaultColors[5]
+            case .potassium: return ColorPalette.defaultColors[6]
+            case .sugar: return ColorPalette.defaultColors[7]
+            case .cholesterol: return ColorPalette.defaultColors[5]
+            case .iron: return ColorPalette.defaultColors[0]
+            case .magnesium: return ColorPalette.defaultColors[1]
+            case .zinc: return ColorPalette.defaultColors[2]
+            case .phosphorus: return ColorPalette.defaultColors[3]
+            case .iodine: return ColorPalette.defaultColors[4]
+            case .caffeine: return ColorPalette.defaultColors[5]
+            case .selenium: return ColorPalette.defaultColors[6]
             }
         }()
 
-        let macro = TrackedMacro(name: preset.displayName, target: targetValue, unit: suffix.isEmpty ? "g" : suffix, colorHex: colorHex)
+        let macro = TrackedMacro(name: preset.displayName, target: targetValue, unit: unit, colorHex: colorHex)
         viewModel.customMacros.append(macro)
     }
 

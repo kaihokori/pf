@@ -82,9 +82,9 @@ class SubscriptionManager: ObservableObject {
     // TODO: Replace with your actual product IDs from App Store Connect
     // These should match the Product IDs you create in App Store Connect
     private let productIDs: Set<String> = [
-        "com.trackerio.pro.1month",
-        "com.trackerio.pro.6months",
-        "com.trackerio.pro.12months"
+        "com.trackerio.pro.1",
+        "com.trackerio.pro.6",
+        "com.trackerio.pro.12"
     ]
 
     private var updates: Task<Void, Never>? = nil

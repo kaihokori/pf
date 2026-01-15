@@ -2066,7 +2066,7 @@ private struct CalorieGoalEditorSheet: View {
                         Button(action: { showMacroExplainer = true }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "info.circle")
-                                Text("Tap for Explanation")
+                                Text("Tap for Explanation and Source")
                                 Spacer()
                             }
                             .font(.footnote)
@@ -2333,6 +2333,13 @@ enum MacroPreset: String, CaseIterable, Identifiable {
     case potassium
     case sugar
     case cholesterol
+    case iron
+    case magnesium
+    case zinc
+    case phosphorus
+    case iodine
+    case caffeine
+    case selenium
 
     var id: String { rawValue }
 
@@ -2341,12 +2348,19 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .protein: return "Protein"
         case .carbs: return "Carbs"
         case .fats: return "Fats"
-        case .fibre: return "Fibre"
+        case .fibre: return "Fiber"
         case .water: return "Water"
         case .sodium: return "Sodium"
         case .potassium: return "Potassium"
-        case .sugar: return "Sugar"
+        case .sugar: return "Added Sugar"
         case .cholesterol: return "Cholesterol"
+        case .iron: return "Iron"
+        case .magnesium: return "Magnesium"
+        case .zinc: return "Zinc"
+        case .phosphorus: return "Phosphorus"
+        case .iodine: return "Iodine"
+        case .caffeine: return "Caffeine"
+        case .selenium: return "Selenium"
         }
     }
 
@@ -2357,10 +2371,17 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .fats: return "38g"
         case .fibre: return "22g"
         case .water: return "2000mL"
-        case .sodium: return "1.8g"
+        case .sodium: return "1,500mg"
         case .potassium: return "3.1g"
         case .sugar: return "35g"
         case .cholesterol: return "180mg"
+        case .iron: return "8mg"
+        case .magnesium: return "300mg"
+        case .zinc: return "10mg"
+        case .phosphorus: return "500mg"
+        case .iodine: return "100mcg"
+        case .caffeine: return "150mg"
+        case .selenium: return "40mcg"
         }
     }
 
@@ -2369,12 +2390,19 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .protein: return "100 g"
         case .carbs: return "200 g"
         case .fats: return "70 g"
-        case .fibre: return "30 g"
+        case .fibre: return "25 g"
         case .water: return "2500 mL"
-        case .sodium: return "2.3 g"
+        case .sodium: return "2300 mg"
         case .potassium: return "4.7 g"
-        case .sugar: return "50 g"
+        case .sugar: return "36 g"
         case .cholesterol: return "300 mg"
+        case .iron: return "18 mg"
+        case .magnesium: return "400 mg"
+        case .zinc: return "11 mg"
+        case .phosphorus: return "700 mg"
+        case .iodine: return "150 mcg"
+        case .caffeine: return "400 mg"
+        case .selenium: return "55 mcg"
         }
     }
 
@@ -2384,14 +2412,14 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         switch self {
         case .fibre:
             switch g {
-            case .male: return "30–38 g"
-            case .female: return "21–25 g"
+            case .male: return "38 g"
+            case .female: return "25 g"
             default: return allowedLabel
             }
         case .sugar:
             switch g {
-            case .male: return "≤36 g"
-            case .female: return "≤25 g"
+            case .male: return "36 g"
+            case .female: return "25 g"
             default: return allowedLabel
             }
         case .potassium:
@@ -2400,6 +2428,30 @@ enum MacroPreset: String, CaseIterable, Identifiable {
             case .female: return "2,600 mg"
             default: return allowedLabel
             }
+        case .iron:
+            switch g {
+            case .male: return "8 mg"
+            case .female: return "18 mg"
+            default: return allowedLabel
+            }
+        case .magnesium:
+            switch g {
+            case .male: return "420 mg"
+            case .female: return "320 mg"
+            default: return allowedLabel
+            }
+        case .zinc:
+            switch g {
+            case .male: return "11 mg"
+            case .female: return "8 mg"
+            default: return allowedLabel
+            }
+        case .sodium:
+            return "2,300 mg"
+        case .cholesterol:
+            return "300 mg"
+        case .caffeine:
+            return "400 mg"
         default:
             return allowedLabel
         }
@@ -2416,21 +2468,37 @@ enum MacroPreset: String, CaseIterable, Identifiable {
         case .potassium: return 0.66
         case .sugar: return 0.7
         case .cholesterol: return 0.6
+        case .iron: return 0.5
+        case .magnesium: return 0.4
+        case .zinc: return 0.3
+        case .phosphorus: return 0.5
+        case .iodine: return 0.6
+        case .caffeine: return 0.2
+        case .selenium: return 0.7
         }
     }
 
     var color: Color {
+        let hex: String
         switch self {
-            case .protein: return Color(hex: "#D84A4A") ?? .red
-            case .carbs: return Color(hex: "#E6C84F") ?? .yellow
-            case .fats: return Color(hex: "#E39A3B") ?? .orange
-            case .fibre: return Color(hex: "#4CAF6A") ?? .green
-            case .water: return Color(hex: "#4A7BD0") ?? .blue
-            case .sodium: return Color(hex: "#4FB6C6") ?? .cyan
-            case .potassium: return Color(hex: "#7A5FD1") ?? .purple
-            case .sugar: return Color(hex: "#C85FA8") ?? .pink
-            case .cholesterol: return Color(hex: "#2a65edff") ?? .indigo
+        case .protein: hex = ColorPalette.defaultColors[0]
+        case .carbs: hex = ColorPalette.defaultColors[1]
+        case .fats: hex = ColorPalette.defaultColors[2]
+        case .fibre: hex = ColorPalette.defaultColors[3]
+        case .water: hex = ColorPalette.defaultColors[4]
+        case .sodium: hex = ColorPalette.defaultColors[5]
+        case .potassium: hex = ColorPalette.defaultColors[6]
+        case .sugar: hex = ColorPalette.defaultColors[7]
+        case .cholesterol: hex = ColorPalette.defaultColors[5]
+        case .iron: hex = ColorPalette.defaultColors[0]
+        case .magnesium: hex = ColorPalette.defaultColors[1]
+        case .zinc: hex = ColorPalette.defaultColors[2]
+        case .phosphorus: hex = ColorPalette.defaultColors[3]
+        case .iodine: hex = ColorPalette.defaultColors[4]
+        case .caffeine: hex = ColorPalette.defaultColors[5]
+        case .selenium: hex = ColorPalette.defaultColors[6]
         }
+        return Color(hex: hex) ?? .red
     }
 }
 
@@ -2519,7 +2587,7 @@ struct MacroEditorSheet: View {
                         Button(action: { showMacroExplainer = true }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "info.circle")
-                                Text("Tap for Explanation")
+                                Text("Tap for Explanation and Source")
                                 Spacer()
                             }
                             .font(.footnote)

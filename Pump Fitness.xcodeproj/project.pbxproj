@@ -13,13 +13,11 @@
 		DCB003F22EE813B0003D6BF9 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003F12EE813B0003D6BF9 /* GoogleSignIn */; };
 		DCB003F42EE813B0003D6BF9 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003F32EE813B0003D6BF9 /* GoogleSignInSwift */; };
 		DCDAD2692EFEDEEB0011838E /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DCDAD2682EFEDEEB0011838E /* StoreKit.framework */; };
-		DCDAD26B2EFF5FC10011838E /* Trackerio.storekit in Resources */ = {isa = PBXBuildFile; fileRef = DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		DC9E797A2EDB81DD00C57FEE /* Trackerio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Trackerio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DCDAD2682EFEDEEB0011838E /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
-		DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Trackerio.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -50,7 +48,6 @@
 		DC9E79712EDB81DD00C57FEE = {
 			isa = PBXGroup;
 			children = (
-				DCDAD26A2EFF5FC10011838E /* Trackerio.storekit */,
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
 				DCDAD2672EFEDEEB0011838E /* Frameworks */,
 				DC9E797B2EDB81DD00C57FEE /* Products */,
@@ -146,7 +143,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DCDAD26B2EFF5FC10011838E /* Trackerio.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,7 +287,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -302,10 +298,10 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is used to scan food barcodes.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Trackerio uses Health data to track your steps and distance for activity analytics and progress insights.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Trackerio saves generated health-related data into Health for use by other applications. ";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to show local weather conditions and show your location in the itinerary tab.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to show local weather conditions and show your location in the itinerary tab.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving your progress images to Photos.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow access to photos to save and share your progress.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We use your photo library to intelligently match photos to your trip points.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -317,7 +313,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -341,7 +337,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -352,10 +348,10 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is used to scan food barcodes.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Trackerio uses Health data to track your steps and distance for activity analytics and progress insights.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Trackerio saves generated health-related data into Health for use by other applications. ";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to get relevant weather information. ";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to show local weather conditions and show your location in the itinerary tab.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to show local weather conditions and show your location in the itinerary tab.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Allow saving your progress images to Photos.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Allow access to photos to save and share your progress.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We use your photo library to intelligently match photos to your trip points.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -367,7 +363,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.7;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

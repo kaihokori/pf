@@ -143,7 +143,7 @@ struct AccountsView: View {
                             Button(action: { showActivityExplainer = true }) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "info.circle")
-                                    Text("Tap for Explanation")
+                                    Text("Tap for Explanation and Source")
                                     Spacer()
                                 }
                                 .font(.footnote)
@@ -217,7 +217,7 @@ struct AccountsView: View {
                                 Button(action: { showMaintenanceExplainer = true }) {
                                     HStack(spacing: 6) {
                                         Image(systemName: "info.circle")
-                                        Text("Tap for Explanation")
+                                        Text("Tap for Explanation and Source")
                                     }
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)

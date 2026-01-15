@@ -39,6 +39,7 @@ struct ActivityLevelExplainer: View {
                     }
                     .padding()
                     .glassEffect(in: .rect(cornerRadius: 20.0))
+                    attribution
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical)
@@ -57,4 +58,33 @@ struct ActivityLevelExplainer: View {
 
 #Preview {
     ActivityLevelExplainer()
+}
+
+private extension ActivityLevelExplainer {
+    var attribution: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "doc.text.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Source")
+                    .font(.subheadline.weight(.bold))
+                Text("Eat for Health (Australian Government)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            Link(destination: URL(string: "https://www.eatforhealth.gov.au/nutrient-reference-values/nutrients/dietary-energy")!) {
+                Text("View")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16))
+    }
 }

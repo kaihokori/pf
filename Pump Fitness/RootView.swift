@@ -26,8 +26,17 @@ struct RootView: View {
     @State private var selectedTab: AppTab = .nutrition
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
     private var isPro: Bool {
-        // Debug override to force free experience regardless of trial or purchases.
         if subscriptionManager.isDebugForcingNoSubscription { return false }
+
+        // if let account = accounts.first, account.name == "John Apple" {
+        //     var dateComponents = DateComponents()
+        //     dateComponents.year = 2026
+        //     dateComponents.month = 1
+        //     dateComponents.day = 20
+        //     if let limitDate = Calendar.current.date(from: dateComponents), Date() < limitDate {
+        //         return true
+        //     }
+        // }
 
         // Local override from account (Admin/Support grant)
         // If proPeriodEnd is set, it overrides EVERYTHING (both granting and revoking).
@@ -253,17 +262,6 @@ struct RootView: View {
         isShowingSplash = true
         if !isSignedIn || !hasCompletedOnboarding {
             showWelcomeVideo = true
-        }
-        let didForceSignOutOnceKey = "didForceSignOutOnce"
-        let defaults = UserDefaults.standard
-        if !defaults.bool(forKey: didForceSignOutOnceKey) {
-            do {
-                try Auth.auth().signOut()
-            } catch {
-                print("Error signing out: \(error)")
-            }
-            hasCompletedOnboarding = false
-            defaults.set(true, forKey: didForceSignOutOnceKey)
         }
         authStateHandle = Auth.auth().addStateDidChangeListener { _, user in
             if let user = user {
@@ -808,6 +806,15 @@ struct RootView: View {
                         resolvedItineraryEvents = localAccount.itineraryEvents
                     }
                     fetched.itineraryEvents = resolvedItineraryEvents
+
+                    var resolvedItineraryTrips = fetched.itineraryTrips
+                    if resolvedItineraryTrips.isEmpty, let localAccount = fetchAccount(), !localAccount.itineraryTrips.isEmpty {
+                        resolvedItineraryTrips = localAccount.itineraryTrips
+                        fetched.itineraryTrips = resolvedItineraryTrips
+                        // If we recovered a local trip that was missing from remote, sync it back to Firestore.
+                        accountFirestoreService.saveAccount(fetched, forceOverwrite: true) { _ in }
+                    }
+                    fetched.itineraryTrips = resolvedItineraryTrips
 
                     var resolvedDailyTasks = fetched.dailyTasks
                     if resolvedDailyTasks.isEmpty, let localAccount = fetchAccount(), !localAccount.dailyTasks.isEmpty {
@@ -2462,6 +2469,7 @@ private extension RootView {
                 local.mealReminders = fetched.mealReminders
                 local.intermittentFastingMinutes = fetched.intermittentFastingMinutes
                 local.itineraryEvents = fetched.itineraryEvents
+                local.itineraryTrips = fetched.itineraryTrips
                 local.dailyTasks = fetched.dailyTasks
                 local.sports = fetched.sports
                 local.soloMetrics = fetched.soloMetrics
@@ -2521,6 +2529,7 @@ private extension RootView {
                     nutritionSupplements: fetched.nutritionSupplements,
                     dailyTasks: fetched.dailyTasks,
                     itineraryEvents: fetched.itineraryEvents,
+                    itineraryTrips: fetched.itineraryTrips,
                     sports: fetched.sports,
                     soloMetrics: fetched.soloMetrics,
                     teamMetrics: fetched.teamMetrics,
@@ -2618,6 +2627,7 @@ private extension RootView {
                                         local.stepsGoal = newAccount.stepsGoal
                                         local.distanceGoal = newAccount.distanceGoal
                                         local.itineraryEvents = newAccount.itineraryEvents
+                                        local.itineraryTrips = newAccount.itineraryTrips
                                         local.weightGroups = newAccount.weightGroups
                                         local.goals = newAccount.goals
                                         local.habits = newAccount.habits

@@ -266,7 +266,7 @@ struct SportsTabView: View {
                             .foregroundStyle(.secondary)
                         Text("Location Required")
                             .font(.headline)
-                        Text("We need your location to show local weather conditions.")
+                        Text("We need your location to show local weather conditions and show your location in the itinerary tab.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)

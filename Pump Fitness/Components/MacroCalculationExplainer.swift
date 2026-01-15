@@ -37,6 +37,7 @@ struct WeightGoalExplainer: View {
                 }
                 .padding(18)
                 .surfaceCard(18)
+                attribution
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top)
@@ -103,6 +104,7 @@ struct MacroStrategyExplainer: View {
                 }
                 .padding(18)
                 .surfaceCard(18)
+                attribution
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top)
@@ -115,6 +117,46 @@ struct MacroCalculationExplainer: View {
     var body: some View {
         WeightGoalExplainer()
     }
+}
+
+private struct SourceAttribution: View {
+    let label: String
+    let urlString: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "doc.text.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Source")
+                    .font(.subheadline.weight(.bold))
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            Link(destination: URL(string: urlString)!) {
+                Text("View")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16))
+    }
+}
+
+private extension WeightGoalExplainer {
+    var attribution: some View { SourceAttribution(label: "NCBI Metabolic Research", urlString: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8017325/") }
+}
+
+private extension MacroStrategyExplainer {
+    var attribution: some View { SourceAttribution(label: "Eat for Health (Australian Government)", urlString: "https://www.eatforhealth.gov.au/nutrient-reference-values/nutrients") }
 }
 
 private struct MacroGoalExplanation: Identifiable, Equatable {
@@ -236,20 +278,20 @@ private struct NutrientExplanation: Identifiable, Equatable {
         NutrientExplanation(
             id: "fiber",
             title: "Fiber",
-            recommended: "Men: 30–38 g • Women: 21–25 g",
-            notes: "Aim ≥25 g/day"
+            recommended: "Men: 38 g • Women: 25 g",
+            notes: "Daily minimum target"
         ),
         NutrientExplanation(
             id: "addedSugar",
             title: "Added Sugar",
-            recommended: "Men: ≤36 g • Women: ≤25 g",
-            notes: "As low as possible"
+            recommended: "Men: 36 g • Women: 25 g",
+            notes: "Upper daily limit"
         ),
         NutrientExplanation(
             id: "sodium",
             title: "Sodium",
-            recommended: "1,500 mg (ideal)",
-            notes: "Max 2,300 mg/day"
+            recommended: "2,300 mg",
+            notes: "Upper daily limit"
         ),
         NutrientExplanation(
             id: "potassium",
@@ -260,13 +302,13 @@ private struct NutrientExplanation: Identifiable, Equatable {
         NutrientExplanation(
             id: "iron",
             title: "Iron",
-            recommended: "Men: 8 mg • Women (menstruating): 18 mg • Women (post-menopause): 8 mg",
+            recommended: "Men: 8 mg • Women: 18 mg",
             notes: "Excess can be harmful"
         ),
         NutrientExplanation(
             id: "magnesium",
             title: "Magnesium",
-            recommended: "Men: 400–420 mg • Women: 310–320 mg",
+            recommended: "Men: 420 mg • Women: 320 mg",
             notes: "Important for muscle & sleep"
         ),
         NutrientExplanation(
@@ -290,14 +332,14 @@ private struct NutrientExplanation: Identifiable, Equatable {
         NutrientExplanation(
             id: "cholesterol",
             title: "Cholesterol",
-            recommended: "≤300 mg",
-            notes: "≤200 mg if heart-risk"
+            recommended: "300 mg",
+            notes: "200 mg if heart-risk"
         ),
         NutrientExplanation(
             id: "caffeine",
             title: "Caffeine",
-            recommended: "≤400 mg",
-            notes: "Sensitive individuals: ≤200 mg"
+            recommended: "400 mg",
+            notes: "Sensitive individuals: 200 mg"
         ),
         NutrientExplanation(
             id: "selenium",

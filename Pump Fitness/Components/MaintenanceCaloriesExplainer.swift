@@ -11,6 +11,7 @@ struct MaintenanceCaloriesExplainer: View {
                     formulas
                     workedExample
                     stepFlow
+                    attribution
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical)
@@ -82,6 +83,33 @@ struct MaintenanceCaloriesExplainer: View {
                 bullet("4) Multiply: TDEE = RMR × activity factor. That is maintenance calories.")
             }
         }
+    }
+
+    private var attribution: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "doc.text.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Source")
+                    .font(.subheadline.weight(.bold))
+                Text("NCBI Metabolic research")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+            
+            Link(destination: URL(string: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8017325/")!) {
+                Text("View")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(16)
+        .glassEffect(in: .rect(cornerRadius: 16))
     }
 
     private func bullet(_ text: String) -> some View {

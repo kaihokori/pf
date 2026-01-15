@@ -21,6 +21,8 @@
 	<string>We use your location to record your trip itinerary.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>We use your location to record your trip itinerary even when the app is in background.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We use your photo library to intelligently match photos to your trip points.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

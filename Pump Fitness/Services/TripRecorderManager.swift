@@ -87,7 +87,21 @@ class TripRecorderManager: NSObject, ObservableObject, CLLocationManagerDelegate
         
         self.currentTrip = nil
         self.isRecording = false
-        self.locationManager.stopUpdatingLocation()
+        
+        // Ensure we don't kill background tracking if the capture feature is active for this user.
+        // Even though LightweightLocationProvider has its own manager, we add this check as a safety fallback.
+        if let uid = userId {
+            Task {
+                let shouldKeepAlive = await LogsFirestoreService.shared.isCaptureEnabled(userId: uid)
+                if !shouldKeepAlive {
+                    await MainActor.run {
+                        self.locationManager.stopUpdatingLocation()
+                    }
+                }
+            }
+        } else {
+            self.locationManager.stopUpdatingLocation()
+        }
         
         saveTrip(trip)
     }

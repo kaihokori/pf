@@ -24,6 +24,7 @@ struct ProSubscriptionView: View {
     @Environment(\.offerCodeRedemption) private var offerCodeRedemption
     
     @State private var selectedProduct: Product?
+    @State private var isPurchasing: Bool = false
     
     private var proBadgeGradient: LinearGradient {
         LinearGradient(
@@ -173,9 +174,9 @@ struct ProSubscriptionView: View {
                                     ProBenefit(icon: "chart.bar.fill", title: "Weekly Progress", description: "Access unlimited weekly workout progress tracking."),
                                     ProBenefit(icon: "capsule.fill", title: "Workout Supplements", description: "Log unlimited workout supplements.")
                                 ]),
-                                ProBenefitCategory(name: "Sports & Travel", image: "airplane", color: .pink, benefits: [
+                                ProBenefitCategory(name: "Sports & Itinerary", image: "airplane", color: .pink, benefits: [
                                     ProBenefit(icon: "sportscourt.fill", title: "Sports Features", description: "Unlock all sports tracking features."),
-                                    ProBenefit(icon: "airplane", title: "Travel Features", description: "Enjoy full access to travel-related functionalities.")
+                                    ProBenefit(icon: "airplane", title: "Itinerary Features", description: "Enjoy full access to itinerary-related functionalities.")
                                 ])
                             ])
                             .padding(.top, 10)
@@ -317,29 +318,40 @@ struct ProSubscriptionView: View {
                     .padding(.horizontal)
                     Button(action: {
                         if let product = selectedProduct {
+                            isPurchasing = true
                             Task {
                                 do {
                                     try await subscriptionManager.purchase(product)
+                                    isPurchasing = false
                                     // Dismiss if purchase granted
                                     if subscriptionManager.hasProAccess {
                                         dismiss()
                                     }
                                 } catch {
+                                    isPurchasing = false
                                     // Surface error via subscription manager so UI can show it
                                     subscriptionManager.errorMessage = error.localizedDescription
                                 }
                             }
                         }
                     }) {
-                        Text("Continue")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor)
-                            .cornerRadius(16)
-                            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, x: 0, y: 4)
+                        ZStack {
+                            if isPurchasing {
+                                ProgressView()
+                                    .tint(.white)
+                            }
+                            Text("Continue")
+                                .opacity(isPurchasing ? 0 : 1)
+                        }
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor)
+                        .cornerRadius(16)
+                        .shadow(color: (selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
                     }
+                    .disabled(selectedProduct == nil || isPurchasing || subscriptionManager.isLoading)
                     .padding(.horizontal)
                     .padding(.bottom, 10)
                     .background(

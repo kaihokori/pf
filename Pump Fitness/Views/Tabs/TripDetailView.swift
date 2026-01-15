@@ -127,87 +127,143 @@ struct TripPointEditorSheet: View {
     @State private var isProcessingImages = false
     @State private var previewImageEntry: IdentifiableData?
 
+    @State private var isScanning = false
+    @State private var showingPermissionAlert = false
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Details") {
+            ScrollView {
+                VStack(spacing: 16) {
                     TextField("Title", text: Binding(
                         get: { point.title ?? "" },
                         set: { point.title = $0.isEmpty ? nil : $0 }
                     ))
-                }
-                
-                Section("Photos") {
-                    PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 0, matching: .images) {
-                        if isProcessingImages {
-                            HStack {
-                                Text("Processing Photos...")
-                                Spacer()
-                                ProgressView()
-                            }
+                    .textInputAutocapitalization(.words)
+                    .padding()
+                    .glassEffect(in: .rect(cornerRadius: 16))
+                    
+                    VStack(spacing: 8) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 44))
+                            .foregroundStyle(.secondary)
+                        Text("Auto-Match Photos")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("Intelligently find photos from your library taken at this location and time.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        
+                        if isScanning {
+                            ProgressView()
+                                .padding(.top, 8)
                         } else {
-                            Label("Add Photos", systemImage: "photo.on.rectangle.angled")
+                            Button {
+                                scanForMatchingPhotos()
+                            } label: {
+                                Text("Start Scan")
+                                    .fontWeight(.medium)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top, 8)
+                            .disabled(isProcessingImages)
                         }
-                    }
-                    .disabled(isProcessingImages)
-                    .onChange(of: selectedPhotos) { _, newItems in
-                        guard !newItems.isEmpty else { return }
-                        isProcessingImages = true
-                        Task {
-                            var newImages: [Data] = []
-                            for item in newItems {
-                                if let data = try? await item.loadTransferable(type: Data.self) {
-                                    newImages.append(data)
+                        
+                        PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 0, matching: .images) {
+                            if isProcessingImages {
+                                Text("Processing...")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Manually Select Photos")
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .disabled(isProcessingImages || isScanning)
+                        .padding(.top, 8)
+                        .onChange(of: selectedPhotos) { _, newItems in
+                            guard !newItems.isEmpty else { return }
+                            isProcessingImages = true
+                            Task {
+                                var newImages: [Data] = []
+                                for item in newItems {
+                                    if let data = try? await item.loadTransferable(type: Data.self) {
+                                        newImages.append(data)
+                                    }
+                                }
+                                await MainActor.run {
+                                    var current = point.imagesData ?? []
+                                    current.append(contentsOf: newImages)
+                                    point.imagesData = current
+                                    selectedPhotos = []
+                                    isProcessingImages = false
                                 }
                             }
-                            await MainActor.run {
-                                var current = point.imagesData ?? []
-                                current.append(contentsOf: newImages)
-                                point.imagesData = current
-                                selectedPhotos = []
-                                isProcessingImages = false
-                            }
                         }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                    .glassEffect(in: .rect(cornerRadius: 16))
 
                     if let images = point.imagesData, !images.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(Array(images.enumerated()), id: \.offset) { index, data in
-                                    ZStack(alignment: .topTrailing) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                Text("Attached Photos")
+                                    .font(.headline)
+                                Spacer()
+                                Text("\(images.count)")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.secondary.opacity(0.1), in: Capsule())
+                            }
+                            .padding(.horizontal)
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(Array(images.enumerated()), id: \.offset) { index, data in
                                         if let uiImage = UIImage(data: data) {
-                                            Image(uiImage: uiImage)
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 80, height: 80)
-                                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                                .onTapGesture {
-                                                    previewImageEntry = IdentifiableData(data: data, index: index)
-                                                }
-                                                .overlay(alignment: .bottomTrailing) {
-                                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                                        .font(.system(size: 12, weight: .semibold))
-                                                        .foregroundColor(.white)
-                                                        .padding(6)
-                                                        .background(Color.black.opacity(0.45))
-                                                        .clipShape(Circle())
-                                                        .padding(6)
-                                                }
+                                            Button {
+                                                previewImageEntry = IdentifiableData(data: data, index: index)
+                                            } label: {
+                                                Image(uiImage: uiImage)
+                                                    .resizable()
+                                                    .scaledToFill()
+                                                    .frame(width: 100, height: 100)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 12)
+                                                            .strokeBorder(.secondary.opacity(0.2), lineWidth: 1)
+                                                    )
+                                            }
                                         }
                                     }
                                 }
+                                .padding(.horizontal)
                             }
-                            .padding(.top, 5)
-                            .padding(.trailing, 5)
+                            
+                            Button(role: .destructive) {
+                                point.imagesData = []
+                            } label: {
+                                Text("Clear All Photos")
+                                    .font(.subheadline.weight(.medium))
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+                            .controlSize(.regular)
+                            .padding(.horizontal)
+                            .padding(.bottom, 6)
                         }
-                        .frame(height: 90)
-                        
-                        Button("Clear All", role: .destructive) {
-                            point.imagesData = []
-                        }
+                        .padding(.vertical)
+                        .glassEffect(in: .rect(cornerRadius: 16))
                     }
                 }
+                .padding()
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Edit Point")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -220,6 +276,16 @@ struct TripPointEditorSheet: View {
                         dismiss()
                     }
                 }
+            }
+            .alert("Photos Access Required", isPresented: $showingPermissionAlert) {
+                Button("Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                         UIApplication.shared.open(url)
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Please allow access to your photo library to auto-match photos found around this time and location.")
             }
         }
         .fullScreenCover(item: $previewImageEntry) { item in
@@ -265,6 +331,71 @@ struct TripPointEditorSheet: View {
                             .padding(.bottom, 40)
                     }
                 }
+            }
+        }
+    }
+
+    func scanForMatchingPhotos() {
+        isScanning = true
+        
+        Task {
+            let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            
+            guard status == .authorized || status == .limited else {
+                await MainActor.run {
+                    isScanning = false
+                    showingPermissionAlert = true
+                }
+                return
+            }
+            
+            let centerDate = point.timestamp
+            // Search window: +/- 2 hours to be safe
+            let start = centerDate.addingTimeInterval(-7200)
+            let end = centerDate.addingTimeInterval(7200)
+            
+            let options = PHFetchOptions()
+            options.predicate = NSPredicate(format: "creationDate >= %@ AND creationDate <= %@", start as NSDate, end as NSDate)
+            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+            
+            let assets = PHAsset.fetchAssets(with: .image, options: options)
+            var matchedData: [Data] = []
+            
+            let manager = PHImageManager.default()
+            let requestOptions = PHImageRequestOptions()
+            requestOptions.isNetworkAccessAllowed = true
+            requestOptions.isSynchronous = true 
+            requestOptions.deliveryMode = .highQualityFormat
+            
+            assets.enumerateObjects { asset, _, stop in
+                // Check location if available
+                if let location = asset.location {
+                    let pointLoc = CLLocation(latitude: point.latitude, longitude: point.longitude)
+                    let distance = location.distance(from: pointLoc)
+                    // 2.5km parameter
+                    if distance > 2500 {
+                        return // Skip this photo
+                    }
+                }
+                
+                // Fetch Data
+                manager.requestImageDataAndOrientation(for: asset, options: requestOptions) { data, _, _, _ in
+                    if let data = data {
+                        matchedData.append(data)
+                    }
+                }
+                
+                // Limit to 20 automatch photos
+                if matchedData.count >= 20 {
+                    stop.pointee = true
+                }
+            }
+            
+            await MainActor.run {
+                var current = point.imagesData ?? []
+                current.append(contentsOf: matchedData)
+                point.imagesData = current
+                isScanning = false
             }
         }
     }

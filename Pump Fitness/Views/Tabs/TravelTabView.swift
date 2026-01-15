@@ -71,7 +71,82 @@ struct TravelTabView: View {
                         .blur(radius: isPro ? 0 : 4)
                         .disabled(!isPro)
                         .overlay {
-                            proOverlay
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001) // Capture taps
+                                        .onTapGesture {
+                                            // no-op capture
+                                        }
+
+                                    Button {
+                                        showProSheet = true
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                                
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+
+                                            Text("Upgrade to unlock Itinerary Features + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
                     }
                 }
@@ -136,7 +211,11 @@ struct TravelTabView: View {
             }
         }
         .onAppear {
-            if selectedItineraryTripId == nil, let first = account.itineraryTrips.first {
+            if account.itineraryTrips.isEmpty {
+                let defaultTrip = ItineraryTrip(title: "My Trip")
+                account.itineraryTrips.append(defaultTrip)
+                selectedItineraryTripId = defaultTrip.id
+            } else if selectedItineraryTripId == nil, let first = account.itineraryTrips.first {
                 selectedItineraryTripId = first.id
             }
         }
@@ -191,7 +270,14 @@ private extension TravelTabView {
                     Button(role: .destructive) {
                         if let index = account.itineraryTrips.firstIndex(where: { $0.id == id }) {
                             account.itineraryTrips.remove(at: index)
-                            selectedItineraryTripId = account.itineraryTrips.first?.id
+                            
+                            if account.itineraryTrips.isEmpty {
+                                let defaultTrip = ItineraryTrip(title: "My Trip")
+                                account.itineraryTrips.append(defaultTrip)
+                                selectedItineraryTripId = defaultTrip.id
+                            } else {
+                                selectedItineraryTripId = account.itineraryTrips.first?.id
+                            }
                         }
                     } label: {
                         Label("Delete Current Trip", systemImage: "trash")
@@ -246,11 +332,16 @@ private extension TravelTabView {
     @ViewBuilder
     var recordingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Journey Recordings")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Journey Recordings")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Text("Track your exact path while you travel. Updates every ~50m.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
@@ -352,88 +443,6 @@ private extension TravelTabView {
         }
     }
 
-    @ViewBuilder
-    var proOverlay: some View {
-        if !isPro {
-            ZStack {
-                Color.black.opacity(0.001)
-                    .onTapGesture {}
-
-                Button {
-                    showProSheet = true
-                } label: {
-                    VStack(spacing: 8) {
-                        HStack {
-                            let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
-
-                            if let accent {
-                                Image("logo")
-                                    .resizable()
-                                    .renderingMode(.template)
-                                    .foregroundStyle(accent)
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 40)
-                                    .padding(.leading, 4)
-                                    .offset(y: 6)
-                            } else {
-                                Image("logo")
-                                    .resizable()
-                                    .renderingMode(.original)
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(height: 40)
-                                    .padding(.leading, 4)
-                                    .offset(y: 6)
-                            }
-                            
-                            Text("PRO")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Color.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(
-                                            accent.map {
-                                                LinearGradient(
-                                                    gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            } ?? LinearGradient(
-                                                gradient: Gradient(colors: [
-                                                    Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                    Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                ]),
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                )
-                                .offset(y: 6)
-                        }
-                        .padding(.bottom, 5)
-
-                        Text("Trackerio Pro")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        
-                        Text("Upgrade to unlock Itinerary Tracking + More")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
-                    .padding(24)
-                    .glassEffect(in: .rect(cornerRadius: 24))
-                    .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
     var currentAccent: Color {
         if themeManager.selectedTheme == .multiColour {
             return .accentColor
@@ -450,9 +459,24 @@ private extension TravelTabView {
 
     var selectedTripBinding: Binding<ItineraryTrip>? {
         guard let id = selectedItineraryTripId,
-              let index = account.itineraryTrips.firstIndex(where: { $0.id == id })
+              account.itineraryTrips.contains(where: { $0.id == id })
         else { return nil }
-        return $account.itineraryTrips[index]
+        
+        return Binding(
+            get: {
+                if let trip = account.itineraryTrips.first(where: { $0.id == id }) {
+                    return trip
+                }
+                return ItineraryTrip(id: "placeholder", title: "Unavailable", events: [], points: [])
+            },
+            set: { newTrip in
+                var trips = account.itineraryTrips
+                if let index = trips.firstIndex(where: { $0.id == id }) {
+                    trips[index] = newTrip
+                    account.itineraryTrips = trips
+                }
+            }
+        )
     }
 
     @ViewBuilder
@@ -467,10 +491,10 @@ private extension TravelTabView {
     
     var emptyTripsState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "airplane.circle.fill")
+            Image(systemName: "suitcase.fill")
                 .font(.system(size: 44))
                 .foregroundStyle(.secondary)
-            Text("No Upcoming Trips")
+            Text("No Trips Added Yet")
                 .font(.headline)
                 .foregroundStyle(.primary)
             Text("Create a trip to start adding itinerary events.")

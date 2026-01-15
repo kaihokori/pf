@@ -47,8 +47,9 @@ class TripRecorderManager: NSObject, ObservableObject, CLLocationManagerDelegate
         tripsListener?.remove()
     }
     
-    func startTrip(itineraryTripId: String? = nil) {
+    func startTrip(itineraryTripId: String? = nil, distanceFilter: Double = 50) {
         guard let userId = userId else { return }
+        locationManager.distanceFilter = distanceFilter
         locationManager.requestWhenInUseAuthorization() // Or always if background needed
         
         // Always create a new unique ID for the trip session to allow multiple recordings per itinerary

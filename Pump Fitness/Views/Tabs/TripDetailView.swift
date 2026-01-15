@@ -39,7 +39,7 @@ struct TripDetailView: View {
             Map(position: $position) {
                 if !trip.points.isEmpty {
                     MapPolyline(coordinates: trip.points.map { $0.coordinate })
-                        .stroke(.blue, lineWidth: 5)
+                        .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round, dash: [10, 5]))
                 }
                 
                 ForEach(trip.points) { point in

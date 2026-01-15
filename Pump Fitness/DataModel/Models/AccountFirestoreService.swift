@@ -204,6 +204,17 @@ class AccountFirestoreService {
         }
     }
 
+    /// Update only the weekly progress array in Firestore.
+    func updateWeeklyProgress(withId id: String, progress: [WeeklyProgressRecord], completion: @escaping (Bool) -> Void) {
+        let payload = progress.map { $0.asFirestoreDictionary() }
+        self.db.collection(self.collection).document(id).setData(["weeklyProgress": payload], merge: true) { error in
+            if let error {
+                print("AccountFirestoreService.updateWeeklyProgress error: \(error.localizedDescription)")
+            }
+            completion(error == nil)
+        }
+    }
+
     /// Explicitly updates the trialPeriodEnd field.
     /// Use this instead of saveAccount to avoid race conditions overwriting remote values with stale local data.
     func updateTrialPeriodEnd(for id: String, date: Date?, completion: ((Bool) -> Void)? = nil) {

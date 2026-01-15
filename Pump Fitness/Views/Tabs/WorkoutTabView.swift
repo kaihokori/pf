@@ -1251,17 +1251,16 @@ struct WorkoutTabView: View {
         }
     }
 
-    // Downsample + recompress photos to keep Firestore documents within limits and avoid invalid nested entity errors.
-    private func compressImageDataIfNeeded(_ data: Data?, maxBytes: Int = 450_000) -> Data? {
+    // Downsample + recompress photos to keep Firestore documents within limits.
+    // Target ~60KB per image so multiple entries fit in 1MB Firestore limit.
+    private func compressImageDataIfNeeded(_ data: Data?, maxBytes: Int = 60_000) -> Data? {
         guard let data, !data.isEmpty else { return data }
 
-        // If already under the limit, keep as-is.
-        if data.count <= maxBytes { return data }
-
+        // Even if small, we re-process to ensure resolution is appropriate for Base64 storage.
         guard let image = UIImage(data: data) else { return data }
 
-        // Downscale to a reasonable portrait size to shrink payloads.
-        let targetWidth: CGFloat = 900
+        // Small width for progress tracking is sufficient.
+        let targetWidth: CGFloat = 450
         let scale = targetWidth / image.size.width
         let targetHeight = image.size.height * scale
         let targetSize = CGSize(width: targetWidth, height: targetHeight)
@@ -1271,16 +1270,15 @@ struct WorkoutTabView: View {
             image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
 
-        // Try a few quality levels to stay under the byte cap.
-        let qualities: [CGFloat] = [0.6, 0.5, 0.4, 0.3]
+        // Try a few quality levels.
+        let qualities: [CGFloat] = [0.5, 0.4, 0.3, 0.2]
         for quality in qualities {
             if let compressed = scaledImage.jpegData(compressionQuality: quality), compressed.count <= maxBytes {
                 return compressed
             }
         }
 
-        // Fallback: return the smallest attempt even if still large.
-        return scaledImage.jpegData(compressionQuality: 0.25) ?? data
+        return scaledImage.jpegData(compressionQuality: 0.15) ?? data
     }
 
     func persistWeeklyProgressEntries() {
@@ -1289,8 +1287,6 @@ struct WorkoutTabView: View {
         }
 
         var mergedById: [UUID: WeeklyProgressEntry] = [:]
-
-        // Start with locally edited entries.
         for entry in filteredEntries {
             mergedById[entry.id] = entry
         }
@@ -1298,6 +1294,7 @@ struct WorkoutTabView: View {
         let mergedEntries = mergedById.values.sorted { $0.date < $1.date }
         weeklyEntries = mergedEntries
 
+        // Map to records with compressed images for persistence.
         let compressedRecords: [WeeklyProgressRecord] = mergedEntries.map {
             WeeklyProgressRecord(
                 id: $0.id.uuidString,
@@ -1309,6 +1306,7 @@ struct WorkoutTabView: View {
             )
         }
 
+        // Update local SwiftData model.
         account.weeklyProgress = compressedRecords
 
         do {
@@ -1317,9 +1315,9 @@ struct WorkoutTabView: View {
             print("WorkoutTabView: failed to save weekly progress locally: \(error)")
         }
 
-        guard !compressedRecords.isEmpty else { return }
+        guard !compressedRecords.isEmpty, let accountId = account.id else { return }
 
-        // Phase 1: save metadata immediately to avoid blocking on image upload.
+        // Phase 1: save metadata immediately.
         let metadataOnly = compressedRecords.map { record in
             WeeklyProgressRecord(
                 id: record.id,
@@ -1331,29 +1329,22 @@ struct WorkoutTabView: View {
             )
         }
 
-        accountFirestoreService.saveAccount(accountForUpload(from: metadataOnly)) { success in
+        accountFirestoreService.updateWeeklyProgress(withId: accountId, progress: metadataOnly) { success in
             if !success {
                 print("WorkoutTabView: failed to sync weekly progress metadata to Firestore")
             }
         }
 
-        // Phase 2: upload photos after a short delay; if it fails, local photoData remains for future retries.
-        let hasPhotos = compressedRecords.contains { $0.photoData != nil }
-        if hasPhotos {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                accountFirestoreService.saveAccount(accountForUpload(from: compressedRecords)) { success in
+        // Phase 2: upload photos after a short delay.
+        if compressedRecords.contains(where: { $0.photoData != nil }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                accountFirestoreService.updateWeeklyProgress(withId: accountId, progress: compressedRecords) { success in
                     if !success {
-                        print("WorkoutTabView: failed to sync weekly progress photos to Firestore; will retry on next save")
+                        print("WorkoutTabView: failed to sync weekly progress photos to Firestore")
                     }
                 }
             }
         }
-    }
-
-    private func accountForUpload(from progress: [WeeklyProgressRecord]) -> Account {
-        let clone = account
-        clone.weeklyProgress = progress
-        return clone
     }
 
     func refreshProgressFromRemote() {

@@ -18,6 +18,11 @@ struct TravelTabView: View {
     @StateObject private var tripRecorder = TripRecorderManager()
     @State private var selectedGPSTrip: Trip?
 
+    // Recording Confirmation
+    @State private var showingStartConfirmation = false
+    @State private var showingStopConfirmation = false
+    @State private var recordingDistance: Double = 500
+
     // Multiple Trip Management
     @State private var selectedItineraryTripId: String?
     @State private var showingCreateTripSheet = false
@@ -184,6 +189,12 @@ struct TravelTabView: View {
         .sheet(isPresented: $showProSheet) {
             ProSubscriptionView()
         }
+        .sheet(isPresented: $showingStartConfirmation) {
+            recordingConfirmationSheet(isStarting: true)
+        }
+        .sheet(isPresented: $showingStopConfirmation) {
+            recordingConfirmationSheet(isStarting: false)
+        }
         .fullScreenCover(item: $selectedGPSTrip) { trip in
             if #available(iOS 17.0, *) {
                 TripDetailView(trip: trip, recorder: tripRecorder)
@@ -338,7 +349,7 @@ private extension TravelTabView {
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)
-                    Text("Track your exact path while you travel. Updates every ~50m.")
+                    Text("Track your exact path while you travel.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -347,9 +358,7 @@ private extension TravelTabView {
 
                 if tripRecorder.isRecording {
                     Button {
-                        withAnimation {
-                            tripRecorder.stopTrip()
-                        }
+                        showingStopConfirmation = true
                     } label: {
                         Label("Stop", systemImage: "stop.circle.fill")
                             .font(.callout)
@@ -362,9 +371,7 @@ private extension TravelTabView {
                     .foregroundStyle(.primary)
                 } else {
                     Button {
-                        withAnimation {
-                            tripRecorder.startTrip(itineraryTripId: selectedItineraryTripId)
-                        }
+                        showingStartConfirmation = true
                     } label: {
                         Label("Record", systemImage: "record.circle.fill")
                             .font(.callout)
@@ -455,6 +462,98 @@ private extension TravelTabView {
             return trip.title
         }
         return "No Trip Selected"
+    }
+
+    @ViewBuilder
+    func recordingConfirmationSheet(isStarting: Bool) -> some View {
+        VStack(spacing: 24) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(isStarting ? Color.blue.opacity(0.1) : Color.red.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: isStarting ? "record.circle.fill" : "stop.circle.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(isStarting ? .blue : .red)
+            }
+            .padding(.top, 40)
+            
+            VStack(spacing: 8) {
+                Text(isStarting ? "Start Recording?" : "Stop Recording?")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text(isStarting ? "This will track your location while you travel. You can stop it at any time." : "This will end your current journey recording and save it to your trip.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+            
+            if isStarting {
+                VStack(spacing: 12) {
+                    HStack {
+                        Label("Update Frequency", systemImage: "timer")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(Int(recordingDistance))m")
+                            .font(.headline.bold())
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.1), in: Capsule())
+                    }
+                    .padding(.horizontal, 24)
+                    
+                    Slider(value: $recordingDistance, in: 50...2000, step: 50)
+                        .tint(.blue)
+                        .padding(.horizontal, 24)
+                    
+                    Text("A point will be saved every \(Int(recordingDistance))m.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 24)
+            }
+            
+            VStack(spacing: 12) {
+                Button {
+                    withAnimation {
+                        if isStarting {
+                            tripRecorder.startTrip(itineraryTripId: selectedItineraryTripId, distanceFilter: recordingDistance)
+                            showingStartConfirmation = false
+                        } else {
+                            tripRecorder.stopTrip()
+                            showingStopConfirmation = false
+                        }
+                    }
+                } label: {
+                    Text(isStarting ? "Start Recording" : "Stop Recording")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(isStarting ? Color.blue : Color.red)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.horizontal, 24)
+                
+                Button("Cancel", role: .cancel) {
+                    if isStarting {
+                        showingStartConfirmation = false
+                    } else {
+                        showingStopConfirmation = false
+                    }
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 20)
+            }
+        }
+        .presentationDetents(isStarting ? [.height(500)] : [.height(380)])
+        .presentationDragIndicator(.visible)
     }
 
     var selectedTripBinding: Binding<ItineraryTrip>? {

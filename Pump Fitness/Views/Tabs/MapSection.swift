@@ -828,9 +828,8 @@ struct ItineraryEventEditorView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     categorySection
                     detailsSection
+                    attachmentsSection
                     notesSection
-                    photoSection
-                    pdfSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
@@ -1377,123 +1376,124 @@ struct ItineraryEventEditorView: View {
         }
     }
 
-    private var photoSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Photo")
-                .font(.subheadline.weight(.semibold))
-            
-            HStack {
+    private var attachmentsSection: some View {
+        HStack(alignment: .top, spacing: 16) {
+            // Photo Section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Photo")
+                    .font(.subheadline.weight(.semibold))
+                
                 if let data = selectedPhotoData, let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 80, height: 80)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
-                        )
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 100)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+                            )
                         
-                    Button(role: .destructive) {
-                        withAnimation {
-                            selectedPhotoData = nil
-                            selectedPhotoItem = nil
+                        Button {
+                            withAnimation {
+                                selectedPhotoData = nil
+                                selectedPhotoItem = nil
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.red, .white)
+                                .padding(4)
                         }
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "trash")
-                                .font(.callout)
-                                .foregroundStyle(.red)
-                                .accessibilityLabel("Remove photo")
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 8)
                 } else {
                     PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                        HStack {
+                        VStack(spacing: 8) {
                             Image(systemName: "photo")
                                 .font(.title3)
                             Text("Add Photo")
-                                .font(.callout)
+                                .font(.caption.weight(.semibold))
                         }
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 100)
                         .background(Color.accentColor.opacity(0.1))
-                        .clipShape(Capsule())
+                        .foregroundStyle(Color.accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
                 }
             }
-        }
-    }
-
-    private var pdfSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("PDF")
-                .font(.subheadline.weight(.semibold))
-
-            HStack(spacing: 10) {
+            .frame(maxWidth: .infinity)
+            
+            // PDF Section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("PDF")
+                    .font(.subheadline.weight(.semibold))
+                
                 if let data = selectedPDFData {
-                    let displayName = (selectedPDFName ?? "PDF attached")
-                    let truncatedName: String = {
-                        if displayName.count > 16 {
-                            return String(displayName.prefix(16)) + "..."
+                    VStack(spacing: 8) {
+                        Image(systemName: "doc.fill")
+                            .font(.title3)
+                            .foregroundStyle(Color.accentColor)
+                        
+                        Text(selectedPDFName ?? "PDF attached")
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                isShowingPDFImporter = true
+                            } label: {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.caption)
+                                    .padding(6)
+                                    .background(Color.accentColor.opacity(0.1))
+                                    .clipShape(Circle())
+                            }
+                            
+                            Button(role: .destructive) {
+                                withAnimation {
+                                    selectedPDFData = nil
+                                    selectedPDFName = nil
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.caption)
+                                    .padding(6)
+                                    .background(Color.red.opacity(0.1))
+                                    .clipShape(Circle())
+                                    .foregroundStyle(.red)
+                            }
                         }
-                        return displayName
-                    }()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(truncatedName)
-                            .font(.callout.weight(.semibold))
-                        Text(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
-
-                    Spacer()
-
-                    Button {
-                        isShowingPDFImporter = true
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.callout)
-                            .accessibilityLabel("Replace PDF")
-                    }
-                    .buttonStyle(.plain)
-
-                    Button(role: .destructive) {
-                        withAnimation {
-                            selectedPDFData = nil
-                            selectedPDFName = nil
-                        }
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("Remove PDF")
-                    }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 100)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 } else {
                     Button {
                         isShowingPDFImporter = true
                     } label: {
-                        HStack(spacing: 8) {
+                        VStack(spacing: 8) {
                             Image(systemName: "doc.fill")
                                 .font(.title3)
                             Text("Add PDF")
-                                .font(.callout)
+                                .font(.caption.weight(.semibold))
                         }
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 100)
                         .background(Color.accentColor.opacity(0.1))
-                        .clipShape(Capsule())
+                        .foregroundStyle(Color.accentColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
     }
 

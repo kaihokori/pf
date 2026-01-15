@@ -718,9 +718,9 @@ struct TravelTips {
     }
 
     struct JourneyRecordingGuidanceTip: Tip {
-        var title: Text { Text("Capture Your Journey") }
-        var message: Text? { Text("Move around to capture where you've gone on your trip! Points are recorded as you travel.") }
-        var image: Image? { Image(systemName: "figure.walk") }
+        var title: Text { Text("Name & Enrich Your Stops") }
+        var message: Text? { Text("Tap any recorded point to give it a title, attach photos, and save a memory from that spot.") }
+        var image: Image? { Image(systemName: "app.fill") }
         
         var options: [Option] {
             MaxDisplayCount(9999)

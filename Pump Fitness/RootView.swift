@@ -2733,7 +2733,7 @@ private extension RootView {
                                 .onAppear { handleTabAppear(.routine) }
                             }
                             Tab(
-                                "Workout",
+                                "Activity",
                                 systemImage: AppTab.workout.systemImage,
                                 value: AppTab.workout
                             ) {
@@ -2789,7 +2789,7 @@ private extension RootView {
                                 .onAppear { handleTabAppear(.workout) }
                             }
                             Tab(
-                                "Sports",
+                                "Wellness",
                                 systemImage: AppTab.sports.systemImage,
                                 value: AppTab.sports
                             ) {
@@ -2850,8 +2850,8 @@ private enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .nutrition: return "Nutrition"
         case .routine: return "Routine"
-        case .workout: return "Workout"
-        case .sports: return "Sports"
+        case .workout: return "Activity"
+        case .sports: return "Wellness"
         case .itinerary: return "Itinerary"
         }
     }
@@ -2860,8 +2860,8 @@ private enum AppTab: String, CaseIterable, Identifiable {
         switch self {
         case .nutrition: return "fork.knife.circle.fill"
         case .routine: return "calendar.and.person"
-        case .workout: return "figure.strengthtraining.traditional"
-        case .sports: return "sportscourt.fill"
+        case .workout: return "figure.highintensity.intervaltraining"
+        case .sports: return "heart.text.square.fill"
         case .itinerary: return "globe.asia.australia.fill"
         }
     }

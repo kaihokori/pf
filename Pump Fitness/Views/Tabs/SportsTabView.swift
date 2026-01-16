@@ -342,6 +342,7 @@ struct SportsTabView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                backgroundView
                 VStack(spacing: 0) {
                     ScrollViewReader { proxy in
                         ScrollView {
@@ -355,6 +356,11 @@ struct SportsTabView: View {
                                 .environmentObject(account)
                                 .onAppear {
                                     // Removed auto-scroll logic as Weather tip is now first and at the top
+                                }
+                                .onChange(of: selectedDate) { _, newDate in
+                                    Task {
+                                        await weatherModel.refresh(for: newDate)
+                                    }
                                 }
 
                             VStack(spacing: 0) {
@@ -428,7 +434,30 @@ struct SportsTabView: View {
                                             }
                                         }
                                     })
-                            }
+                                }
+                                
+                                HStack {
+                                    Text("Daily Wellness Summary")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                    Spacer()
+                                    Button(action: {  }) {
+                                        Label("Edit", systemImage: "pencil")
+                                            .font(.callout)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 8)
+                                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.horizontal, 18)
+                                .padding(.top, 48)
+
+                                // Daily Wellness Summary Section
+                                
+                                InjuryTrackingSection(injuries: $account.injuries, theme: account.theme, selectedDate: selectedDate)
                         }
                       }
                       .padding(.bottom, 24)
@@ -804,6 +833,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
         locationContinuation?.resume(returning: location)
         locationContinuation = nil
+    }
+}
+
+private extension SportsTabView {
+    @ViewBuilder
+    var backgroundView: some View {
+        if themeManager.selectedTheme == .multiColour {
+            GradientBackground(theme: .sports)
+        } else {
+            themeManager.selectedTheme.background(for: colorScheme)
+                .ignoresSafeArea()
+        }
     }
 }
 

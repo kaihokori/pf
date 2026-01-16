@@ -982,6 +982,160 @@ struct WeeklyProgressRecord: Codable, Hashable, Identifiable {
     }
 }
 
+enum BodyPart: String, Codable, CaseIterable {
+    // Front
+    case head, neck, chest, abdomen, upperBack, lowerBack
+    case leftShoulder, rightShoulder
+    case leftUpperArm, rightUpperArm
+    case leftForearm, rightForearm
+    case leftHand, rightHand
+    case leftThigh, rightThigh
+    case leftShin, rightShin
+    case leftFoot, rightFoot
+    case hips
+    // Back variants for arms/legs if needed, but generic L/R usually suffices unless
+    // distinct back muscles (hams/calves/glutes) are required.
+    // Let's add specific back muscle groups:
+    case leftGlute, rightGlute
+    case leftHamstring, rightHamstring
+    case leftCalf, rightCalf
+    // Back torso
+    case trapezius, lats // simplistic mapping to upperBack? Let's use generic regions for now.
+    
+    var displayName: String {
+        switch self {
+        case .head: return "Head"
+        case .neck: return "Neck"
+        case .chest: return "Chest"
+        case .abdomen: return "Abdomen"
+        case .upperBack: return "Upper Back"
+        case .lowerBack: return "Lower Back"
+        case .leftShoulder: return "Left Shoulder"
+        case .rightShoulder: return "Right Shoulder"
+        case .leftUpperArm: return "Left Upper Arm"
+        case .rightUpperArm: return "Right Upper Arm"
+        case .leftForearm: return "Left Forearm"
+        case .rightForearm: return "Right Forearm"
+        case .leftHand: return "Left Hand"
+        case .rightHand: return "Right Hand"
+        case .leftThigh: return "Left Thigh"
+        case .rightThigh: return "Right Thigh"
+        case .leftShin: return "Left Shin"
+        case .rightShin: return "Right Shin"
+        case .leftFoot: return "Left Foot"
+        case .rightFoot: return "Right Foot"
+        case .hips: return "Hips"
+        case .leftGlute: return "Left Glute"
+        case .rightGlute: return "Right Glute"
+        case .leftHamstring: return "Left Hamstring"
+        case .rightHamstring: return "Right Hamstring"
+        case .leftCalf: return "Left Calf"
+        case .rightCalf: return "Right Calf"
+        case .trapezius: return "Trapezius"
+        case .lats: return "Lats"
+        }
+    }
+}
+
+
+struct Injury: Codable, Hashable, Identifiable {
+    var id: UUID
+    var name: String
+    var dateOccurred: Date
+    var durationDays: Int
+    var dos: String
+    var donts: String
+    // Deprecated exact coordinates in favor of bodyPart
+    var locationX: Double
+    var locationY: Double
+    var isFront: Bool
+    var bodyPart: BodyPart?
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        dateOccurred: Date = Date(),
+        durationDays: Int = 14,
+        dos: String = "",
+        donts: String = "",
+        locationX: Double = 0.5,
+        locationY: Double = 0.5,
+        isFront: Bool = true,
+        bodyPart: BodyPart? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.dateOccurred = dateOccurred
+        self.durationDays = durationDays
+        self.dos = dos
+        self.donts = donts
+        self.locationX = locationX
+        self.locationY = locationY
+        self.isFront = isFront
+        self.bodyPart = bodyPart
+    }
+    
+    init?(dictionary: [String: Any]) {
+        guard let name = dictionary["name"] as? String else { return nil }
+        let idRaw = dictionary["id"] as? String
+        self.id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.name = name
+        self.dateOccurred = dictionary["dateOccurred"] as? Date ?? (dictionary["dateOccurred"] as? Timestamp)?.dateValue() ?? Date()
+        self.durationDays = dictionary["durationDays"] as? Int ?? 14
+        self.dos = dictionary["dos"] as? String ?? ""
+        self.donts = dictionary["donts"] as? String ?? ""
+        self.locationX = dictionary["locationX"] as? Double ?? 0.5
+        self.locationY = dictionary["locationY"] as? Double ?? 0.5
+        self.isFront = dictionary["isFront"] as? Bool ?? true
+        
+        if let partRaw = dictionary["bodyPart"] as? String {
+            self.bodyPart = BodyPart(rawValue: partRaw)
+        }
+    }
+
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id.uuidString,
+            "name": name,
+            "dateOccurred": Timestamp(date: dateOccurred),
+            "durationDays": durationDays,
+            "dos": dos,
+            "donts": donts,
+            "locationX": locationX,
+            "locationY": locationY,
+            "isFront": isFront
+        ]
+        if let bodyPart {
+            dict["bodyPart"] = bodyPart.rawValue
+        }
+        return dict
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, dateOccurred, durationDays, dos, donts, locationX, locationY, isFront, bodyPart
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Injury"
+        
+        if let date = try container.decodeIfPresent(Date.self, forKey: .dateOccurred) {
+            self.dateOccurred = date
+        } else {
+            self.dateOccurred = Date()
+        }
+        
+        self.durationDays = try container.decodeIfPresent(Int.self, forKey: .durationDays) ?? 14
+        self.dos = try container.decodeIfPresent(String.self, forKey: .dos) ?? ""
+        self.donts = try container.decodeIfPresent(String.self, forKey: .donts) ?? ""
+        self.locationX = try container.decodeIfPresent(Double.self, forKey: .locationX) ?? 0.5
+        self.locationY = try container.decodeIfPresent(Double.self, forKey: .locationY) ?? 0.5
+        self.isFront = try container.decodeIfPresent(Bool.self, forKey: .isFront) ?? true
+        self.bodyPart = try container.decodeIfPresent(BodyPart.self, forKey: .bodyPart)
+    }
+}
+
 @Model
 class Account: ObservableObject {
     static var deviceCurrencySymbol: String {
@@ -1060,6 +1214,7 @@ class Account: ObservableObject {
     var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
     var weightGroups: [WeightGroupDefinition] = []
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
+    var injuries: [Injury] = []
     var trialPeriodEnd: Date? = nil
     var proPeriodEnd: Date? = nil
     var subscriptionStatus: String? = nil
@@ -1111,6 +1266,7 @@ class Account: ObservableObject {
         distanceGoal: Double = 3_000,
         weightGroups: [WeightGroupDefinition] = [],
         activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers,
+        injuries: [Injury] = [],
         trialPeriodEnd: Date? = nil,
         proPeriodEnd: Date? = nil,
         subscriptionStatus: String? = nil,
@@ -1161,6 +1317,7 @@ class Account: ObservableObject {
         self.teamMetrics = teamMetrics
         self.weightGroups = weightGroups
         self.activityTimers = activityTimers
+        self.injuries = injuries
         self.trialPeriodEnd = trialPeriodEnd
         self.proPeriodEnd = proPeriodEnd
         self.subscriptionStatus = subscriptionStatus

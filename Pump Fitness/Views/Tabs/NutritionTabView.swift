@@ -1783,6 +1783,31 @@ struct SupplementEditorSheet: View {
                         .buttonStyle(.plain)
                     }
 
+                    HStack(spacing: 16) {
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.secondary)
+                        
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Source")
+                                .font(.subheadline.weight(.bold))
+                            Text("The Nutrition Source (Harvard)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Link(destination: URL(string: "https://nutritionsource.hsph.harvard.edu/vitamins/")!) {
+                            Text("View")
+                                .font(.footnote.weight(.semibold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(16)
+                    .glassEffect(in: .rect(cornerRadius: 16))
+
                     // Custom composer
                     VStack(alignment: .leading, spacing: 12) {
                         MacroEditorSectionHeader(title: "Custom Supplement")

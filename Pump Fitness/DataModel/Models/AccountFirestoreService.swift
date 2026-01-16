@@ -46,6 +46,7 @@ class AccountFirestoreService {
 
                 let remoteWeightGroups = (data["weightGroups"] as? [[String: Any]] ?? []).compactMap { WeightGroupDefinition(dictionary: $0) }
                 let remoteActivityTimers = (data["activityTimers"] as? [[String: Any]] ?? []).compactMap { ActivityTimerItem(dictionary: $0) }
+                let remoteInjuries = (data["injuries"] as? [[String: Any]] ?? []).compactMap { Injury(dictionary: $0) }
                 let remoteGoals = (data["goals"] as? [[String: Any]] ?? []).compactMap { GoalItem(dictionary: $0) }
                 let remoteHabits = (data["habits"] as? [[String: Any]] ?? []).compactMap { HabitDefinition(dictionary: $0) }
                 let remoteGroceries = (data["groceryItems"] as? [[String: Any]] ?? []).compactMap { GroceryItem(dictionary: $0) }
@@ -112,6 +113,7 @@ class AccountFirestoreService {
                     weightGroups: remoteWeightGroups,
                     // Preserve empty remote activity timers arrays rather than substituting defaults.
                     activityTimers: remoteActivityTimers,
+                    injuries: remoteInjuries,
                     trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue(),
                     proPeriodEnd: (data["proPeriodEnd"] as? Timestamp)?.dateValue(),
                     subscriptionStatus: data["subscriptionStatus"] as? String,
@@ -344,6 +346,7 @@ class AccountFirestoreService {
         let soloMetrics = account.soloMetrics
         let teamMetrics = account.teamMetrics
         let activityTimers = account.activityTimers
+        let injuries = account.injuries
         let workoutSchedule = account.workoutSchedule
         let mealSchedule = account.mealSchedule
         let mealCatalog = account.mealCatalog
@@ -445,6 +448,7 @@ class AccountFirestoreService {
             data["soloMetrics"] = soloMetrics.map { $0.asDictionary }
             data["teamMetrics"] = teamMetrics.map { $0.asDictionary }
             data["activityTimers"] = activityTimers.map { $0.asDictionary }
+            data["injuries"] = injuries.map { $0.asDictionary }
             data["workoutSchedule"] = workoutSchedule.map { $0.asDictionary }
             data["mealSchedule"] = mealSchedule.map { $0.asDictionary }
             data["mealCatalog"] = mealCatalog.map { $0.asDictionary }

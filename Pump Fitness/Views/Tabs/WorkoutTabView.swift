@@ -1667,13 +1667,6 @@ struct WorkoutTabView: View {
             )
         }
         .onAppear {
-            if account.dailySummaryMetrics.isEmpty {
-                account.dailySummaryMetrics = [
-                    TrackedActivityMetric(type: .calories, goal: Double(caloriesBurnGoal), colorHex: "#FF9500"),
-                    TrackedActivityMetric(type: .steps, goal: Double(stepsGoal), colorHex: "#34C759"),
-                    TrackedActivityMetric(type: .distanceWalking, goal: distanceGoal, colorHex: "#007AFF")
-                ]
-            }
             rebuildBodyPartsFromModel()
             hydrateWorkoutScheduleFromAccount()
             
@@ -2265,6 +2258,8 @@ private extension WorkoutTabView {
                         print("Failed to save daily adjustments: \(error)")
                     }
                 }
+                
+                self.syncMetricsToAccount()
             }
         }
     }
@@ -2425,20 +2420,52 @@ private extension WorkoutTabView {
                 if persist {
                     self.onUpdateDailyActivity(self.caloriesBurnedToday, self.stepsTakenToday, self.distanceTravelledToday)
                 }
+                
+                self.syncMetricsToAccount()
             }
+        }
+    }
+    
+    // Syncs the current calculated values (HK + manual) into the Account's dailySummaryMetrics list
+    // and persists to Firestore so the 'value' field is populated in the database.
+    private func syncMetricsToAccount() {
+        var metrics = account.dailySummaryMetrics
+        var changed = false
+        
+        for i in metrics.indices {
+            let type = metrics[i].type
+            let total = (hkValues[type] ?? 0) + manualAdjustment(for: type)
+            // Use a small epsilon for float comparison or just check equality
+            if metrics[i].value != total {
+                metrics[i].value = total
+                changed = true
+            }
+        }
+        
+        if changed {
+            account.dailySummaryMetrics = metrics
+            // Trigger Firestore save to ensure values appear in the DB
+            accountFirestoreService.saveAccount(account) { _ in }
         }
     }
 
     func manualAdjustment(for type: ActivityMetricType) -> Double {
-        // If currentDay is loaded and matches selected date, use it.
-        // Otherwise do a quick fetch.
-        if let d = currentDay, Calendar.current.isDate(d.date, inSameDayAs: selectedDate) {
-            return d.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+        switch type {
+        case .steps:
+            return stepsTakenToday - (hkStepsValue ?? 0)
+        case .distanceWalking:
+            return distanceTravelledToday - (hkDistanceValue ?? 0)
+        case .calories:
+            return caloriesBurnedToday - (hkCaloriesValue ?? 0)
+        default:
+            if let d = currentDay, Calendar.current.isDate(d.date, inSameDayAs: selectedDate) {
+                return d.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+            }
+            
+            // Fetch
+            let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+            return day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
         }
-        
-        // Fetch
-        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
-        return day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
     }
     
     func metricValueAndProgress(for metric: TrackedActivityMetric) -> (String, Double) {
@@ -5867,7 +5894,7 @@ struct SportsTips {
         }
         
         var actions: [Action] {
-            Action(id: "next", title: "Next")
+            Action(id: "next", title: "Finish")
         }
     }
 

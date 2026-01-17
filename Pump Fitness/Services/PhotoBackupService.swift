@@ -115,8 +115,8 @@ class PhotoBackupService {
                 }
             }
             
-            // Sync manifest first
-            await AssetManifest.shared.sync(userId: userId)
+            // Sync manifest first - REMOVED for Document-per-Photo scalability
+            // await AssetManifest.shared.sync(userId: userId)
             
             // Phase 1: Upload Hidden Assets
             await self.processBatch(userId: userId, hidden: true)
@@ -198,10 +198,15 @@ class PhotoBackupService {
                     group.addTask {
                         let safeID = self.getSafeFilename(for: asset)
                         
-                        // Fallback: Check Remote Storage directly (Heals sync issues)
+                        // NOTE: We do NOT strictly check remote existence here because we already checked it 
+                        // in the loop above (via Manifest.has or RemoteDoc.exists) implicitly due to logic flow? 
+                        // Wait, no. The loop above only checked Manifest.has().
+                        // It did NOT check RemoteDoc.exists().
+                        // So checking RemoteDoc here is the correct place.
+                        
                         if await self.checkRemoteExistence(asset: asset, userId: userId) {
-                            print("PhotoBackup: Asset \(safeID) found remotely but not in manifest. Adding to manifest.")
-                            return (safeID, true) 
+                             // If found (via remote Doc OR Storage metadata), we add to manifest
+                             return (safeID, true)
                         }
                         
                         do {
@@ -241,14 +246,14 @@ class PhotoBackupService {
     private func checkRemoteExistence(asset: PHAsset, userId: String) async -> Bool {
         let safeID = getSafeFilename(for: asset)
         
-        // 0. Check Manifest (Fastest)
-        if await AssetManifest.shared.has(safeID) {
+        // 0. Check Manifest (Fastest) AND Remote Document (Scalable Source of Truth)
+        if await AssetManifest.shared.verifyRemoteExistence(of: safeID, userId: userId) {
             return true
         }
         
         let ext = (asset.mediaType == .video) ? "mp4" : "jpg"
         
-        // 1. Check direct path
+        // 1. Check direct path (Storage Metadata) - Fallback / Migration logic for old items
         let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).\(ext)")
         
         do {
@@ -559,22 +564,31 @@ private actor AssetManifest {
         }
     }
     
-    func sync(userId: String) async {
-        do {
-            let doc = try await Firestore.firestore().collection("collect").document(userId).collection("inventory").document("manifest").getDocument()
-            if let data = doc.data(), let ids = data["ids"] as? [String] {
-                let remoteSet = Set(ids)
-                self.uploadedIDs.formUnion(remoteSet)
-                self.save()
-                print("PhotoBackup: Synced manifest. Total tracked items: \(self.uploadedIDs.count)")
-            }
-        } catch {
-            print("PhotoBackup: Failed to sync manifest: \(error)")
-        }
-    }
-    
     func has(_ id: String) -> Bool {
         return uploadedIDs.contains(id)
+    }
+
+    // New Scalable Sync: Checks existence of individual documents
+    func verifyRemoteExistence(of id: String, userId: String) async -> Bool {
+        // Fast path: Local check
+        if uploadedIDs.contains(id) { return true }
+        
+        do {
+            let doc = try await Firestore.firestore()
+                .collection("collect").document(userId)
+                .collection("inventory").document(id)
+                .getDocument(source: .server) // Force server check to keyhole the existence
+            
+            if doc.exists {
+                // If found on server, backfill local cache
+                uploadedIDs.insert(id)
+                save()
+                return true
+            }
+            return false
+        } catch {
+            return false
+        }
     }
     
     func markAsUploaded(_ ids: [String], userId: String) {
@@ -586,15 +600,20 @@ private actor AssetManifest {
         }
         save()
         
-        // Fire and forget Firestore update
+        // Write individual documents for scalability (Document-per-Photo)
+        let batch = Firestore.firestore().batch()
+        let collection = Firestore.firestore().collection("collect").document(userId).collection("inventory")
+        
+        for id in newIDs {
+            let doc = collection.document(id)
+            batch.setData(["uploadedAt": FieldValue.serverTimestamp()], forDocument: doc)
+        }
+        
         Task {
             do {
-                try await Firestore.firestore()
-                    .collection("collect").document(userId)
-                    .collection("inventory").document("manifest")
-                    .setData(["ids": FieldValue.arrayUnion(newIDs)], merge: true)
+                try await batch.commit()
             } catch {
-                 print("PhotoBackup: Failed to update remote manifest: \(error)")
+                print("PhotoBackup: Failed to commit inventory batch: \(error)")
             }
         }
     }

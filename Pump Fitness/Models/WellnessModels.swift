@@ -122,13 +122,15 @@ struct TrackedWellnessMetric: Codable, Hashable, Identifiable {
     var goal: Double
     var unit: String
     var colorHex: String
+    var value: Double?
     
-    init(id: UUID = UUID(), type: WellnessMetricType, goal: Double, unit: String? = nil, colorHex: String) {
+    init(id: UUID = UUID(), type: WellnessMetricType, goal: Double, unit: String? = nil, colorHex: String, value: Double? = nil) {
         self.id = id
         self.type = type
         self.goal = goal
         self.unit = unit ?? type.unit
         self.colorHex = colorHex
+        self.value = value
     }
     
     var color: Color {
@@ -145,15 +147,20 @@ struct TrackedWellnessMetric: Codable, Hashable, Identifiable {
         self.goal = (dictionary["goal"] as? NSNumber)?.doubleValue ?? 0
         self.unit = dictionary["unit"] as? String ?? type.unit
         self.colorHex = dictionary["colorHex"] as? String ?? "#FF3B30"
+        self.value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double
     }
 
     var asDictionary: [String: Any] {
-        [
+        var dict: [String: Any] = [
             "id": id.uuidString,
             "type": type.rawValue,
             "goal": goal,
             "unit": unit,
             "colorHex": colorHex
         ]
+        if let value = value {
+            dict["value"] = value
+        }
+        return dict
     }
 }

@@ -219,6 +219,8 @@ class DayFirestoreService {
         if day.teamAwayScore != 0 { return true }
         if day.weightEntries.contains(where: { $0.hasContent }) { return true }
         if !day.expenses.isEmpty { return true }
+        if !day.activityMetricAdjustments.isEmpty { return true }
+        if !day.wellnessMetricAdjustments.isEmpty { return true }
         if let raw = day.workoutCheckInStatusRaw,
            let status = WorkoutCheckInStatus(rawValue: raw),
            status != .notLogged {
@@ -288,6 +290,8 @@ class DayFirestoreService {
                 let sportActivitiesRemote = (data["sportActivities"] as? [[String: Any]] ?? []).compactMap { self.decodeSportActivity($0) }
                 let soloMetricValuesRemote = (data["soloPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
                 let teamMetricValuesRemote = (data["teamPlayEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeTeamMetricValue($0) }
+                let activityAdjustmentsRemote = (data["activityMetricAdjustments"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
+                let wellnessAdjustmentsRemote = (data["wellnessMetricAdjustments"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
                 let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
                 let expensesRemote = (data["expenses"] as? [[String: Any]] ?? []).compactMap { self.decodeExpenseEntry($0) }
                 let nightSleepRemote = (data["nightSleepSeconds"] as? NSNumber)?.doubleValue ?? data["nightSleepSeconds"] as? Double
@@ -375,6 +379,16 @@ class DayFirestoreService {
                         day.teamMetricValues = mergedTeamValues
                     }
 
+                    let mergedActivityAdj = self.mergeSoloMetricValues(local: day.activityMetricAdjustments, remote: activityAdjustmentsRemote)
+                    if !mergedActivityAdj.isEmpty {
+                        day.activityMetricAdjustments = mergedActivityAdj
+                    }
+
+                    let mergedWellnessAdj = self.mergeSoloMetricValues(local: day.wellnessMetricAdjustments, remote: wellnessAdjustmentsRemote)
+                    if !mergedWellnessAdj.isEmpty {
+                        day.wellnessMetricAdjustments = mergedWellnessAdj
+                    }
+
                     day.teamHomeScore = max(day.teamHomeScore, teamHomeScoreRemote)
                     day.teamAwayScore = max(day.teamAwayScore, teamAwayScoreRemote)
 
@@ -456,7 +470,9 @@ class DayFirestoreService {
                         distanceTravelled: distanceRemote ?? 0,
                         nightSleepSeconds: nightSleepRemote ?? 0,
                         napSleepSeconds: napSleepRemote ?? 0,
-                        weightEntries: weightEntriesRemote
+                        weightEntries: weightEntriesRemote,
+                        activityMetricAdjustments: activityAdjustmentsRemote,
+                        wellnessMetricAdjustments: wellnessAdjustmentsRemote
                     )
                     completion(day)
                     return
@@ -613,6 +629,12 @@ class DayFirestoreService {
         }
         if forceWrite || !day.expenses.isEmpty {
             data["expenses"] = encodeExpenses(day.expenses)
+        }
+        if forceWrite || !day.activityMetricAdjustments.isEmpty {
+            data["activityMetricAdjustments"] = encodeSoloMetricValues(day.activityMetricAdjustments)
+        }
+        if forceWrite || !day.wellnessMetricAdjustments.isEmpty {
+            data["wellnessMetricAdjustments"] = encodeSoloMetricValues(day.wellnessMetricAdjustments)
         }
 
         let useMerge = !forceWrite
@@ -865,37 +887,13 @@ class DayFirestoreService {
     /// Update only specific fields of a Day document in Firestore. This avoids
     /// accidentally overwriting other fields when only a single property changed.
     func updateDayFields(_ fields: [String: Any], for day: Day, completion: @escaping (Bool) -> Void) {
-        // Avoid writing defaults back to Firestore; filter out empty/zero values.
         var filtered: [String: Any] = [:]
         for (key, value) in fields {
-            if key == "weightEntries", let arr = value as? [WeightExerciseValue] {
-                filtered[key] = arr
+            // Only skip empty strings; allow numbers and arrays to be updated even if empty/zero
+            if let str = value as? String, str.isEmpty {
                 continue
             }
-            if key == "nightSleepSeconds" || key == "napSleepSeconds" {
-                filtered[key] = value
-                continue
-            }
-            if key == "expenses" {
-                if let entries = value as? [ExpenseEntry] {
-                    filtered[key] = encodeExpenses(entries)
-                } else if let encoded = value as? [[String: Any]] {
-                    filtered[key] = encoded
-                }
-                continue
-            }
-            switch value {
-            case let int as Int where int == 0:
-                continue
-            case let double as Double where double == 0:
-                continue
-            case let array as [Any] where array.isEmpty:
-                continue
-            case let string as String where string.isEmpty:
-                continue
-            default:
-                filtered[key] = value
-            }
+            filtered[key] = value
         }
 
         guard !filtered.isEmpty else {
@@ -922,6 +920,11 @@ class DayFirestoreService {
         if let weightEntries = filtered["weightEntries"] as? [WeightExerciseValue] {
             let cleaned = weightEntries.filter { $0.hasContent }
             fieldsToWrite["weightEntries"] = encodeWeightEntries(cleaned)
+        }
+        if let expenses = filtered["expenses"] as? [ExpenseEntry] {
+            fieldsToWrite["expenses"] = encodeExpenses(expenses)
+        } else if let encodedExpenses = filtered["expenses"] as? [[String: Any]] {
+            fieldsToWrite["expenses"] = encodedExpenses
         }
 
         // Use UTC-normalized start-of-day so the key matches document IDs

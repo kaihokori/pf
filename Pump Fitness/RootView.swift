@@ -2485,9 +2485,11 @@ private extension RootView {
                 local.sports = fetched.sports
                 local.soloMetrics = fetched.soloMetrics
                 local.teamMetrics = fetched.teamMetrics
-                    local.caloriesBurnGoal = fetched.caloriesBurnGoal
-                    local.stepsGoal = fetched.stepsGoal
-                    local.distanceGoal = fetched.distanceGoal
+                local.dailySummaryMetrics = fetched.dailySummaryMetrics
+                local.dailyWellnessMetrics = fetched.dailyWellnessMetrics
+                local.caloriesBurnGoal = fetched.caloriesBurnGoal
+                local.stepsGoal = fetched.stepsGoal
+                local.distanceGoal = fetched.distanceGoal
                 local.activityTimers = fetched.activityTimers
                 local.trialPeriodEnd = fetched.trialPeriodEnd
                 local.proPeriodEnd = fetched.proPeriodEnd
@@ -2537,6 +2539,8 @@ private extension RootView {
                     expenseCategories: fetched.expenseCategories, expenseCurrencySymbol: fetched.expenseCurrencySymbol, goals: fetched.goals, habits: fetched.habits, mealReminders: fetched.mealReminders,
                     weeklyProgress: fetched.weeklyProgress,
                     workoutSupplements: fetched.workoutSupplements,
+                    dailySummaryMetrics: fetched.dailySummaryMetrics,
+                    dailyWellnessMetrics: fetched.dailyWellnessMetrics,
                     nutritionSupplements: fetched.nutritionSupplements,
                     dailyTasks: fetched.dailyTasks,
                     itineraryEvents: fetched.itineraryEvents,

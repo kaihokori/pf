@@ -625,6 +625,12 @@ struct SportsTabView: View {
                     tint: .blue, // Wellness themed color
                     onDone: {
                         showWellnessEditor = false
+                        do {
+                            try modelContext.save()
+                        } catch {
+                            print("Failed to save local account for wellness: \(error)")
+                        }
+                        accountService.saveAccount(account) { _ in }
                         requestWellnessAuthorization()
                     },
                     onCancel: { showWellnessEditor = false }
@@ -660,6 +666,8 @@ struct SportsTabView: View {
                             print("Failed to save wellness adjustment: \(error)")
                         }
                         dayService.updateDayFields(["wellnessMetricAdjustments": day.wellnessMetricAdjustments], for: day) { _ in }
+                        
+                        syncWellnessMetricsToAccount()
                     }
                 )
             }
@@ -680,14 +688,41 @@ struct SportsTabView: View {
     private func refreshWellnessValues() {
         guard healthKitService.isAvailable else { return }
         let metrics = account.dailyWellnessMetrics
+        let group = DispatchGroup()
+        var newValues: [WellnessMetricType: Double] = [:]
+        
         for metric in metrics {
+            group.enter()
             healthKitService.fetchWellnessMetric(type: metric.type, for: selectedDate) { val in
-                DispatchQueue.main.async {
-                    if let val = val {
-                        self.wellnessHKValues[metric.type] = val
-                    }
+                if let val = val {
+                    newValues[metric.type] = val
                 }
+                group.leave()
             }
+        }
+        
+        group.notify(queue: .main) {
+            self.wellnessHKValues = newValues
+            self.syncWellnessMetricsToAccount()
+        }
+    }
+    
+    private func syncWellnessMetricsToAccount() {
+        var metrics = account.dailyWellnessMetrics
+        var changed = false
+        
+        for i in metrics.indices {
+            let type = metrics[i].type
+            let total = (wellnessHKValues[type] ?? 0) + wellnessManualAdjustment(for: type)
+            if metrics[i].value != total {
+                metrics[i].value = total
+                changed = true
+            }
+        }
+        
+        if changed {
+            account.dailyWellnessMetrics = metrics
+            accountService.saveAccount(account) { _ in }
         }
     }
 

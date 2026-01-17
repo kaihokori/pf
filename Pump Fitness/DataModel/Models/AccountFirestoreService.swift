@@ -118,6 +118,8 @@ class AccountFirestoreService {
                     injuries: remoteInjuries,
                     trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue(),
                     proPeriodEnd: (data["proPeriodEnd"] as? Timestamp)?.dateValue(),
+                    manualPro: (data["manualPro"] as? Timestamp)?.dateValue(),
+                    overridePro: data["overridePro"] as? Bool,
                     subscriptionStatus: data["subscriptionStatus"] as? String,
                     subscriptionStatusUpdatedAt: (data["subscriptionStatusUpdatedAt"] as? Timestamp)?.dateValue(),
                     didCompleteOnboarding: data["didCompleteOnboarding"] as? Bool ?? false,

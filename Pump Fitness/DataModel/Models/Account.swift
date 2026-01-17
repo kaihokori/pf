@@ -1218,6 +1218,8 @@ class Account: ObservableObject {
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
     var injuries: [Injury] = []
     var trialPeriodEnd: Date? = nil
+    var manualPro: Date? = nil
+    var overridePro: Bool? = nil
     var proPeriodEnd: Date? = nil
     var subscriptionStatus: String? = nil
     var subscriptionStatusUpdatedAt: Date? = nil
@@ -1273,6 +1275,8 @@ class Account: ObservableObject {
         injuries: [Injury] = [],
         trialPeriodEnd: Date? = nil,
         proPeriodEnd: Date? = nil,
+        manualPro: Date? = nil,
+        overridePro: Bool? = nil,
         subscriptionStatus: String? = nil,
         subscriptionStatusUpdatedAt: Date? = nil,
         didCompleteOnboarding: Bool = false,
@@ -1324,6 +1328,8 @@ class Account: ObservableObject {
         self.weightGroups = weightGroups
         self.activityTimers = activityTimers
         self.injuries = injuries
+        self.manualPro = manualPro
+        self.overridePro = overridePro
         self.trialPeriodEnd = trialPeriodEnd
         self.proPeriodEnd = proPeriodEnd
         self.subscriptionStatus = subscriptionStatus

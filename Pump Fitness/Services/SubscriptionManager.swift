@@ -214,11 +214,9 @@ class SubscriptionManager: ObservableObject {
 
             // Check if the subscription is still valid (revocationDate is nil)
             if transaction.revocationDate == nil {
-                // StoreKit 2 currentEntitlements handles expiration, but we double check
-                if let expirationDate = transaction.expirationDate, expirationDate < Date() {
-                    print("SubscriptionManager: Found expired transaction for \(transaction.productID)")
-                    continue
-                }
+                // StoreKit 2 currentEntitlements handles expiration automatically.
+                // We do NOT manualy check expirationDate < Date() here to avoid
+                // demoting users due to clock skew or grace periods that Apple considers valid.
 
                 purchased.insert(transaction.productID)
                 print("SubscriptionManager: Active entitlement found: \(transaction.productID)")
@@ -278,7 +276,7 @@ private extension SubscriptionManager {
     static func remainingString(to date: Date) -> String? {
         guard date > Date() else { return nil }
         let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.year, .month, .day]
+        formatter.allowedUnits = [.year, .month, .day, .hour]
         formatter.unitsStyle = .full
         formatter.maximumUnitCount = 1
         return formatter.string(from: Date(), to: date)

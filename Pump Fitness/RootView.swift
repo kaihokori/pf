@@ -28,36 +28,32 @@ struct RootView: View {
     private var isPro: Bool {
         if subscriptionManager.isDebugForcingNoSubscription { return false }
 
-        // if let account = accounts.first, account.name == "John Apple" {
-        //     var dateComponents = DateComponents()
-        //     dateComponents.year = 2026
-        //     dateComponents.month = 1
-        //     dateComponents.day = 20
-        //     if let limitDate = Calendar.current.date(from: dateComponents), Date() < limitDate {
-        //         return true
-        //     }
-        // }
+        let account = activeAccount
 
-        // Local override from account (Admin/Support grant)
-        // If proPeriodEnd is set, it overrides EVERYTHING (both granting and revoking).
-        if let account = accounts.first {
-            if let proEnd = account.proPeriodEnd {
-                return proEnd > Date()
-            }
+        // 1. Manual Override: overridePro == true forces Pro
+        // If false or nil, we proceed to other checks.
+        if let override = account.overridePro, override == true {
+            return true
+        }
+
+        // 2. Manual Time Grant: manualPro > Now
+        if let manualDate = account.manualPro, manualDate > Date() {
+            return true
         }
         
-        // Check fetched account if local query was empty (fallback safety)
-        if let fetchedAccount = fetchAccount(), let fetchedPro = fetchedAccount.proPeriodEnd {
-            return fetchedPro > Date()
+        // (Legacy Support) proPeriodEnd behaves like manualPro
+        if let legacyPro = account.proPeriodEnd, legacyPro > Date() {
+            return true
         }
-        
-        // Primary: entitlements or locally restored trial flags
-        if subscriptionManager.hasProAccess || subscriptionManager.isTrialActive { return true }
 
-        // Fallback: any known trial end date (state or latest Account fetch) still in the future
-        if let trialEnd = trialPeriodEnd, trialEnd > Date() { return true }
-        if let accountTrial = accounts.first?.trialPeriodEnd, accountTrial > Date() { return true }
-        if let fetchedTrial = fetchAccount()?.trialPeriodEnd, fetchedTrial > Date() { return true }
+        // 3. StoreKit Entitlements (or local receipt validation)
+        if subscriptionManager.hasProAccess { return true }
+
+        // 4. Trial Access (App-level or Account-level)
+        if subscriptionManager.isTrialActive { return true }
+        if let trialEnd = account.trialPeriodEnd, trialEnd > Date() {
+            return true
+        }
 
         return false
     }
@@ -98,6 +94,14 @@ struct RootView: View {
     @State private var isHydratingTrackedMacros: Bool = false
     @State private var weeklyCheckInStatuses: [WorkoutCheckInStatus] = Array(repeating: .notLogged, count: 7)
     @State private var weeklyCheckInsLoadToken: UUID = UUID()
+    
+    private var activeAccount: Account {
+        if let uid = Auth.auth().currentUser?.uid,
+           let match = accounts.first(where: { $0.id == uid }) {
+            return match
+        }
+        return accounts.first ?? Account(name: "You")
+    }
     @State private var hasLoadedCravingsFromRemote: Bool = false
     @State private var autoRestDayIndices: Set<Int> = []
     @State private var hasQueuedDeferredWeekLoad: Bool = false
@@ -2832,6 +2836,7 @@ private extension RootView {
         }
         .tint(currentAccent)
         .accentColor(currentAccent)
+        .environmentObject(activeAccount)
     }
 }
 

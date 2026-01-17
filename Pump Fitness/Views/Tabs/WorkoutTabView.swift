@@ -1280,6 +1280,110 @@ struct WorkoutTabView: View {
                         }
                     }
 
+                    // Live Games Tracking
+                    VStack {
+                        HStack {
+                            Text("Live Games Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+//                            Button {
+//                                showLiveGamesEditor = true
+//                            } label: {
+//                                Label("Edit", systemImage: "pencil")
+//                                    .font(.callout)
+//                                    .fontWeight(.medium)
+//                                    .padding(.horizontal, 12)
+//                                    .padding(.vertical, 8)
+//                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+//                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+//                            }
+//                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 48)
+                    }
+                    .opacity(isPro ? 1 : 0.5)
+                    .blur(radius: isPro ? 0 : 4)
+                    .disabled(!isPro)
+                    .overlay {
+                        if !isPro {
+                            ZStack {
+                                Color.black.opacity(0.001) // Capture taps
+                                    .onTapGesture {
+                                        // Optional: Trigger upgrade flow
+                                    }
+                                
+                                VStack(spacing: 8) {
+                                    HStack {
+                                        let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                        if let accent {
+                                            Image("logo")
+                                                .resizable()
+                                                .renderingMode(.template)
+                                                .foregroundStyle(accent)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(height: 40)
+                                                .padding(.leading, 4)
+                                                .offset(y: 6)
+                                        } else {
+                                            Image("logo")
+                                                .resizable()
+                                                .renderingMode(.original)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(height: 40)
+                                                .padding(.leading, 4)
+                                                .offset(y: 6)
+                                        }
+                                        
+                                        Text("PRO")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(Color.white)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                    .fill(
+                                                        accent.map {
+                                                            LinearGradient(
+                                                                gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                startPoint: .topLeading,
+                                                                endPoint: .bottomTrailing
+                                                            )
+                                                        } ?? LinearGradient(
+                                                            gradient: Gradient(colors: [
+                                                                Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                            ]),
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                    )
+                                            )
+                                            .offset(y: 6)
+                                    }
+                                    .padding(.bottom, 5)
+                                    
+                                    Text("Trackerio Pro")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    
+                                    Text("Upgrade to unlock Live Games Tracking + More")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                            }
+                        }
+                    }
+
                     // Coaching inquiry card
                     CoachingInquiryCTA()
                         .padding(.top, 24)

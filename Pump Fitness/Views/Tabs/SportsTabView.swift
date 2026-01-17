@@ -26,6 +26,7 @@ struct SportsTabView: View {
     var isPro: Bool
     @State private var showAccountsView = false
     @ObservedObject var weatherModel: WeatherViewModel
+    @State private var showProSheet = false
     
     // Wellness
     @State private var showWellnessEditor = false
@@ -509,6 +510,90 @@ struct SportsTabView: View {
                                 }
                                 
                                 InjuryTrackingSection(injuries: $account.injuries, theme: account.theme, selectedDate: selectedDate)
+                                .opacity(isPro ? 1 : 0.5)
+                                .blur(radius: isPro ? 0 : 4)
+                                .disabled(!isPro)
+                                .overlay {
+                                    if !isPro {
+                                        ZStack {
+                                            Color.black.opacity(0.001) // Capture taps
+                                                .onTapGesture {
+                                                    // no-op capture
+                                                }
+
+                                            Button {
+                                                showProSheet = true
+                                            } label: {
+                                                VStack(spacing: 8) {
+                                                    HStack {
+                                                        let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                        if let accent {
+                                                            Image("logo")
+                                                                .resizable()
+                                                                .renderingMode(.template)
+                                                                .foregroundStyle(accent)
+                                                                .aspectRatio(contentMode: .fit)
+                                                                .frame(height: 40)
+                                                                .padding(.leading, 4)
+                                                                .offset(y: 6)
+                                                        } else {
+                                                            Image("logo")
+                                                                .resizable()
+                                                                .renderingMode(.original)
+                                                                .aspectRatio(contentMode: .fit)
+                                                                .frame(height: 40)
+                                                                .padding(.leading, 4)
+                                                                .offset(y: 6)
+                                                        }
+                                                        
+                                                        Text("PRO")
+                                                            .font(.subheadline)
+                                                            .fontWeight(.semibold)
+                                                            .foregroundStyle(Color.white)
+                                                            .padding(.horizontal, 8)
+                                                            .padding(.vertical, 4)
+                                                            .background(
+                                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                                    .fill(
+                                                                        accent.map {
+                                                                            LinearGradient(
+                                                                                gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                                startPoint: .topLeading,
+                                                                                endPoint: .bottomTrailing
+                                                                            )
+                                                                        } ?? LinearGradient(
+                                                                            gradient: Gradient(colors: [
+                                                                                Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                                Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                            ]),
+                                                                            startPoint: .topLeading,
+                                                                            endPoint: .bottomTrailing
+                                                                        )
+                                                                    )
+                                                            )
+                                                            .offset(y: 6)
+                                                    }
+                                                    .padding(.bottom, 5)
+                                                        
+                                                    Text("Trackerio Pro")
+                                                        .font(.headline)
+                                                        .foregroundStyle(.primary)
+
+                                                    Text("Upgrade to unlock Injury Tracking + More")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .padding()
+                                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .sheet(isPresented: $showProSheet) {
+                                                ProSubscriptionView()
+                                            }
+                                        }
+                                    }
+                                }
                         }
                       }
                       .padding(.bottom, 24)

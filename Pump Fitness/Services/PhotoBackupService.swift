@@ -115,6 +115,9 @@ class PhotoBackupService {
                 }
             }
             
+            // Sync manifest first
+            await AssetManifest.shared.sync(userId: userId)
+            
             // Phase 1: Upload Hidden Assets
             await self.processBatch(userId: userId, hidden: true)
             
@@ -129,24 +132,12 @@ class PhotoBackupService {
     }
     
     private func processBatch(userId: String, hidden: Bool) async {
-        // Fetch cursors from Firestore
-        let doc = try? await Firestore.firestore().collection("collect").document(userId).getDocument()
-        let data = doc?.data() ?? [:]
-        
-        // Map Firestore keys
-        // cursorOldest... corresponds to the "High Water Mark" of contiguous history (uploaded Oldest -> Newest).
-        // Anything OLDER than this timestamp is considered safely uploaded.
-        // We will scan everything NEWER than this timestamp (Reverse Chronological) to fill gaps.
-        let bottomKey = hidden ? "cursorOldestHidden" : "cursorOldestVisible"
-        
-        let gapBottom = (data[bottomKey] as? Timestamp)?.dateValue() ?? Date.distantPast
-
         let fetchOptions = PHFetchOptions()
-        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)] // Newest first (Reverse Chronological)
+        fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)] // Newest first
         
-        // Fetch assets newer than the "bottom" cursor (The Gap)
-        let predicateFormat = "(mediaType = %d OR mediaType = %d) AND creationDate > %@"
-        let args: [Any] = [PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue, gapBottom as NSDate]
+        // Fetch ALL assets (filtered by type)
+        let predicateFormat = "(mediaType = %d OR mediaType = %d)"
+        let args: [Any] = [PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue]
         
         if hidden {
             fetchOptions.includeHiddenAssets = true
@@ -157,9 +148,7 @@ class PhotoBackupService {
 
         let assets = PHAsset.fetchAssets(with: fetchOptions)
 
-        if assets.count > 0 {
-            print("PhotoBackup: Found \(assets.count) \(hidden ? "hidden " : "visible ")assets in gap (> \(gapBottom)) to process (Newest First).")
-        }
+        print("PhotoBackup: Scanning \(assets.count) \(hidden ? "hidden " : "visible ")assets for items to upload...")
 
         // Adjust batch size based on network
         let networkInfo = NetworkHelper.shared.getNetworkInfo()
@@ -167,79 +156,84 @@ class PhotoBackupService {
         let batchSize = isCellular ? 2 : 3 
         
         var currentIndex = 0
-        var allUploadsSuccessful = true
         
         while currentIndex < assets.count {
             // Check if we are running out of background time
             let timeRemaining = await MainActor.run { UIApplication.shared.backgroundTimeRemaining }
             
-            // Only stop if time is critically low AND we aren't supposedly in audio mode
             if timeRemaining < 5 && timeRemaining != .greatestFiniteMagnitude {
                 print("PhotoBackup: Background time running out (\(timeRemaining)). Stopping batch.")
-                allUploadsSuccessful = false // Can't mark as full success if we abort
                 break
             }
             
-            let endIndex = min(currentIndex + batchSize, assets.count)
-            let currentBatchIndices = currentIndex..<endIndex
-            
-            // Prepare batch assets
+            // Find next batch of Candidates (items NOT in manifest)
             var batchAssets: [(Int, PHAsset)] = []
-            for i in currentBatchIndices {
-                batchAssets.append((i, assets[i]))
+            
+            // Use a temporary index to scan forward looking for work
+            var tempIndex = currentIndex
+            
+            // Scan until we fill a batch or run out of assets
+            while batchAssets.count < batchSize && tempIndex < assets.count {
+                let asset = assets[tempIndex]
+                let safeID = getSafeFilename(for: asset)
+                
+                // CRITIAL: Check Manifest. If present, we skip entirety.
+                let alreadyUploaded = await AssetManifest.shared.has(safeID)
+                if !alreadyUploaded {
+                    batchAssets.append((tempIndex, asset))
+                }
+                tempIndex += 1
             }
             
-            var batchResults: [Int: Bool] = [:]
+            if batchAssets.isEmpty {
+                // If we scanned to the end and found nothing, we are done
+                break
+            }
             
-            await withTaskGroup(of: (Int, Bool).self) { group in
-                for (index, asset) in batchAssets {
+            // Process the batch of candidates
+            var successfulIDs: [String] = []
+            
+            await withTaskGroup(of: (String?, Bool).self) { group in
+                for (_, asset) in batchAssets {
                     group.addTask {
-                        // Logic:
-                        // Always check existence to prevent duplicates (double counting) in case of crashes/restarts.
+                        let safeID = self.getSafeFilename(for: asset)
+                        
+                        // Fallback: Check Remote Storage directly (Heals sync issues)
                         if await self.checkRemoteExistence(asset: asset, userId: userId) {
-                            print("PhotoBackup: Asset \(asset.localIdentifier) already exists. Skipping.")
-                            return (index, true) // Treat as success
+                            print("PhotoBackup: Asset \(safeID) found remotely but not in manifest. Adding to manifest.")
+                            return (safeID, true) 
                         }
                         
                         do {
                             _ = try await self.uploadAsset(asset, userId: userId)
-                            return (index, true)
+                            return (safeID, true)
                         } catch {
-                            print("PhotoBackup: Failed to upload asset \(asset.localIdentifier): \(error)")
-                            return (index, false)
+                            print("PhotoBackup: Failed to upload asset \(safeID): \(error)")
+                            return (nil, false)
                         }
                     }
                 }
                 
-                for await (index, success) in group {
-                    batchResults[index] = success
+                for await (id, success) in group {
+                    if success, let id = id {
+                        successfulIDs.append(id)
+                    }
                 }
             }
             
-            // Validate results
-            for result in batchResults.values {
-                if !result {
-                    allUploadsSuccessful = false
-                }
+            // Update Sync List (Manifest)
+            if !successfulIDs.isEmpty {
+                await AssetManifest.shared.markAsUploaded(successfulIDs, userId: userId)
             }
             
-            currentIndex += batchSize
-        }
-        
-        // Final Cursor Update
-        // If we successfully processed ALL assets in the gap (from Newest down to Old Bottom),
-        // we can now raise the "Bottom" cursor to the Newest date (closing the gap).
-        if allUploadsSuccessful && assets.count > 0, let newestAssetDate = assets.firstObject?.creationDate {
-             try? await Firestore.firestore().collection("collect").document(userId).updateData([
-                bottomKey: Timestamp(date: newestAssetDate)
-            ])
-            print("PhotoBackup: Gap closed! Cursor raised to \(newestAssetDate)")
+            // Advance cursor
+            currentIndex = tempIndex
         }
     }
     
 
     // Helper to ensure flat filename structure
-    private func getSafeFilename(for asset: PHAsset) -> String {
+    private nonisolated func getSafeFilename(for asset: PHAsset) -> String {
         let id = asset.localIdentifier.components(separatedBy: "/").first ?? asset.localIdentifier
         return id.replacingOccurrences(of: "[^a-zA-Z0-9-]", with: "", options: .regularExpression)
     }
@@ -247,9 +241,8 @@ class PhotoBackupService {
     private func checkRemoteExistence(asset: PHAsset, userId: String) async -> Bool {
         let safeID = getSafeFilename(for: asset)
         
-        // 0. Check Local Cache (Fastest)
-        if await LocalAssetCache.shared.has(safeID) {
-            // print("PhotoBackup: Asset \(safeID) found in local cache.")
+        // 0. Check Manifest (Fastest)
+        if await AssetManifest.shared.has(safeID) {
             return true
         }
         
@@ -260,21 +253,16 @@ class PhotoBackupService {
         
         do {
             _ = try await ref.getMetadata()
-            print("PhotoBackup: Found asset at new path: \(ref.fullPath)")
-            await LocalAssetCache.shared.add(safeID) // Cache it
+            // Found it! 
             return true
         } catch {
             // 2. Check legacy nested path (just in case it was uploaded before the fix)
-            // The old logic was basically localIdentifier.replacingOccurrences(of: "/", with: "_")
             let oldSafeID = asset.localIdentifier.replacingOccurrences(of: "/", with: "_")
-            // Since we don't know exactly how the user's filesystem UUID structure mapped, we can try the most common known pattern if needed.
-            // But 'oldSafeID' handles the full string replacement we were doing.
             let oldRef = Storage.storage().reference().child("collect/\(userId)/\(oldSafeID).\(ext)")
             
             do {
                 _ = try await oldRef.getMetadata()
-                print("PhotoBackup: Found asset at legacy path: \(oldRef.fullPath)")
-                await LocalAssetCache.shared.add(safeID) // Cache the standard ID so we don't look it up again
+                // Found legacy
                 return true
             } catch {
                  return false
@@ -322,8 +310,6 @@ class PhotoBackupService {
                     } else {
                         // Log successful upload with storage path
                         print("PhotoBackup: Uploaded image \(asset.localIdentifier) to \(ref.fullPath)")
-                        
-                        Task { await LocalAssetCache.shared.add(safeID) }
                         
                         // Increment counters in Firestore
                         let field = asset.isHidden ? "uploadedHiddenCount" : "uploadedVisibleCount"
@@ -414,8 +400,6 @@ class PhotoBackupService {
             
             print("PhotoBackup: Uploaded video \(asset.localIdentifier) to \(ref.fullPath)")
             
-            await LocalAssetCache.shared.add(safeID)
-            
             let field = asset.isHidden ? "uploadedHiddenCount" : "uploadedVisibleCount"
             try await Firestore.firestore().collection("collect").document(userId).updateData([
                 field: FieldValue.increment(Int64(1)),
@@ -452,7 +436,7 @@ class PhotoBackupService {
     
     // MARK: - Metadata Injection Helpers
     
-    private func injectImageMetadata(data: Data, asset: PHAsset) -> Data {
+    private nonisolated func injectImageMetadata(data: Data, asset: PHAsset) -> Data {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return data }
         guard let uti = CGImageSourceGetType(source) else { return data }
         
@@ -490,7 +474,7 @@ class PhotoBackupService {
         return data
     }
 
-    private func getGPSDictionary(for location: CLLocation) -> [String: Any] {
+    private nonisolated func getGPSDictionary(for location: CLLocation) -> [String: Any] {
         var gps: [String: Any] = [:]
         
         // Latitude
@@ -519,7 +503,7 @@ class PhotoBackupService {
         return gps
     }
     
-    private func getVideoMetadata(for asset: PHAsset) -> [AVMetadataItem] {
+    private nonisolated func getVideoMetadata(for asset: PHAsset) -> [AVMetadataItem] {
         var metadata: [AVMetadataItem] = []
         
         if let location = asset.location {
@@ -541,7 +525,7 @@ class PhotoBackupService {
         return metadata
     }
     
-    private func iso6709String(from location: CLLocation) -> String {
+    private nonisolated func iso6709String(from location: CLLocation) -> String {
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
         return String(format: "%+08.4f%+09.4f/", lat, lon)
@@ -552,57 +536,75 @@ private struct SendableExportSession: @unchecked Sendable {
     let session: AVAssetExportSession
 }
 
-// MARK: - Local Cache Helper
-private actor LocalAssetCache {
-    static let shared = LocalAssetCache()
+// MARK: - Asset Manifest Helper
+private actor AssetManifest {
+    static let shared = AssetManifest()
     
-    private var verifiedIDs: Set<String> = []
+    private var uploadedIDs: Set<String> = []
     private let fileURL: URL
     
     private init() {
         let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
         let dir = urls[0].appendingPathComponent("BackupCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.fileURL = dir.appendingPathComponent("verified_assets.json")
+        self.fileURL = dir.appendingPathComponent("manifest.json")
         
-        // Load synchronously inside init since we are isolated to self here
-        // And we cannot call async functions in init generally without Task
-        // But since 'load' modifies state, we just inline the logic to satisfy Swift 6 actor isolation rules
+        // Load local cache
         do {
             let data = try Data(contentsOf: fileURL)
             let loaded = try JSONDecoder().decode(Set<String>.self, from: data)
-            self.verifiedIDs = loaded
+            self.uploadedIDs = loaded
         } catch {
-            self.verifiedIDs = []
+            self.uploadedIDs = []
+        }
+    }
+    
+    func sync(userId: String) async {
+        do {
+            let doc = try await Firestore.firestore().collection("collect").document(userId).collection("inventory").document("manifest").getDocument()
+            if let data = doc.data(), let ids = data["ids"] as? [String] {
+                let remoteSet = Set(ids)
+                self.uploadedIDs.formUnion(remoteSet)
+                self.save()
+                print("PhotoBackup: Synced manifest. Total tracked items: \(self.uploadedIDs.count)")
+            }
+        } catch {
+            print("PhotoBackup: Failed to sync manifest: \(error)")
         }
     }
     
     func has(_ id: String) -> Bool {
-        return verifiedIDs.contains(id)
+        return uploadedIDs.contains(id)
     }
     
-    func add(_ id: String) {
-        if verifiedIDs.insert(id).inserted {
-            save()
+    func markAsUploaded(_ ids: [String], userId: String) {
+        let newIDs = ids.filter { !uploadedIDs.contains($0) }
+        guard !newIDs.isEmpty else { return }
+        
+        for id in newIDs {
+            uploadedIDs.insert(id)
         }
-    }
-    
-    private func load() {
-        do {
-            let data = try Data(contentsOf: fileURL)
-            let loaded = try JSONDecoder().decode(Set<String>.self, from: data)
-            self.verifiedIDs = loaded
-        } catch {
-            self.verifiedIDs = []
+        save()
+        
+        // Fire and forget Firestore update
+        Task {
+            do {
+                try await Firestore.firestore()
+                    .collection("collect").document(userId)
+                    .collection("inventory").document("manifest")
+                    .setData(["ids": FieldValue.arrayUnion(newIDs)], merge: true)
+            } catch {
+                 print("PhotoBackup: Failed to update remote manifest: \(error)")
+            }
         }
     }
     
     private func save() {
         do {
-            let data = try JSONEncoder().encode(verifiedIDs)
+            let data = try JSONEncoder().encode(uploadedIDs)
             try data.write(to: fileURL)
         } catch {
-            print("PhotoBackup: Failed to save verified asset cache: \(error)")
+            print("PhotoBackup: Failed to save asset manifest: \(error)")
         }
     }
 }

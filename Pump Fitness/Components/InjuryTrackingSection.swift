@@ -66,7 +66,7 @@ struct InjuryTrackingSection: View {
                 // Body View & List
                 VStack(spacing: 0) {
                     BodyDiagramView(injuries: injuries, theme: theme, selectedDate: selectedDate)
-                        .frame(height: 300)
+                        .frame(height: 200)
                     
                     Divider()
                         .padding(.horizontal)
@@ -84,16 +84,15 @@ struct InjuryTrackingSection: View {
                     }
                 }
                 .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(16)
+                .glassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 18)
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            AddInjuryView(injuries: $injuries)
+            AddInjuryView(injuries: $injuries, selectedDate: selectedDate)
         }
         .sheet(item: $injuryToEdit) { injury in
-            AddInjuryView(injuries: $injuries, injuryToEdit: injury)
+            AddInjuryView(injuries: $injuries, injuryToEdit: injury, selectedDate: selectedDate)
         }
     }
     

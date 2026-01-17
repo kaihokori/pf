@@ -4,15 +4,24 @@ struct AddInjuryView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var injuries: [Injury]
     var injuryToEdit: Injury?
+    var selectedDate: Date = Date()
     var tint: Color = .blue
     
     @State private var name: String = ""
-    @State private var recoveryDate: Date = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-    @State private var showCalendar: Bool = false
     @State private var dos: String = ""
     @State private var donts: String = ""
     @State private var selectedPart: BodyPart = .chest // Default value
     
+    // Calendar Config
+    @State private var recoveryDate: Date = Date()
+    @State private var currentMonth: Date = Date()
+    @State private var showYearPicker = false
+    @State private var showMonthPicker = false
+    @Namespace private var calendarAnim
+    
+    private let calendar = Calendar.current
+    private let daysOfWeek = ["M", "T", "W", "T", "F", "S", "S"]
+
     @FocusState private var focusedField: FocusedField?
     
     enum FocusedField {
@@ -30,8 +39,8 @@ struct AddInjuryView: View {
                             sectionHeader("Injury Location")
                             
                             // Body Diagram Visualization
-                            BodyDiagramView(injuries: [previewInjury], selectedDate: Date())
-                                .frame(height: 300)
+                            BodyDiagramView(injuries: [previewInjury], selectedDate: selectedDate)
+                                .frame(height: 200)
                                 .padding()
                                 .surfaceCard(24, shadowOpacity: 0.1)
                             
@@ -146,32 +155,142 @@ struct AddInjuryView: View {
                                     .textInputAutocapitalization(.words)
                                     .padding()
                                     .surfaceCard(16)
-                                
-                                // Estimated Recovery Date
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Estimated Recovery")
-                                        .font(.subheadline.weight(.semibold))
+                            }
+                        }
 
+                        // Recovery Date Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            sectionHeader("Expected Recovery Date")
+
+                            VStack(spacing: 0) {
+                                // Month/Year Picker logic
+                                HStack {
                                     Button(action: {
-                                        withAnimation {
-                                            showCalendar = true
+                                        withAnimation(.easeInOut) {
+                                            currentMonth = calendar.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
                                         }
                                     }) {
-                                        HStack {
-                                            Text(recoveryDate.formatted(date: .long, time: .omitted))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            Image(systemName: "calendar")
-                                                .foregroundStyle(tint)
+                                        Image(systemName: "chevron.left")
+                                    }
+                                    .padding(.leading, 15)
+                                    Spacer()
+                                    Text(monthYearString(currentMonth))
+                                        .font(.headline)
+                                        .matchedGeometryEffect(id: "monthLabel", in: calendarAnim)
+                                        .onTapGesture { withAnimation { showMonthPicker.toggle() } }
+                                    Spacer()
+                                    Button(action: {
+                                        withAnimation(.easeInOut) {
+                                            currentMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
+                                        }
+                                    }) {
+                                        Image(systemName: "chevron.right")
+                                    }
+                                    .padding(.trailing, 15)
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.vertical, 8)
+                                .padding(.horizontal)
+                                .padding(.top, 16)
+
+                                if showYearPicker {
+                                    // Year Picker
+                                    let currentYear = calendar.component(.year, from: currentMonth)
+                                    let years = (currentYear-50...currentYear+10).map { $0 }
+                                    ScrollView {
+                                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 16) {
+                                            ForEach(years, id: \.self) { year in
+                                                Button(action: {
+                                                    var comps = calendar.dateComponents([.month, .day], from: currentMonth)
+                                                    comps.year = year
+                                                    if let newDate = calendar.date(from: comps) {
+                                                        currentMonth = newDate
+                                                    }
+                                                    showYearPicker = false
+                                                }) {
+                                                    Text("\(year)")
+                                                        .font(.body)
+                                                        .frame(maxWidth: .infinity, minHeight: 32)
+                                                        .background(calendar.component(.year, from: currentMonth) == year ? tint.opacity(0.2) : Color.clear)
+                                                        .cornerRadius(8)
+                                                }
+                                            }
                                         }
                                         .padding()
-                                        .background(Color(.tertiarySystemFill))
-                                        .cornerRadius(10)
                                     }
+                                    .frame(maxHeight: 340)
+                                } else if showMonthPicker {
+                                    // Month Picker
+                                    let months = DateFormatter().monthSymbols ?? []
+                                    ScrollView {
+                                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 16) {
+                                            ForEach(months.indices, id: \.self) { idx in
+                                                Button(action: {
+                                                    var comps = calendar.dateComponents([.year, .day], from: currentMonth)
+                                                    comps.month = idx + 1
+                                                    if let newDate = calendar.date(from: comps) {
+                                                        currentMonth = newDate
+                                                    }
+                                                    showMonthPicker = false
+                                                }) {
+                                                    Text(months[idx])
+                                                        .font(.body)
+                                                        .frame(maxWidth: .infinity, minHeight: 32)
+                                                        .background(calendar.component(.month, from: currentMonth) == idx + 1 ? tint.opacity(0.2) : Color.clear)
+                                                        .cornerRadius(8)
+                                                }
+                                            }
+                                        }
+                                        .padding()
+                                    }
+                                    .frame(maxHeight: 340)
+                                } else {
+                                    // Calendar Days
+                                    HStack {
+                                        ForEach(daysOfWeek, id: \.self) { dow in
+                                            Text(dow)
+                                                .font(.caption)
+                                                .frame(maxWidth: .infinity)
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 12)
+                                    let days = daysInMonth(currentMonth)
+                                    // Compute first weekday index with Monday as the first column.
+                                    // Calendar.weekday: 1 = Sunday, 2 = Monday, ...
+                                    // Map so Monday -> 0, Tuesday -> 1, ..., Sunday -> 6
+                                    let firstWeekday = (calendar.component(.weekday, from: firstOfMonth(currentMonth)) + 5) % 7
+                                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                                        ForEach(0..<(days + firstWeekday), id: \.self) { i in
+                                            if i < firstWeekday {
+                                                Color.clear.frame(height: 32)
+                                            } else {
+                                                let dayNum = i - firstWeekday + 1
+                                                let date = dateForDay(dayNum, in: currentMonth)
+                                                Button(action: {
+                                                    withAnimation(.easeInOut) {
+                                                        recoveryDate = date
+                                                    }
+                                                }) {
+                                                    Text("\(dayNum)")
+                                                        .frame(maxWidth: .infinity, minHeight: 32)
+                                                        .background(calendar.isDate(date, inSameDayAs: recoveryDate) ? tint.opacity(0.2) : Color.clear)
+                                                        .clipShape(Circle())
+                                                }
+                                                .foregroundStyle(calendar.isDate(date, inSameDayAs: recoveryDate) ? tint : .primary)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                    .padding(.bottom, 16)
                                 }
-                                .padding()
-                                .surfaceCard(16)
                             }
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.08))
+                            )
+                            .padding(.vertical, 6)
                         }
                         
                         // Recovery Guide Section
@@ -209,20 +328,6 @@ struct AddInjuryView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 24)
-
-                    if showCalendar {
-                        Color.black.opacity(0.4)
-                            .ignoresSafeArea()
-                            .onTapGesture {
-                                withAnimation {
-                                    showCalendar = false
-                                }
-                            }
-                        
-                        CalendarComponent(selectedDate: $recoveryDate, showCalendar: $showCalendar)
-                            .padding()
-                            .frame(maxHeight: .infinity, alignment: .center)
-                    }
                 }
                 
                 SimpleKeyboardDismissBar(
@@ -249,13 +354,19 @@ struct AddInjuryView: View {
             .onAppear {
                 if let injury = injuryToEdit {
                     name = injury.name
-                    recoveryDate = Calendar.current.date(byAdding: .day, value: injury.durationDays, to: injury.dateOccurred) ?? Date()
+                    // durationDays = Double(injury.durationDays)
+                    if let date = Calendar.current.date(byAdding: .day, value: injury.durationDays, to: injury.dateOccurred) {
+                        recoveryDate = date
+                    }
                     dos = injury.dos
                     donts = injury.donts
                     if let part = injury.bodyPart {
                         selectedPart = part
                     }
+                } else {
+                    recoveryDate = Calendar.current.date(byAdding: .day, value: 7, to: selectedDate) ?? selectedDate
                 }
+                currentMonth = recoveryDate
             }
         }
     }
@@ -269,11 +380,12 @@ struct AddInjuryView: View {
     }
     
     var previewInjury: Injury {
-        let days = Calendar.current.dateComponents([.day], from: Date(), to: recoveryDate).day ?? 7
+        let startDate = injuryToEdit?.dateOccurred ?? selectedDate
+        let duration = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: startDate), to: Calendar.current.startOfDay(for: recoveryDate)).day ?? 0
         return Injury(
             name: "Preview",
-            dateOccurred: Date(), // Preview assuming today so intensity reflects duration
-            durationDays: max(1, days),
+            dateOccurred: startDate,
+            durationDays: max(0, duration),
             dos: "",
             donts: "",
             locationX: 0,
@@ -288,11 +400,15 @@ struct AddInjuryView: View {
     }
     
     func saveInjury() {
+        let startDate = injuryToEdit?.dateOccurred ?? selectedDate
+        let duration = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: startDate), to: Calendar.current.startOfDay(for: recoveryDate)).day ?? 0
+        let finalDuration = max(0, duration)
+        
         if let original = injuryToEdit, let index = injuries.firstIndex(where: { $0.id == original.id }) {
             // Update existing
             var updated = original
             updated.name = name
-            updated.durationDays = max(1, Calendar.current.dateComponents([.day], from: original.dateOccurred, to: recoveryDate).day ?? 1)
+            updated.durationDays = finalDuration
             updated.dos = dos
             updated.donts = donts
             updated.bodyPart = selectedPart
@@ -300,13 +416,10 @@ struct AddInjuryView: View {
             injuries[index] = updated
         } else {
             // Create new
-            let now = Date()
-            let duration = max(1, Calendar.current.dateComponents([.day], from: now, to: recoveryDate).day ?? 1)
-            
             let injury = Injury(
                 name: name,
-                dateOccurred: now,
-                durationDays: duration,
+                dateOccurred: startDate,
+                durationDays: finalDuration,
                 dos: dos,
                 donts: donts,
                 // Keep generic location as fallback if ever needed, but rely on bodyPart
@@ -318,6 +431,29 @@ struct AddInjuryView: View {
             injuries.append(injury)
         }
         dismiss()
+    }
+
+    // MARK: - Calendar Helpers
+    private func monthYearString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func daysInMonth(_ date: Date) -> Int {
+        let range = calendar.range(of: .day, in: .month, for: date)!
+        return range.count
+    }
+
+    private func firstOfMonth(_ date: Date) -> Date {
+        let components = calendar.dateComponents([.year, .month], from: date)
+        return calendar.date(from: components)!
+    }
+
+    private func dateForDay(_ day: Int, in date: Date) -> Date {
+        var components = calendar.dateComponents([.year, .month], from: date)
+        components.day = day
+        return calendar.date(from: components)!
     }
 }
 

@@ -907,6 +907,12 @@ class DayFirestoreService {
         if let activities = filtered["sportActivities"] as? [SportActivityRecord] {
             fieldsToWrite["sportActivities"] = encodeSportActivities(activities)
         }
+        if let wellnessAdj = filtered["wellnessMetricAdjustments"] as? [SoloMetricValue] {
+            fieldsToWrite["wellnessMetricAdjustments"] = encodeSoloMetricValues(wellnessAdj)
+        }
+        if let activityAdj = filtered["activityMetricAdjustments"] as? [SoloMetricValue] {
+            fieldsToWrite["activityMetricAdjustments"] = encodeSoloMetricValues(activityAdj)
+        }
         if let soloEntries = filtered["soloPlayEntries"] as? [SoloMetricValue] {
             fieldsToWrite["soloPlayEntries"] = encodeSoloMetricValues(soloEntries)
         }

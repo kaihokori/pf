@@ -6,6 +6,7 @@ struct AddInjuryView: View {
     var injuryToEdit: Injury?
     var selectedDate: Date = Date()
     var tint: Color = .blue
+    var onSave: (() -> Void)?
     
     @State private var name: String = ""
     @State private var dos: String = ""
@@ -429,6 +430,7 @@ struct AddInjuryView: View {
                 bodyPart: selectedPart
             )
             injuries.append(injury)
+        onSave?()
         }
         dismiss()
     }

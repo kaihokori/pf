@@ -414,6 +414,71 @@ struct ExpenseEntry: Codable, Hashable, Identifiable {
     }
 }
 
+enum RecoveryType: String, Codable, CaseIterable {
+    case sauna = "Sauna"
+    case coldPlunge = "Cold Plunge"
+    case spa = "Spa"
+    
+    var icon: String {
+        switch self {
+        case .sauna: return "flame.fill"
+        case .coldPlunge: return "snowflake"
+        case .spa: return "drop.fill"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .sauna: return .orange
+        case .coldPlunge: return .cyan
+        case .spa: return .green
+        }
+    }
+}
+
+struct RecoveryEntry: Codable, Hashable, Identifiable {
+    var id: String
+    var type: RecoveryType
+    var durationSeconds: Int
+    var temperature: Double?
+    var notes: String?
+    
+    init(id: String = UUID().uuidString, type: RecoveryType, durationSeconds: Int, temperature: Double? = nil, notes: String? = nil) {
+        self.id = id
+        self.type = type
+        self.durationSeconds = durationSeconds
+        self.temperature = temperature
+        self.notes = notes
+    }
+    
+    init?(dictionary: [String: Any]) {
+        guard let typeRaw = dictionary["type"] as? String,
+              let type = RecoveryType(rawValue: typeRaw) else { return nil }
+        
+        let id = dictionary["id"] as? String ?? UUID().uuidString
+        let durationSeconds = dictionary["durationSeconds"] as? Int ?? (dictionary["durationSeconds"] as? NSNumber)?.intValue ?? 0
+        let temperature = (dictionary["temperature"] as? NSNumber)?.doubleValue ?? dictionary["temperature"] as? Double
+        let notes = dictionary["notes"] as? String
+        
+        self.init(id: id, type: type, durationSeconds: durationSeconds, temperature: temperature, notes: notes)
+    }
+    
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id,
+            "type": type.rawValue,
+            "durationSeconds": durationSeconds
+        ]
+        if let temperature = temperature {
+            dict["temperature"] = temperature
+        }
+        if let notes = notes {
+            dict["notes"] = notes
+        }
+        return dict
+    }
+}
+
 @Model
 class Day {
     var id: String? = UUID().uuidString
@@ -447,6 +512,7 @@ class Day {
     var napSleepSeconds: Double = 0
     var weightEntries: [WeightExerciseValue] = []
     var expenses: [ExpenseEntry] = []
+    var recoveryEntries: [RecoveryEntry] = []
     
     // Generic manual adjustments for extended activity metrics
     var activityMetricAdjustments: [SoloMetricValue] = []
@@ -495,6 +561,7 @@ class Day {
         napSleepSeconds: Double = 0,
         weightEntries: [WeightExerciseValue] = [],
         expenses: [ExpenseEntry] = [],
+        recoveryEntries: [RecoveryEntry] = [],
         activityMetricAdjustments: [SoloMetricValue] = [],
         wellnessMetricAdjustments: [SoloMetricValue] = []
     ) {
@@ -532,6 +599,7 @@ class Day {
         self.napSleepSeconds = napSleepSeconds
         self.weightEntries = weightEntries
         self.expenses = expenses
+        self.recoveryEntries = recoveryEntries
         self.activityMetricAdjustments = activityMetricAdjustments
         self.wellnessMetricAdjustments = wellnessMetricAdjustments
     }

@@ -7,6 +7,9 @@ struct DailySummaryEditorSheet: View {
     var onDone: () -> Void
     var onCancel: () -> Void
 
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+    
     @State private var workingMetrics: [TrackedActivityMetric] = []
     @State private var hasLoadedState = false
     @State private var editingColorIndex: Int?
@@ -34,17 +37,20 @@ struct DailySummaryEditorSheet: View {
                             VStack(spacing: 12) {
                                 ForEach(Array(workingMetrics.enumerated()), id: \.element.id) { idx, item in
                                     let binding = $workingMetrics[idx]
+                                    let itemColor = (themeManager.selectedTheme == .multiColour) ? (Color(hex: item.colorHex) ?? tint) : tint
                                     VStack(spacing: 8) {
                                         HStack(spacing: 12) {
                                             Button {
-                                                editingColorIndex = idx
+                                                if themeManager.selectedTheme == .multiColour {
+                                                    editingColorIndex = idx
+                                                }
                                             } label: {
                                                 Circle()
-                                                    .fill(Color(hex: item.colorHex)?.opacity(0.15) ?? tint.opacity(0.15))
+                                                    .fill(itemColor.opacity(0.15))
                                                     .frame(width: 44, height: 44)
                                                     .overlay(
                                                         Image(systemName: item.type.systemImage)
-                                                            .foregroundStyle(Color(hex: item.colorHex) ?? tint)
+                                                            .foregroundStyle(itemColor)
                                                     )
                                                     .overlay(
                                                         Circle()
@@ -52,6 +58,7 @@ struct DailySummaryEditorSheet: View {
                                                     )
                                             }
                                             .buttonStyle(.plain)
+                                            .disabled(themeManager.selectedTheme != .multiColour)
 
                                             VStack(alignment: .leading, spacing: 6) {
                                                 Text(item.type.displayName)
@@ -101,7 +108,7 @@ struct DailySummaryEditorSheet: View {
                             
                             VStack(spacing: 12) {
                                 ForEach(availableMetrics, id: \.self) { type in
-                                    let typeColor = colorForType(type)
+                                    let typeColor = (themeManager.selectedTheme == .multiColour) ? colorForType(type) : tint
                                     HStack(spacing: 14) {
                                         Circle()
                                             .fill(typeColor.opacity(0.15))

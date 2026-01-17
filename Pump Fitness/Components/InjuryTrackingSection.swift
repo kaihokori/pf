@@ -4,6 +4,7 @@ struct InjuryTrackingSection: View {
     @Binding var injuries: [Injury]
     let theme: String?
     var selectedDate: Date = Date()
+    var onSave: (() -> Void)?
     
     @State private var showAddSheet = false
     @State private var injuryToEdit: Injury?
@@ -89,10 +90,10 @@ struct InjuryTrackingSection: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            AddInjuryView(injuries: $injuries, selectedDate: selectedDate)
+            AddInjuryView(injuries: $injuries, injuryToEdit: nil, selectedDate: selectedDate, onSave: onSave)
         }
         .sheet(item: $injuryToEdit) { injury in
-            AddInjuryView(injuries: $injuries, injuryToEdit: injury, selectedDate: selectedDate)
+            AddInjuryView(injuries: $injuries, injuryToEdit: injury, selectedDate: selectedDate, onSave: onSave)
         }
     }
     
@@ -131,6 +132,7 @@ struct InjuryTrackingSection: View {
                 
                 Button(role: .destructive) {
                     if let idx = injuries.firstIndex(where: { $0.id == injury.id }) {
+                        onSave?()
                         injuries.remove(at: idx)
                     }
                 } label: {

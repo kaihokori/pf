@@ -4,6 +4,7 @@ struct DailyMetricsGrid: View {
     let metrics: [TrackedActivityMetric]
     let hkValues: [ActivityMetricType: Double]
     let manualAdjustmentProvider: (ActivityMetricType) -> Double
+    var accentColor: Color? = nil
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -13,7 +14,7 @@ struct DailyMetricsGrid: View {
                 ActivityProgressCard(
                     title: metric.type.displayName,
                     iconName: metric.type.systemImage,
-                    tint: metric.color,
+                    tint: accentColor ?? metric.color,
                     currentValueText: currentValue,
                     goalValueText: "Goal \(Int(metric.goal)) \(metric.unit)",
                     progress: progress

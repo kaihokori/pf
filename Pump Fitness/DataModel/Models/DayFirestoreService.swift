@@ -132,6 +132,10 @@ class DayFirestoreService {
         }
     }
 
+    private func encodeRecoveryEntries(_ entries: [RecoveryEntry]) -> [[String: Any]] {
+        entries.map { $0.asDictionary }
+    }
+
 
     private func decodeMacroConsumption(_ raw: [String: Any]) -> MacroConsumption? {
         guard let trackedMacroId = raw["trackedMacroId"] as? String else { return nil }
@@ -172,6 +176,10 @@ class DayFirestoreService {
             dict["date"] = ts.dateValue()
         }
         return ExpenseEntry(dictionary: dict)
+    }
+
+    private func decodeRecoveryEntry(_ raw: [String: Any]) -> RecoveryEntry? {
+        RecoveryEntry(dictionary: raw)
     }
 
     private func decodeSportActivity(_ raw: [String: Any]) -> SportActivityRecord? {
@@ -219,6 +227,7 @@ class DayFirestoreService {
         if day.teamAwayScore != 0 { return true }
         if day.weightEntries.contains(where: { $0.hasContent }) { return true }
         if !day.expenses.isEmpty { return true }
+        if !day.recoveryEntries.isEmpty { return true }
         if !day.activityMetricAdjustments.isEmpty { return true }
         if !day.wellnessMetricAdjustments.isEmpty { return true }
         if let raw = day.workoutCheckInStatusRaw,
@@ -294,6 +303,7 @@ class DayFirestoreService {
                 let wellnessAdjustmentsRemote = (data["wellnessMetricAdjustments"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
                 let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
                 let expensesRemote = (data["expenses"] as? [[String: Any]] ?? []).compactMap { self.decodeExpenseEntry($0) }
+                let recoveryEntriesRemote = (data["recoveryEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeRecoveryEntry($0) }
                 let nightSleepRemote = (data["nightSleepSeconds"] as? NSNumber)?.doubleValue ?? data["nightSleepSeconds"] as? Double
                 let napSleepRemote = (data["napSleepSeconds"] as? NSNumber)?.doubleValue ?? data["napSleepSeconds"] as? Double
                 let teamHomeScoreRemote = data["teamHomeScore"] as? Int ?? 0
@@ -355,6 +365,11 @@ class DayFirestoreService {
                     if !expensesRemote.isEmpty || !day.expenses.isEmpty {
                         let mergedExpenses = self.mergeExpenses(local: day.expenses, remote: expensesRemote)
                         day.expenses = mergedExpenses
+                    }
+
+                    if !recoveryEntriesRemote.isEmpty || !day.recoveryEntries.isEmpty {
+                        let mergedRecovery = self.mergeRecoveryEntries(local: day.recoveryEntries, remote: recoveryEntriesRemote)
+                        day.recoveryEntries = mergedRecovery
                     }
 
                     let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
@@ -630,6 +645,9 @@ class DayFirestoreService {
         if forceWrite || !day.expenses.isEmpty {
             data["expenses"] = encodeExpenses(day.expenses)
         }
+        if forceWrite || !day.recoveryEntries.isEmpty {
+            data["recoveryEntries"] = encodeRecoveryEntries(day.recoveryEntries)
+        }
         if forceWrite || !day.activityMetricAdjustments.isEmpty {
             data["activityMetricAdjustments"] = encodeSoloMetricValues(day.activityMetricAdjustments)
         }
@@ -862,6 +880,18 @@ class DayFirestoreService {
         if remote.isEmpty { return local }
 
         var mergedById: [UUID: ExpenseEntry] = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
+
+        for remoteEntry in remote {
+            mergedById[remoteEntry.id] = remoteEntry
+        }
+
+        return Array(mergedById.values)
+    }
+
+    private func mergeRecoveryEntries(local: [RecoveryEntry], remote: [RecoveryEntry]) -> [RecoveryEntry] {
+        if remote.isEmpty { return local }
+
+        var mergedById: [String: RecoveryEntry] = Dictionary(uniqueKeysWithValues: local.map { ($0.id, $0) })
 
         for remoteEntry in remote {
             mergedById[remoteEntry.id] = remoteEntry

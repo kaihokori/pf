@@ -725,7 +725,8 @@ struct WorkoutTabView: View {
                         DailyMetricsGrid(
                             metrics: account.dailySummaryMetrics,
                             hkValues: hkValues,
-                            manualAdjustmentProvider: manualAdjustment
+                            manualAdjustmentProvider: manualAdjustment,
+                            accentColor: accentOverride
                         )
                         .padding(.horizontal, 18)
                         .padding(.top, 18)
@@ -733,12 +734,13 @@ struct WorkoutTabView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "heart.fill")
                                 .font(.caption)
-                                .foregroundStyle(.pink)
+                                .foregroundStyle(accentOverride ?? .pink)
                             Text("Synced with Apple Health")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.top, 12)
+                        .padding(.horizontal, 18)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         Button {
@@ -1292,32 +1294,8 @@ struct WorkoutTabView: View {
                     }
 
                     // Live Games Tracking
-                    VStack {
-                        HStack {
-                            Text("Live Games Tracking")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-//                            Button {
-//                                showLiveGamesEditor = true
-//                            } label: {
-//                                Label("Edit", systemImage: "pencil")
-//                                    .font(.callout)
-//                                    .fontWeight(.medium)
-//                                    .padding(.horizontal, 12)
-//                                    .padding(.vertical, 8)
-//                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-//                                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-//                            }
-//                            .buttonStyle(.plain)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 48)
-                    }
+                    LiveGamesTrackingView()
+                        .padding(.top, 38)
                     .opacity(isPro ? 1 : 0.5)
                     .blur(radius: isPro ? 0 : 4)
                     .disabled(!isPro)

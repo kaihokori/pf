@@ -10,6 +10,7 @@ struct WellnessMetricsGrid: View {
     // But implementation asked for "exact same". So I will support manual entry.
     // This provider will usually come from a Dictionary stored in the View.
     let manualAdjustmentProvider: (WellnessMetricType) -> Double
+    var accentColor: Color? = nil
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -19,7 +20,7 @@ struct WellnessMetricsGrid: View {
                 ActivityProgressCard(
                     title: metric.type.displayName,
                     iconName: metric.type.systemImage,
-                    tint: metric.color,
+                    tint: accentColor ?? metric.color,
                     currentValueText: currentValue,
                     goalValueText: "Goal \(formattedGoal(metric))",
                     progress: progress

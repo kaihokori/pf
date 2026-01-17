@@ -35,6 +35,11 @@ struct SportsTabView: View {
     private let healthKitService = HealthKitService()
     @State private var healthKitAuthorized = false
 
+    var accentOverride: Color? {
+        guard themeManager.selectedTheme != .multiColour else { return nil }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
 
     // MARK: - Weather Section
 
@@ -482,7 +487,8 @@ struct SportsTabView: View {
                                     WellnessMetricsGrid(
                                         metrics: account.dailyWellnessMetrics,
                                         hkValues: wellnessHKValues,
-                                        manualAdjustmentProvider: wellnessManualAdjustment
+                                        manualAdjustmentProvider: wellnessManualAdjustment,
+                                        accentColor: accentOverride
                                     )
                                     .padding(.horizontal, 18)
                                     .padding(.top, 18)
@@ -490,12 +496,13 @@ struct SportsTabView: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: "heart.fill")
                                             .font(.caption)
-                                            .foregroundStyle(.pink)
+                                            .foregroundStyle(accentOverride ?? .pink)
                                         Text("Synced with Apple Health")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
                                     .padding(.top, 12)
+                                    .padding(.horizontal, 18)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 
@@ -520,7 +527,14 @@ struct SportsTabView: View {
                                     .padding(.top, 16)
                                 }
                                 
-                                InjuryTrackingSection(injuries: $account.injuries, theme: account.theme, selectedDate: selectedDate)
+                                InjuryTrackingSection(
+                                    injuries: $account.injuries,
+                                    theme: account.theme,
+                                    selectedDate: selectedDate,
+                                    onSave: {
+                                        accountService.saveAccount(account) { _ in }
+                                    }
+                                )
                                 .opacity(isPro ? 1 : 0.5)
                                 .blur(radius: isPro ? 0 : 4)
                                 .disabled(!isPro)
@@ -605,6 +619,9 @@ struct SportsTabView: View {
                                         }
                                     }
                                 }
+
+                                RecoveryTrackingSection(selectedDate: selectedDate)
+                                    .padding(.top, 16)
                         }
                       }
                       .padding(.bottom, 24)
@@ -633,7 +650,7 @@ struct SportsTabView: View {
                 
                 WellnessSummaryEditorSheet(
                     metrics: metricsBinding,
-                    tint: .blue, // Wellness themed color
+                    tint: accentOverride ?? .blue, // Wellness themed color
                     onDone: {
                         showWellnessEditor = false
                         do {

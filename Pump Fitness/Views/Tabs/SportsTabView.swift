@@ -486,6 +486,17 @@ struct SportsTabView: View {
                                     )
                                     .padding(.horizontal, 18)
                                     .padding(.top, 18)
+                                    
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "heart.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.pink)
+                                        Text("Synced with Apple Health")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.top, 12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 
                                 if !account.dailyWellnessMetrics.isEmpty {

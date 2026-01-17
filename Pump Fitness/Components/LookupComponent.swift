@@ -146,9 +146,11 @@ struct LookupComponent: View {
                         Image(systemName: "info.circle.fill")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Data sourced from FatSecret")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        Link(destination: URL(string: "https://www.fatsecret.com/au")!) {
+                            Text("Data sourced from FatSecret")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)

@@ -7,7 +7,8 @@ struct AddInjuryView: View {
     var tint: Color = .blue
     
     @State private var name: String = ""
-    @State private var durationDays: Double = 7
+    @State private var recoveryDate: Date = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    @State private var showCalendar: Bool = false
     @State private var dos: String = ""
     @State private var donts: String = ""
     @State private var selectedPart: BodyPart = .chest // Default value
@@ -146,20 +147,27 @@ struct AddInjuryView: View {
                                     .padding()
                                     .surfaceCard(16)
                                 
-                                // Duration Slider
+                                // Estimated Recovery Date
                                 VStack(alignment: .leading, spacing: 12) {
-                                    HStack {
-                                        Text("Estimated Recovery")
-                                            .font(.subheadline.weight(.semibold))
-                                        Spacer()
-                                        Text("\(Int(durationDays)) days")
-                                            .font(.subheadline)
-                                            .foregroundStyle(tint)
-                                            .bold()
+                                    Text("Estimated Recovery")
+                                        .font(.subheadline.weight(.semibold))
+
+                                    Button(action: {
+                                        withAnimation {
+                                            showCalendar = true
+                                        }
+                                    }) {
+                                        HStack {
+                                            Text(recoveryDate.formatted(date: .long, time: .omitted))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            Image(systemName: "calendar")
+                                                .foregroundStyle(tint)
+                                        }
+                                        .padding()
+                                        .background(Color(.tertiarySystemFill))
+                                        .cornerRadius(10)
                                     }
-                                    
-                                    Slider(value: $durationDays, in: 1...60, step: 1)
-                                        .tint(tint)
                                 }
                                 .padding()
                                 .surfaceCard(16)
@@ -201,6 +209,20 @@ struct AddInjuryView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 24)
+
+                    if showCalendar {
+                        Color.black.opacity(0.4)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                withAnimation {
+                                    showCalendar = false
+                                }
+                            }
+                        
+                        CalendarComponent(selectedDate: $recoveryDate, showCalendar: $showCalendar)
+                            .padding()
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    }
                 }
                 
                 SimpleKeyboardDismissBar(
@@ -227,7 +249,7 @@ struct AddInjuryView: View {
             .onAppear {
                 if let injury = injuryToEdit {
                     name = injury.name
-                    durationDays = Double(injury.durationDays)
+                    recoveryDate = Calendar.current.date(byAdding: .day, value: injury.durationDays, to: injury.dateOccurred) ?? Date()
                     dos = injury.dos
                     donts = injury.donts
                     if let part = injury.bodyPart {
@@ -247,10 +269,11 @@ struct AddInjuryView: View {
     }
     
     var previewInjury: Injury {
-        Injury(
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: recoveryDate).day ?? 7
+        return Injury(
             name: "Preview",
             dateOccurred: Date(), // Preview assuming today so intensity reflects duration
-            durationDays: Int(durationDays),
+            durationDays: max(1, days),
             dos: "",
             donts: "",
             locationX: 0,
@@ -269,7 +292,7 @@ struct AddInjuryView: View {
             // Update existing
             var updated = original
             updated.name = name
-            updated.durationDays = Int(durationDays)
+            updated.durationDays = max(1, Calendar.current.dateComponents([.day], from: original.dateOccurred, to: recoveryDate).day ?? 1)
             updated.dos = dos
             updated.donts = donts
             updated.bodyPart = selectedPart
@@ -277,10 +300,13 @@ struct AddInjuryView: View {
             injuries[index] = updated
         } else {
             // Create new
+            let now = Date()
+            let duration = max(1, Calendar.current.dateComponents([.day], from: now, to: recoveryDate).day ?? 1)
+            
             let injury = Injury(
                 name: name,
-                dateOccurred: Date(),
-                durationDays: Int(durationDays),
+                dateOccurred: now,
+                durationDays: duration,
                 dos: dos,
                 donts: donts,
                 // Keep generic location as fallback if ever needed, but rely on bodyPart

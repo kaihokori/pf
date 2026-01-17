@@ -555,14 +555,15 @@ struct SportsTabView: View {
                         
                         // Find existing adjustment for this type
                         var currentAdjustments = day.wellnessMetricAdjustments
+                        let change = isAddition ? value : -value
+                        
                         if let index = currentAdjustments.firstIndex(where: { $0.metricId == type.id }) {
                             // Update existing
-                            let newAdjustment = currentAdjustments[index].value + (isAddition ? value : -value)
+                            let newAdjustment = currentAdjustments[index].value + change
                             currentAdjustments[index].value = newAdjustment
                         } else {
                             // Create new adjustment
-                            let val = isAddition ? value : -value
-                            let adj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: val)
+                            let adj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: change)
                             currentAdjustments.append(adj)
                         }
                         day.wellnessMetricAdjustments = currentAdjustments

@@ -10,6 +10,8 @@ struct DailySummaryEditorSheet: View {
     @State private var workingMetrics: [TrackedActivityMetric] = []
     @State private var hasLoadedState = false
     @State private var editingColorIndex: Int?
+    
+    private let healthKitService = HealthKitService()
 
     private var availableMetrics: [ActivityMetricType] {
         let trackedTypes = Set(workingMetrics.map { $0.type })
@@ -147,7 +149,11 @@ struct DailySummaryEditorSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         metrics = workingMetrics
-                        onDone()
+                        healthKitService.requestAuthorization(activityMetrics: metrics.map { $0.type }) { _ in
+                            DispatchQueue.main.async {
+                                onDone()
+                            }
+                        }
                     }
                     .fontWeight(.semibold)
                 }

@@ -730,7 +730,6 @@ struct WorkoutTabView: View {
                         .padding(.horizontal, 18)
                         .padding(.top, 18)
 
-
                         Button {
                             showSubmitDataSheet = true
                         } label: {
@@ -1407,6 +1406,8 @@ struct WorkoutTabView: View {
                     let types = account.dailySummaryMetrics.map { $0.type }
                     healthKitService.requestAuthorization(for: types) { ok in
                         DispatchQueue.main.async {
+                            // Update authorized state so the "Connected" pill appears
+                            healthKitAuthorized = ok
                             // If user cancels or denies, ok might be true/false depending on implementation
                             // but we treat valid auth object as success.
                             // Even if false, we try to refresh what we can.
@@ -1571,18 +1572,11 @@ struct WorkoutTabView: View {
             }
             rebuildBodyPartsFromModel()
             hydrateWorkoutScheduleFromAccount()
-            // request HealthKit authorization for CURRENTLY tracked metrics only
-            let currentTypes = account.dailySummaryMetrics.map { $0.type }
-            healthKitService.requestAuthorization(for: currentTypes) { ok in
-                DispatchQueue.main.async {
-                    healthKitAuthorized = ok
-                    if ok {
-                        refreshHealthKitValues()
-                    } else {
-                        // load any manual overrides for today
-                        loadManualOverrides()
-                    }
-                }
+            
+            // Only refresh values here. Authorization is requested on "Save" in editor.
+            DispatchQueue.main.async {
+                loadManualOverrides()
+                refreshHealthKitValues()
             }
         }
         .onAppear {
@@ -2125,23 +2119,24 @@ private extension WorkoutTabView {
 
     func handleAdjustAction(isAddition: Bool, valueString: String, target: String?) {
         guard let val = Double(valueString) else { return }
+        let change = isAddition ? val : -val
         let resolved = target ?? ""
         
         if let type = ActivityMetricType(rawValue: resolved) {
             DispatchQueue.main.async {
                 switch type {
                 case .steps:
-                    stepsTakenToday += (isAddition ? val : -val)
+                    stepsTakenToday += change
                     stepsTakenToday = max(0, stepsTakenToday)
                     persistActivityToDay(steps: stepsTakenToday)
                     saveManualOverride(key: "steps", value: stepsTakenToday)
                 case .distanceWalking:
-                    distanceTravelledToday += (isAddition ? val : -val)
+                    distanceTravelledToday += change
                     distanceTravelledToday = max(0, distanceTravelledToday)
                     persistActivityToDay(distance: distanceTravelledToday)
                     saveManualOverride(key: "walking", value: distanceTravelledToday)
                 case .calories:
-                    caloriesBurnedToday += (isAddition ? val : -val)
+                    caloriesBurnedToday += change
                     caloriesBurnedToday = max(0, caloriesBurnedToday)
                     persistActivityToDay(calories: caloriesBurnedToday)
                     saveManualOverride(key: "calories", value: caloriesBurnedToday)
@@ -2149,7 +2144,7 @@ private extension WorkoutTabView {
                     // Generic handling
                     let day = currentDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext)
                     var currentVal = day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
-                    currentVal += (isAddition ? val : -val)
+                    currentVal += change
                     
                     if let idx = day.activityMetricAdjustments.firstIndex(where: { $0.metricId == type.id }) {
                         day.activityMetricAdjustments[idx].value = currentVal

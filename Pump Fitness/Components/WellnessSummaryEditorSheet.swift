@@ -10,6 +10,8 @@ struct WellnessSummaryEditorSheet: View {
     @State private var workingMetrics: [TrackedWellnessMetric] = []
     @State private var hasLoadedState = false
     @State private var editingColorIndex: Int?
+    
+    private let healthKitService = HealthKitService()
 
     private var availableMetrics: [WellnessMetricType] {
         let trackedTypes = Set(workingMetrics.map { $0.type })
@@ -112,7 +114,7 @@ struct WellnessSummaryEditorSheet: View {
                                         VStack(alignment: .leading) {
                                             Text(type.displayName)
                                                 .font(.subheadline.weight(.semibold))
-                                            Text("Default Goal: \(Int(type.defaultGoal)) \(type.unit)")
+                                            Text("\(Int(type.defaultGoal)) \(type.unit)")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
@@ -147,7 +149,11 @@ struct WellnessSummaryEditorSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         metrics = workingMetrics
-                        onDone()
+                        healthKitService.requestAuthorization(wellnessMetrics: metrics.map { $0.type }) { _ in
+                            DispatchQueue.main.async {
+                                onDone()
+                            }
+                        }
                     }
                     .fontWeight(.semibold)
                 }

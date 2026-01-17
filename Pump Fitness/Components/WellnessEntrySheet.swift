@@ -184,7 +184,8 @@ struct WellnessEntrySheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         if let selected = selectedMetric {
-                            onSave(selected.type, selectedOperation == .add, inputValue)
+                            let isAdd = selectedOperation == .add
+                            onSave(selected.type, isAdd, inputValue)
                         }
                         dismiss()
                     }

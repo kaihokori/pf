@@ -1050,12 +1050,14 @@ private extension RootView {
         do {
             let request = FetchDescriptor<Account>()
             let accounts = try modelContext.fetch(request)
-            // Prefer the account that matches the currently signed-in user to avoid
-            // persisting or hydrating from the seed/default account.
-            if let uid = Auth.auth().currentUser?.uid,
-               let match = accounts.first(where: { $0.id == uid }) {
-                return match
+            
+            // If the user is signed in, ONLY return the account that matches their UID.
+            // Returning a default/fallback account here risks overwriting remote data
+            // with local defaults if the user triggers a save (e.g. via .onChange handlers).
+            if let uid = Auth.auth().currentUser?.uid {
+                return accounts.first(where: { $0.id == uid })
             }
+            
             return accounts.first
         } catch {
             print("Failed to fetch Account: \(error)")

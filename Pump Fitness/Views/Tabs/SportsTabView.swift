@@ -620,8 +620,7 @@ struct SportsTabView: View {
                                     }
                                 }
 
-                                RecoveryTrackingSection(selectedDate: selectedDate)
-                                    .padding(.top, 16)
+                                // Recovery Tracking Section
                         }
                       }
                       .padding(.bottom, 24)

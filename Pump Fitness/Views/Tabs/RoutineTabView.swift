@@ -713,7 +713,7 @@ struct RoutineTabView: View {
                         // MARK: - Expense Tracker Section
                         VStack(spacing: 0) {
                             HStack {
-                                Text("Expense Tracker")
+                                Text("Expense Tracking")
                                     .font(.title3)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.primary)

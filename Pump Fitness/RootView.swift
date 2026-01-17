@@ -263,6 +263,17 @@ struct RootView: View {
         if !isSignedIn || !hasCompletedOnboarding {
             showWelcomeVideo = true
         }
+        let didForceSignOutOnceKey = "didForceSignOutOnce"
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: didForceSignOutOnceKey) {
+            do {
+                try Auth.auth().signOut()
+            } catch {
+                print("Error signing out: \(error)")
+            }
+            hasCompletedOnboarding = false
+            defaults.set(true, forKey: didForceSignOutOnceKey)
+        }
         authStateHandle = Auth.auth().addStateDidChangeListener { _, user in
             if let user = user {
                 Task { await locationProvider.startTracking(userId: user.uid) }
@@ -2636,6 +2647,8 @@ private extension RootView {
                                         local.workoutSupplements = newAccount.workoutSupplements
                                         local.nutritionSupplements = newAccount.nutritionSupplements
                                         local.sports = newAccount.sports
+                                        local.dailySummaryMetrics = newAccount.dailySummaryMetrics
+                                        local.dailyWellnessMetrics = newAccount.dailyWellnessMetrics
                                         local.soloMetrics = newAccount.soloMetrics
                                         local.teamMetrics = newAccount.teamMetrics
                                         local.trialPeriodEnd = newAccount.trialPeriodEnd

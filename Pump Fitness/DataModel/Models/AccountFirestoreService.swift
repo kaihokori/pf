@@ -97,6 +97,8 @@ class AccountFirestoreService {
                     mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) },
                     weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
                     workoutSupplements: resolvedWorkoutSupplements,
+                    dailySummaryMetrics: (data["dailySummaryMetrics"] as? [[String: Any]] ?? []).compactMap { TrackedActivityMetric(dictionary: $0) },
+                    dailyWellnessMetrics: (data["dailyWellnessMetrics"] as? [[String: Any]] ?? []).compactMap { TrackedWellnessMetric(dictionary: $0) },
                     nutritionSupplements: resolvedNutritionSupplements,
                     dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) },
                     itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) },
@@ -447,6 +449,8 @@ class AccountFirestoreService {
             data["weightGroups"] = weightGroups.map { $0.asDictionary }
             data["soloMetrics"] = soloMetrics.map { $0.asDictionary }
             data["teamMetrics"] = teamMetrics.map { $0.asDictionary }
+            data["dailySummaryMetrics"] = account.dailySummaryMetrics.map { $0.asDictionary }
+            data["dailyWellnessMetrics"] = account.dailyWellnessMetrics.map { $0.asDictionary }
             data["activityTimers"] = activityTimers.map { $0.asDictionary }
             data["injuries"] = injuries.map { $0.asDictionary }
             data["workoutSchedule"] = workoutSchedule.map { $0.asDictionary }

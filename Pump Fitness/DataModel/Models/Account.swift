@@ -1196,6 +1196,8 @@ class Account: ObservableObject {
     var mealSchedule: [MealScheduleItem] = MealScheduleItem.defaults
     var mealCatalog: [CatalogMeal] = []
     var trackedMacros: [TrackedMacro] = []
+    var dailySummaryMetrics: [TrackedActivityMetric] = []
+    var dailyWellnessMetrics: [TrackedWellnessMetric] = []
     var cravings: [CravingItem] = []
     var workoutSupplements: [Supplement] = []
     var nutritionSupplements: [Supplement] = []
@@ -1254,6 +1256,8 @@ class Account: ObservableObject {
         mealReminders: [MealReminder] = MealReminder.defaults,
         weeklyProgress: [WeeklyProgressRecord] = [],
         workoutSupplements: [Supplement] = [],
+        dailySummaryMetrics: [TrackedActivityMetric] = [],
+        dailyWellnessMetrics: [TrackedWellnessMetric] = [],
         nutritionSupplements: [Supplement] = [],
         dailyTasks: [DailyTaskDefinition] = [],
         itineraryEvents: [ItineraryEvent] = [],
@@ -1299,6 +1303,8 @@ class Account: ObservableObject {
         self.stepsGoal = stepsGoal
         self.distanceGoal = distanceGoal
         self.trackedMacros = trackedMacros
+        self.dailySummaryMetrics = dailySummaryMetrics
+        self.dailyWellnessMetrics = dailyWellnessMetrics
         self.cravings = cravings
         self.groceryItems = groceryItems
         self.expenseCategories = expenseCategories

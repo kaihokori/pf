@@ -447,6 +447,10 @@ class Day {
     var napSleepSeconds: Double = 0
     var weightEntries: [WeightExerciseValue] = []
     var expenses: [ExpenseEntry] = []
+    
+    // Generic manual adjustments for extended activity metrics
+    var activityMetricAdjustments: [SoloMetricValue] = []
+    var wellnessMetricAdjustments: [SoloMetricValue] = []
 
     var dayString: String {
         let fmt = DateFormatter()
@@ -490,7 +494,9 @@ class Day {
         nightSleepSeconds: Double = 0,
         napSleepSeconds: Double = 0,
         weightEntries: [WeightExerciseValue] = [],
-        expenses: [ExpenseEntry] = []
+        expenses: [ExpenseEntry] = [],
+        activityMetricAdjustments: [SoloMetricValue] = [],
+        wellnessMetricAdjustments: [SoloMetricValue] = []
     ) {
         self.id = id
         // Use local calendar to extract YMD, then construct UTC date.
@@ -526,6 +532,8 @@ class Day {
         self.napSleepSeconds = napSleepSeconds
         self.weightEntries = weightEntries
         self.expenses = expenses
+        self.activityMetricAdjustments = activityMetricAdjustments
+        self.wellnessMetricAdjustments = wellnessMetricAdjustments
     }
 
     static func fetchOrCreate(for date: Date, in context: ModelContext, trackedMacros: [TrackedMacro]? = nil, soloMetrics: [SoloMetric]? = nil, teamMetrics: [TeamMetric]? = nil) -> Day {

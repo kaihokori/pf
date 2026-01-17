@@ -13,8 +13,9 @@ struct InjuryTrackingSection: View {
             // Header
             HStack {
                 Text("Injury Tracking")
-                    .font(.headline)
+                    .font(.title3)
                     .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
                 Spacer()
                 Button(action: { showAddSheet = true }) {
                     Label("Add", systemImage: "plus")

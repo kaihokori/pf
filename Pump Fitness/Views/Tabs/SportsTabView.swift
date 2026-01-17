@@ -26,6 +26,13 @@ struct SportsTabView: View {
     var isPro: Bool
     @State private var showAccountsView = false
     @ObservedObject var weatherModel: WeatherViewModel
+    
+    // Wellness
+    @State private var showWellnessEditor = false
+    @State private var showWellnessEntry = false
+    @State private var wellnessHKValues: [WellnessMetricType: Double] = [:]
+    private let healthKitService = HealthKitService()
+    @State private var healthKitAuthorized = false
 
 
     // MARK: - Weather Section
@@ -438,10 +445,11 @@ struct SportsTabView: View {
                                 
                                 HStack {
                                     Text("Daily Wellness Summary")
-                                        .font(.headline)
+                                        .font(.title3)
                                         .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
                                     Spacer()
-                                    Button(action: {  }) {
+                                    Button(action: { showWellnessEditor = true }) {
                                         Label("Edit", systemImage: "pencil")
                                             .font(.callout)
                                             .fontWeight(.medium)
@@ -455,7 +463,50 @@ struct SportsTabView: View {
                                 .padding(.horizontal, 18)
                                 .padding(.top, 48)
 
-                                // Daily Wellness Summary Section
+                                if account.dailyWellnessMetrics.isEmpty {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Label("No wellness metrics", systemImage: "heart.text.square")
+                                            .font(.headline.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                        Text("Add metrics using the Edit button to start tracking your health and wellness.")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16)
+                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    .padding(.horizontal, 18)
+                                    .padding(.top, 18)
+                                } else {
+                                    WellnessMetricsGrid(
+                                        metrics: account.dailyWellnessMetrics,
+                                        hkValues: wellnessHKValues,
+                                        manualAdjustmentProvider: wellnessManualAdjustment
+                                    )
+                                    .padding(.horizontal, 18)
+                                    .padding(.top, 18)
+                                }
+                                
+                                if !account.dailyWellnessMetrics.isEmpty {
+                                    Button {
+                                        showWellnessEntry = true
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Spacer()
+                                            Label("Submit Data", systemImage: "paperplane.fill")
+                                                .font(.callout.weight(.semibold))
+                                                .foregroundStyle(.white)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 18)
+                                        .frame(maxWidth: .infinity, minHeight: 52)
+                                        .background(Color.blue, in: RoundedRectangle(cornerRadius: 18))
+                                    }
+                                    .padding(.horizontal, 18)
+                                    .buttonStyle(.plain)
+                                    .contentShape(RoundedRectangle(cornerRadius: 16.0))
+                                    .padding(.top, 16)
+                                }
                                 
                                 InjuryTrackingSection(injuries: $account.injuries, theme: account.theme, selectedDate: selectedDate)
                         }
@@ -475,10 +526,98 @@ struct SportsTabView: View {
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
             }
+            .sheet(isPresented: $showWellnessEditor) {
+                let metricsBinding = Binding<[TrackedWellnessMetric]>(
+                    get: { account.dailyWellnessMetrics },
+                    set: { newValue in
+                        account.dailyWellnessMetrics = newValue
+                        accountService.saveAccount(account) { _ in }
+                    }
+                )
+                
+                WellnessSummaryEditorSheet(
+                    metrics: metricsBinding,
+                    tint: .blue, // Wellness themed color
+                    onDone: {
+                        showWellnessEditor = false
+                        requestWellnessAuthorization()
+                    },
+                    onCancel: { showWellnessEditor = false }
+                )
+            }
+            .sheet(isPresented: $showWellnessEntry) {
+                WellnessEntrySheet(
+                    metrics: account.dailyWellnessMetrics,
+                    hkValues: wellnessHKValues,
+                    onSave: { type, isAddition, valueStr in
+                        guard let value = Double(valueStr) else { return }
+                        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                        
+                        // Find existing adjustment for this type
+                        var currentAdjustments = day.wellnessMetricAdjustments
+                        if let index = currentAdjustments.firstIndex(where: { $0.metricId == type.id }) {
+                            // Update existing
+                            let newAdjustment = currentAdjustments[index].value + (isAddition ? value : -value)
+                            currentAdjustments[index].value = newAdjustment
+                        } else {
+                            // Create new adjustment
+                            let val = isAddition ? value : -value
+                            let adj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: val)
+                            currentAdjustments.append(adj)
+                        }
+                        day.wellnessMetricAdjustments = currentAdjustments
+                        
+                        // Persist
+                        do {
+                            try modelContext.save()
+                        } catch {
+                            print("Failed to save wellness adjustment: \(error)")
+                        }
+                        dayService.updateDayFields(["wellnessMetricAdjustments": day.wellnessMetricAdjustments], for: day) { _ in }
+                    }
+                )
+            }
+        }
+        .onAppear {
+            refreshWellnessValues()
+        }
+        .onChange(of: selectedDate) { _, _ in
+            refreshWellnessValues()
         }
     }
 
-    
+    private func wellnessManualAdjustment(for type: WellnessMetricType) -> Double {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        return day.wellnessMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+    }
+
+    private func refreshWellnessValues() {
+        guard healthKitService.isAvailable else { return }
+        let metrics = account.dailyWellnessMetrics
+        for metric in metrics {
+            healthKitService.fetchWellnessMetric(type: metric.type, for: selectedDate) { val in
+                DispatchQueue.main.async {
+                    if let val = val {
+                        self.wellnessHKValues[metric.type] = val
+                    }
+                }
+            }
+        }
+    }
+
+    private func requestWellnessAuthorization() {
+        let wellnessTypes = account.dailyWellnessMetrics.map { $0.type }
+        if wellnessTypes.isEmpty { return }
+        
+        healthKitService.requestAuthorization(activityMetrics: [], wellnessMetrics: wellnessTypes) { ok in
+            DispatchQueue.main.async {
+                self.healthKitAuthorized = ok
+                if ok {
+                    refreshWellnessValues()
+                }
+            }
+        }
+    }
 }
 
 

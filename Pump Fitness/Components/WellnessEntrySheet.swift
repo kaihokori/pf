@@ -1,24 +1,27 @@
 import SwiftUI
 
-struct DailyActivityEntrySheet: View {
+struct WellnessEntrySheet: View {
     @Environment(\.dismiss) private var dismiss
     
-    var metrics: [TrackedActivityMetric]
-    var hkValues: [ActivityMetricType: Double]
+    var metrics: [TrackedWellnessMetric]
+    var hkValues: [WellnessMetricType: Double]
     
-    var onSave: (_ metricType: ActivityMetricType, _ isAddition: Bool, _ value: String) -> Void
+    var onSave: (_ metricType: WellnessMetricType, _ isAddition: Bool, _ value: String) -> Void
     
     @State private var selectedMetricID: UUID?
     @State private var selectedOperation: ActivityOperation = .add
     @State private var inputValue: String = ""
     
-    private var selectedMetric: TrackedActivityMetric? {
+    private var selectedMetric: TrackedWellnessMetric? {
         metrics.first { $0.id == selectedMetricID }
     }
     
-    private func formattedValue(_ val: Double, for type: ActivityMetricType) -> String {
+    private func formattedValue(_ val: Double, for type: WellnessMetricType) -> String {
         switch type {
-        case .steps, .flightsClimbed, .swimStroke:
+        case .oxygenSaturation, .bloodAlcohol:
+             // Assuming val is 0.0-1.0 from HK percent units, we show percent
+             return String(format: "%.1f", val * 100)
+        case .uvIndex, .heartRate, .sexualActivity:
             return "\(Int(val))"
         default:
             return String(format: "%.1f", val)
@@ -26,7 +29,7 @@ struct DailyActivityEntrySheet: View {
     }
     
     enum ActivityOperation: String, CaseIterable, Identifiable {
-        case add = "Add"
+        case add = "Add" // Or "Auto-Fill" / "Log"
         case remove = "Remove"
         
         var id: String { rawValue }
@@ -103,7 +106,7 @@ struct DailyActivityEntrySheet: View {
                                 }
                             }
                             Spacer()
-                            Image(systemName: "heart.text.square.fill")
+                            Image(systemName: "heart.fill")
                                 .font(.title)
                                 .foregroundStyle(.red.opacity(0.8))
                         }
@@ -162,7 +165,7 @@ struct DailyActivityEntrySheet: View {
                         .padding(.horizontal)
                         
                     } else {
-                        Text("No metrics available. Please add metrics in the Edit Daily Summary sheet.")
+                        Text("No metrics available. Please add metrics in the Edit Wellness sheet.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding()
@@ -172,7 +175,7 @@ struct DailyActivityEntrySheet: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("Submit Data")
+            .navigationTitle("Submit Wellness Data")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

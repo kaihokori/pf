@@ -383,6 +383,7 @@ struct WorkoutTabView: View {
     @State private var hkCaloriesValue: Double? = nil
     @State private var hkStepsValue: Double? = nil
     @State private var hkDistanceValue: Double? = nil
+    @State private var hkValues: [ActivityMetricType: Double] = [:]
 
     @State private var showDailySummaryEditor = false
 
@@ -682,7 +683,7 @@ struct WorkoutTabView: View {
                     })
                     
                     HStack {
-                        Text("Daily Summary")
+                        Text("Daily Activity Summary")
                             .font(.title3)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
@@ -705,80 +706,50 @@ struct WorkoutTabView: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 48)
 
-                    // Two rows of two cards each for summary
-                    VStack(spacing: 12) {
-                        // First row: Calories spans full width
-                        ActivityProgressCard(
-                            title: "Calories Burned",
-                            iconName: "flame.fill",
-                            tint: accentOverride ?? .orange,
-                            currentValueText: "\(Int(caloriesBurnedToday))",
-                            goalValueText: "Goal \(caloriesBurnGoal)",
-                            progress: min(Double(caloriesBurnedToday) / Double(caloriesBurnGoal), 1.0)
-                        )
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-
-                        // Second row: Steps and Distance
-                        HStack(alignment: .top, spacing: 12) {
-                            ActivityProgressCard(
-                                title: "Steps Taken",
-                                iconName: "figure.walk",
-                                tint: accentOverride ?? .green,
-                                currentValueText: "\(formattedStepsTaken)",
-                                goalValueText: "Goal \(formattedStepsGoal)",
-                                progress: stepsProgress
-                            )
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-
-                            ActivityProgressCard(
-                                title: "Distance Travelled",
-                                iconName: "point.bottomleft.forward.to.point.topright.filled.scurvepath",
-                                tint: accentOverride ?? .blue,
-                                currentValueText: formattedWalkingDistance,
-                                goalValueText: formattedWalkingGoal,
-                                progress: walkingProgress
-                            )
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                        }
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 18)
-
-                    if healthKitAuthorized, let hkStepsValue, hkStepsValue > 0 {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("Synced with Apple Health.")
-                                .font(.caption2)
+                    if account.dailySummaryMetrics.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("No daily summary metrics", systemImage: "checklist")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text("Add metrics using the Edit button to start tracking your daily activity.")
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
                         .padding(.horizontal, 18)
-                        .padding(.top, 8)
-                    }
+                        .padding(.top, 18)
+                    } else {
+                        // Dynamic Metrics Grid
+                        DailyMetricsGrid(
+                            metrics: account.dailySummaryMetrics,
+                            hkValues: hkValues,
+                            manualAdjustmentProvider: manualAdjustment
+                        )
+                        .padding(.horizontal, 18)
+                        .padding(.top, 18)
 
-                    Button {
-                        showSubmitDataSheet = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Spacer()
-                            Label("Submit Data", systemImage: "paperplane.fill")
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(.white)
-                            Spacer()
+
+                        Button {
+                            showSubmitDataSheet = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Spacer()
+                                Label("Submit Data", systemImage: "paperplane.fill")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                            }
+                            .padding(.vertical, 18)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(accentOverride ?? .orange, in: RoundedRectangle(cornerRadius: 18))
                         }
-                        .padding(.vertical, 18)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(accentOverride ?? .orange, in: RoundedRectangle(cornerRadius: 18))
+                        .padding(.horizontal, 18)
+                        .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 16.0))
+                        .padding(.top, 16)
                     }
-                    .padding(.horizontal, 18)
-                    .buttonStyle(.plain)
-                    .contentShape(RoundedRectangle(cornerRadius: 16.0))
-                    .padding(.top, 16)
                     
                     HStack {
                         Text("Workout Supplement Tracking")
@@ -1365,13 +1336,12 @@ struct WorkoutTabView: View {
         }
         .sheet(isPresented: $showSubmitDataSheet) {
             DailyActivityEntrySheet(
-                hkCalories: hkCaloriesValue,
-                hkSteps: hkStepsValue,
-                hkDistance: hkDistanceValue
-            ) { target, isAdd, valString in
-                handleAdjustAction(isAddition: isAdd, valueString: valString, target: target)
+                metrics: account.dailySummaryMetrics,
+                hkValues: hkValues
+            ) { type, isAdd, valString in
+                handleAdjustAction(isAddition: isAdd, valueString: valString, target: type.id)
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.large])
             .accentColor(accentOverride ?? .orange)
         }
         .sheet(isPresented: $showingAdjustSheet) {
@@ -1423,18 +1393,32 @@ struct WorkoutTabView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showDailySummaryEditor) {
-            DailySummaryGoalSheet(
-                calorieGoal: $caloriesBurnGoal,
-                stepsGoal: $stepsGoal,
-                distanceGoal: $distanceGoal,
+            DailySummaryEditorSheet(
+                metrics: $account.dailySummaryMetrics,
                 tint: accentOverride ?? .accentColor,
-                onCancel: { showDailySummaryEditor = false },
+                isPro: isPro,
                 onDone: {
-                    onUpdateDailyGoals(caloriesBurnGoal, stepsGoal, distanceGoal)
+                    do {
+                        try modelContext.save()
+                    } catch { print("Failed to save account changes: \(error)") }
+                    accountFirestoreService.saveAccount(account) { _ in }
+                    
+                    // Request auth for potentially new metrics, then refresh
+                    let types = account.dailySummaryMetrics.map { $0.type }
+                    healthKitService.requestAuthorization(for: types) { ok in
+                        DispatchQueue.main.async {
+                            // If user cancels or denies, ok might be true/false depending on implementation
+                            // but we treat valid auth object as success.
+                            // Even if false, we try to refresh what we can.
+                            refreshHealthKitValues()
+                        }
+                    }
+                    
                     showDailySummaryEditor = false
-                }
+                },
+                onCancel: { showDailySummaryEditor = false }
             )
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showWeightsEditor) {
             WeightsGroupEditorSheet(bodyParts: $bodyParts, isPro: isPro) { updated in
@@ -1548,6 +1532,7 @@ struct WorkoutTabView: View {
             currentDay = nil
             hasLoadedSoloDay = false
             loadDayForSelectedDate()
+            refreshHealthKitValues()
         }
         .onChange(of: weightGroups) { _, _ in rebuildBodyPartsFromModel() }
         .onChange(of: weightEntries) { _, _ in rebuildBodyPartsFromModel() }
@@ -1577,10 +1562,18 @@ struct WorkoutTabView: View {
             )
         }
         .onAppear {
+            if account.dailySummaryMetrics.isEmpty {
+                account.dailySummaryMetrics = [
+                    TrackedActivityMetric(type: .calories, goal: Double(caloriesBurnGoal), colorHex: "#FF9500"),
+                    TrackedActivityMetric(type: .steps, goal: Double(stepsGoal), colorHex: "#34C759"),
+                    TrackedActivityMetric(type: .distanceWalking, goal: distanceGoal, colorHex: "#007AFF")
+                ]
+            }
             rebuildBodyPartsFromModel()
             hydrateWorkoutScheduleFromAccount()
-            // request HealthKit authorization and load values
-            healthKitService.requestAuthorization { ok in
+            // request HealthKit authorization for CURRENTLY tracked metrics only
+            let currentTypes = account.dailySummaryMetrics.map { $0.type }
+            healthKitService.requestAuthorization(for: currentTypes) { ok in
                 DispatchQueue.main.async {
                     healthKitAuthorized = ok
                     if ok {
@@ -2132,30 +2125,47 @@ private extension WorkoutTabView {
 
     func handleAdjustAction(isAddition: Bool, valueString: String, target: String?) {
         guard let val = Double(valueString) else { return }
-
-        // Resolve target safely and perform state mutations on main thread.
         let resolved = target ?? ""
-
-        DispatchQueue.main.async {
-            switch resolved {
-            case "steps":
-                stepsTakenToday += (isAddition ? val : -val)
-                stepsTakenToday = max(0, stepsTakenToday)
-                persistActivityToDay(steps: stepsTakenToday)
-                saveManualOverride(key: "steps", value: stepsTakenToday)
-            case "walking":
-                distanceTravelledToday += (isAddition ? val : -val)
-                distanceTravelledToday = max(0, distanceTravelledToday)
-                persistActivityToDay(distance: distanceTravelledToday)
-                saveManualOverride(key: "walking", value: distanceTravelledToday)
-            case "calories":
-                caloriesBurnedToday += (isAddition ? val : -val)
-                caloriesBurnedToday = max(0, caloriesBurnedToday)
-                persistActivityToDay(calories: caloriesBurnedToday)
-                saveManualOverride(key: "calories", value: caloriesBurnedToday)
-            default:
-                // Unknown target — log for diagnostics and ignore.
-                print("WorkoutTabView: unknown adjust target '\(target ?? "nil")'")
+        
+        if let type = ActivityMetricType(rawValue: resolved) {
+            DispatchQueue.main.async {
+                switch type {
+                case .steps:
+                    stepsTakenToday += (isAddition ? val : -val)
+                    stepsTakenToday = max(0, stepsTakenToday)
+                    persistActivityToDay(steps: stepsTakenToday)
+                    saveManualOverride(key: "steps", value: stepsTakenToday)
+                case .distanceWalking:
+                    distanceTravelledToday += (isAddition ? val : -val)
+                    distanceTravelledToday = max(0, distanceTravelledToday)
+                    persistActivityToDay(distance: distanceTravelledToday)
+                    saveManualOverride(key: "walking", value: distanceTravelledToday)
+                case .calories:
+                    caloriesBurnedToday += (isAddition ? val : -val)
+                    caloriesBurnedToday = max(0, caloriesBurnedToday)
+                    persistActivityToDay(calories: caloriesBurnedToday)
+                    saveManualOverride(key: "calories", value: caloriesBurnedToday)
+                default:
+                    // Generic handling
+                    let day = currentDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext)
+                    var currentVal = day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+                    currentVal += (isAddition ? val : -val)
+                    
+                    if let idx = day.activityMetricAdjustments.firstIndex(where: { $0.metricId == type.id }) {
+                        day.activityMetricAdjustments[idx].value = currentVal
+                    } else {
+                        let newAdj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: currentVal)
+                        day.activityMetricAdjustments.append(newAdj)
+                    }
+                    
+                    do {
+                        try modelContext.save()
+                        // Ensure view updates
+                        self.currentDay = day
+                    } catch {
+                        print("Failed to save daily adjustments: \(error)")
+                    }
+                }
             }
         }
     }
@@ -2281,40 +2291,74 @@ private extension WorkoutTabView {
     }
 
     func refreshHealthKitValues(applyToState: Bool = true, persist: Bool = true) {
-        healthKitService.fetchTodaySteps { v in
-            DispatchQueue.main.async {
-                hkStepsValue = v
-                if applyToState, let v {
-                    stepsTakenToday = v
-                }
-            }
-        }
-        healthKitService.fetchTodayDistance { v in
-            DispatchQueue.main.async {
-                hkDistanceValue = v
-                if applyToState, let v {
-                    // treat fetched distance as walking distance for display simplicity
-                    distanceTravelledToday = v
-                }
-            }
-        }
-        healthKitService.fetchTodayActiveEnergy { v in
-            DispatchQueue.main.async {
-                hkCaloriesValue = v
-                if applyToState {
-                    if let v {
-                        caloriesBurnedToday = v
-                    } else if caloriesBurnedToday == 0 {
-                        // Preserve existing manual overrides; only estimate if we have no value yet.
-                        caloriesBurnedToday = estimateCaloriesFromAccount()
-                    }
-                }
+        let group = DispatchGroup()
+        var newValues: [ActivityMetricType: Double] = [:]
 
-                if applyToState && persist {
-                    onUpdateDailyActivity(caloriesBurnedToday, stepsTakenToday, distanceTravelledToday)
+        // Use selectedDate instead of hardcoded today
+        let queryDate = selectedDate
+
+        for type in ActivityMetricType.allCases {
+            group.enter()
+            healthKitService.fetchMetric(type: type, for: queryDate) { val in
+                if let v = val {
+                    newValues[type] = v
+                }
+                group.leave()
+            }
+        }
+        
+        group.notify(queue: .main) {
+            self.hkValues = newValues
+            
+            // Sync legacy vars
+            self.hkCaloriesValue = newValues[.calories]
+            self.hkStepsValue = newValues[.steps]
+            self.hkDistanceValue = newValues[.distanceWalking]
+            
+            if applyToState {
+                if let s = newValues[.steps] { self.stepsTakenToday = s + self.manualAdjustment(for: .steps) }
+                if let d = newValues[.distanceWalking] { self.distanceTravelledToday = d + self.manualAdjustment(for: .distanceWalking) }
+                if let c = newValues[.calories] { self.caloriesBurnedToday = c + self.manualAdjustment(for: .calories) }
+                else if self.caloriesBurnedToday == 0 {
+                    self.caloriesBurnedToday = self.estimateCaloriesFromAccount() + self.manualAdjustment(for: .calories)
+                }
+                
+                if persist {
+                    self.onUpdateDailyActivity(self.caloriesBurnedToday, self.stepsTakenToday, self.distanceTravelledToday)
                 }
             }
         }
+    }
+
+    func manualAdjustment(for type: ActivityMetricType) -> Double {
+        // If currentDay is loaded and matches selected date, use it.
+        // Otherwise do a quick fetch.
+        if let d = currentDay, Calendar.current.isDate(d.date, inSameDayAs: selectedDate) {
+            return d.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+        }
+        
+        // Fetch
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        return day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+    }
+    
+    func metricValueAndProgress(for metric: TrackedActivityMetric) -> (String, Double) {
+        let hkVal = hkValues[metric.type] ?? 0
+        let manualVal = manualAdjustment(for: metric.type)
+        let total = hkVal + manualVal
+        let goal = metric.goal > 0 ? metric.goal : 1
+        
+        // Formatting
+        let formattedValue: String
+        switch metric.type.aggregationStyle {
+        case .sum:
+            formattedValue = String(format: "%.0f", total)
+        case .average:
+            formattedValue = String(format: "%.1f", total)
+        }
+        
+        let progress = total / goal
+        return (formattedValue, min(progress, 1.0))
     }
 
     func persistActivityToDay(calories: Double? = nil, steps: Double? = nil, distance: Double? = nil) {

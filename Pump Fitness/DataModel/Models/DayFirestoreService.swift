@@ -120,6 +120,27 @@ class DayFirestoreService {
         entries.map { $0.asDictionary }
     }
 
+    private func encodeRecoverySessions(_ sessions: [RecoverySession]) -> [[String: Any]] {
+        sessions.map { session in
+            var dict: [String: Any] = [
+                "id": session.id.uuidString,
+                "date": Timestamp(date: session.date),
+                "category": session.category.rawValue,
+                "durationSeconds": session.durationSeconds
+            ]
+            if let v = session.saunaType { dict["saunaType"] = v.rawValue }
+            if let v = session.coldPlungeType { dict["coldPlungeType"] = v.rawValue }
+            if let v = session.spaType { dict["spaType"] = v.rawValue }
+            if let v = session.temperature { dict["temperature"] = v }
+            if let v = session.hydrationTimerSeconds { dict["hydrationTimerSeconds"] = v }
+            if let v = session.heartRateBefore { dict["heartRateBefore"] = v }
+            if let v = session.heartRateAfter { dict["heartRateAfter"] = v }
+            if let v = session.bodyPart { dict["bodyPart"] = v.rawValue }
+            if let v = session.customType { dict["customType"] = v }
+            return dict
+        }
+    }
+
     private func encodeExpenses(_ entries: [ExpenseEntry]) -> [[String: Any]] {
         entries.map { entry in
             [
@@ -165,6 +186,34 @@ class DayFirestoreService {
 
     private func decodeWeightEntry(_ raw: [String: Any]) -> WeightExerciseValue? {
         WeightExerciseValue(dictionary: raw)
+    }
+
+    private func decodeRecoverySession(_ raw: [String: Any]) -> RecoverySession? {
+        guard let catRaw = raw["category"] as? String,
+              let category = RecoveryCategory(rawValue: catRaw) else { return nil }
+        
+        let id = (raw["id"] as? String).flatMap(UUID.init) ?? UUID()
+        let date = (raw["date"] as? Timestamp)?.dateValue() ?? Date()
+        let duration = (raw["durationSeconds"] as? NSNumber)?.doubleValue ?? 0
+        
+        var session = RecoverySession(
+            date: date,
+            category: category,
+            durationSeconds: duration
+        )
+        session.id = id
+        
+        if let s = raw["saunaType"] as? String { session.saunaType = SaunaType(rawValue: s) }
+        if let s = raw["coldPlungeType"] as? String { session.coldPlungeType = ColdPlungeType(rawValue: s) }
+        if let s = raw["spaType"] as? String { session.spaType = SpaType(rawValue: s) }
+        if let v = raw["temperature"] as? NSNumber { session.temperature = v.doubleValue }
+        if let v = raw["hydrationTimerSeconds"] as? NSNumber { session.hydrationTimerSeconds = v.doubleValue }
+        if let v = raw["heartRateBefore"] as? NSNumber { session.heartRateBefore = v.intValue }
+        if let v = raw["heartRateAfter"] as? NSNumber { session.heartRateAfter = v.intValue }
+        if let s = raw["bodyPart"] as? String { session.bodyPart = SpaBodyPart(rawValue: s) }
+        session.customType = raw["customType"] as? String
+        
+        return session
     }
 
     private func decodeExpenseEntry(_ raw: [String: Any]) -> ExpenseEntry? {
@@ -221,6 +270,7 @@ class DayFirestoreService {
         if day.teamAwayScore != 0 { return true }
         if day.weightEntries.contains(where: { $0.hasContent }) { return true }
         if !day.expenses.isEmpty { return true }
+        if !day.recoverySessions.isEmpty { return true }
         if !day.activityMetricAdjustments.isEmpty { return true }
         if !day.wellnessMetricAdjustments.isEmpty { return true }
         if let raw = day.workoutCheckInStatusRaw,
@@ -296,6 +346,7 @@ class DayFirestoreService {
                 let wellnessAdjustmentsRemote = (data["wellnessMetricAdjustments"] as? [[String: Any]] ?? []).compactMap { self.decodeSoloMetricValue($0) }
                 let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
                 let expensesRemote = (data["expenses"] as? [[String: Any]] ?? []).compactMap { self.decodeExpenseEntry($0) }
+                let recoverySessionsRemote = (data["recoverySessions"] as? [[String: Any]] ?? []).compactMap { self.decodeRecoverySession($0) }
                 let nightSleepRemote = (data["nightSleepSeconds"] as? NSNumber)?.doubleValue ?? data["nightSleepSeconds"] as? Double
                 let napSleepRemote = (data["napSleepSeconds"] as? NSNumber)?.doubleValue ?? data["napSleepSeconds"] as? Double
                 let teamHomeScoreRemote = data["teamHomeScore"] as? Int ?? 0
@@ -357,6 +408,15 @@ class DayFirestoreService {
                     if !expensesRemote.isEmpty || !day.expenses.isEmpty {
                         let mergedExpenses = self.mergeExpenses(local: day.expenses, remote: expensesRemote)
                         day.expenses = mergedExpenses
+                    }
+                    
+                    if !recoverySessionsRemote.isEmpty || !day.recoverySessions.isEmpty {
+                        // Simple merge: remote wins for simplicity or union? 
+                        // Let's use union by ID
+                        let localDict = Dictionary(grouping: day.recoverySessions, by: { $0.id }).compactMapValues { $0.first }
+                        let remoteDict = Dictionary(grouping: recoverySessionsRemote, by: { $0.id }).compactMapValues { $0.first }
+                        let keys = Set(localDict.keys).union(remoteDict.keys)
+                        day.recoverySessions = keys.compactMap { remoteDict[$0] ?? localDict[$0] }
                     }
 
                     let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
@@ -473,6 +533,8 @@ class DayFirestoreService {
                         nightSleepSeconds: nightSleepRemote ?? 0,
                         napSleepSeconds: napSleepRemote ?? 0,
                         weightEntries: weightEntriesRemote,
+                        recoverySessions: recoverySessionsRemote,
+                        expenses: expensesRemote,
                         activityMetricAdjustments: activityAdjustmentsRemote,
                         wellnessMetricAdjustments: wellnessAdjustmentsRemote
                     )
@@ -631,6 +693,9 @@ class DayFirestoreService {
         }
         if forceWrite || !day.expenses.isEmpty {
             data["expenses"] = encodeExpenses(day.expenses)
+        }
+        if forceWrite || !day.recoverySessions.isEmpty {
+            data["recoverySessions"] = encodeRecoverySessions(day.recoverySessions)
         }
         if forceWrite || !day.activityMetricAdjustments.isEmpty {
             data["activityMetricAdjustments"] = encodeSoloMetricValues(day.activityMetricAdjustments)

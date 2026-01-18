@@ -8,6 +8,99 @@ enum WorkoutCheckInStatus: String, Codable, CaseIterable {
     case notLogged
 }
 
+enum RecoveryCategory: String, CaseIterable, Codable, Identifiable {
+    case sauna = "Sauna"
+    case coldPlunge = "Cold Plunge"
+    case spa = "Spa"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .sauna: return "flame.fill"
+        case .coldPlunge: return "snowflake"
+        case .spa: return "sparkles"
+        }
+    }
+}
+
+enum SaunaType: String, CaseIterable, Codable, Identifiable {
+    case infrared = "Infrared"
+    case steam = "Steam"
+    case dry = "Dry"
+    case custom = "Other"
+    var id: String { rawValue }
+}
+
+enum ColdPlungeType: String, CaseIterable, Codable, Identifiable {
+    case coldPlunge = "Cold Plunge"
+    case iceBath = "Ice Bath"
+    case cryotherapy = "Cryotherapy Chamber"
+    case hydrotherapy = "Hydrotherapy"
+    case custom = "Other"
+    var id: String { rawValue }
+}
+
+enum SpaType: String, CaseIterable, Codable, Identifiable {
+    case massage = "Massage"
+    case physiotherapy = "Physiotherapy"
+    case chiropractic = "Chiropractic"
+    case deepTissue = "Deep Tissue"
+    case compression = "Compression"
+    case redLight = "Red Light Therapy"
+    case jacuzzi = "Jacuzzi"
+    case cryotherapy = "Cryotherapy"
+    case floating = "Floating Chamber"
+    case cupping = "Cupping"
+    case dryNeedling = "Dry Needling"
+    case custom = "Other"
+    var id: String { rawValue }
+}
+
+enum SpaBodyPart: String, CaseIterable, Codable, Identifiable {
+    case back = "Back"
+    case shoulder = "Shoulder"
+    case legs = "Legs"
+    case feet = "Feet"
+    case head = "Head"
+    case fullBody = "Full Body"
+    var id: String { rawValue }
+}
+
+struct RecoverySession: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var date: Date
+    var category: RecoveryCategory
+    var durationSeconds: TimeInterval
+    
+    var saunaType: SaunaType?
+    var coldPlungeType: ColdPlungeType?
+    var spaType: SpaType?
+    
+    var temperature: Double?
+    var hydrationTimerSeconds: TimeInterval?
+    var heartRateBefore: Int?
+    var heartRateAfter: Int?
+    var bodyPart: SpaBodyPart?
+    
+    var customType: String?
+    
+    init(date: Date, category: RecoveryCategory, durationSeconds: TimeInterval, saunaType: SaunaType? = nil, coldPlungeType: ColdPlungeType? = nil, spaType: SpaType? = nil, temperature: Double? = nil, hydrationTimerSeconds: TimeInterval? = nil, heartRateBefore: Int? = nil, heartRateAfter: Int? = nil, bodyPart: SpaBodyPart? = nil, customType: String? = nil) {
+        self.date = date
+        self.category = category
+        self.durationSeconds = durationSeconds
+        self.saunaType = saunaType
+        self.coldPlungeType = coldPlungeType
+        self.spaType = spaType
+        self.temperature = temperature
+        self.hydrationTimerSeconds = hydrationTimerSeconds
+        self.heartRateBefore = heartRateBefore
+        self.heartRateAfter = heartRateAfter
+        self.bodyPart = bodyPart
+        self.customType = customType
+    }
+}
+
 struct MacroConsumption: Codable, Hashable, Identifiable {
     var id: String
     var trackedMacroId: String
@@ -447,6 +540,7 @@ class Day {
     var nightSleepSeconds: Double = 0
     var napSleepSeconds: Double = 0
     var weightEntries: [WeightExerciseValue] = []
+    var recoverySessions: [RecoverySession] = []
     var expenses: [ExpenseEntry] = []
     
     // Generic manual adjustments for extended activity metrics
@@ -495,6 +589,7 @@ class Day {
         nightSleepSeconds: Double = 0,
         napSleepSeconds: Double = 0,
         weightEntries: [WeightExerciseValue] = [],
+        recoverySessions: [RecoverySession] = [],
         expenses: [ExpenseEntry] = [],
         activityMetricAdjustments: [SoloMetricValue] = [],
         wellnessMetricAdjustments: [SoloMetricValue] = []
@@ -532,6 +627,7 @@ class Day {
         self.nightSleepSeconds = nightSleepSeconds
         self.napSleepSeconds = napSleepSeconds
         self.weightEntries = weightEntries
+        self.recoverySessions = recoverySessions
         self.expenses = expenses
         self.activityMetricAdjustments = activityMetricAdjustments
         self.wellnessMetricAdjustments = wellnessMetricAdjustments

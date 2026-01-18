@@ -2,99 +2,59 @@ import SwiftUI
 import Charts
 import Combine
 
-// MARK: - Models
-
-enum RecoveryCategory: String, CaseIterable, Codable, Identifiable {
-    case sauna = "Sauna"
-    case coldPlunge = "Cold Plunge"
-    case spa = "Spa"
-    
-    var id: String { rawValue }
-    
-    var icon: String {
-        switch self {
-        case .sauna: return "flame.fill"
-        case .coldPlunge: return "snowflake"
-        case .spa: return "sparkles"
-        }
-    }
-}
-
-enum SaunaType: String, CaseIterable, Codable, Identifiable {
-    case infrared = "Infrared"
-    case steam = "Steam"
-    case dry = "Dry"
-    case custom = "Other"
-    var id: String { rawValue }
-}
-
-enum ColdPlungeType: String, CaseIterable, Codable, Identifiable {
-    case coldPlunge = "Cold Plunge"
-    case iceBath = "Ice Bath"
-    case cryotherapy = "Cryotherapy Chamber"
-    case hydrotherapy = "Hydrotherapy"
-    case custom = "Other"
-    var id: String { rawValue }
-}
-
-enum SpaType: String, CaseIterable, Codable, Identifiable {
-    case massage = "Massage"
-    case physiotherapy = "Physiotherapy"
-    case chiropractic = "Chiropractic"
-    case deepTissue = "Deep Tissue"
-    case compression = "Compression"
-    case redLight = "Red Light Therapy"
-    case jacuzzi = "Jacuzzi"
-    case cryotherapy = "Cryotherapy"
-    case floating = "Floating Chamber"
-    case cupping = "Cupping"
-    case dryNeedling = "Dry Needling"
-    case custom = "Other"
-    var id: String { rawValue }
-}
-
-enum SpaBodyPart: String, CaseIterable, Codable, Identifiable {
-    case back = "Back"
-    case shoulder = "Shoulder"
-    case legs = "Legs"
-    case feet = "Feet"
-    case head = "Head"
-    case fullBody = "Full Body"
-    var id: String { rawValue }
-}
-
-struct RecoverySession: Identifiable, Codable {
-    var id = UUID()
-    var date: Date
-    var category: RecoveryCategory
-    var durationSeconds: TimeInterval
-    
-    var saunaType: SaunaType?
-    var coldPlungeType: ColdPlungeType?
-    var spaType: SpaType?
-    
-    var temperature: Double?
-    var hydrationTimerSeconds: TimeInterval?
-    var bodyPart: SpaBodyPart?
-    
-    var customType: String?
-}
+import SwiftData
 
 // MARK: - View
 
 struct RecoveryTrackingSection: View {
+    var date: Date
     var accentColorOverride: Color?
     private var tint: Color { accentColorOverride ?? .accentColor }
     
-    @AppStorage("recovery.visibleCategories.json") private var visibleCategoriesJSON: String = ""
-    @AppStorage("recovery.sessions.json") private var sessionsJSON: String = ""
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var account: Account
     
-    @State private var visibleCategories: Set<RecoveryCategory> = [.sauna, .coldPlunge, .spa]
-    @State private var sessions: [RecoverySession] = []
+    @Query private var days: [Day]
+    private var day: Day? { days.first }
+    
+    @State private var visibleCategories: Set<RecoveryCategory> = []
     @State private var showEditSheet = false
     
-    init(accentColorOverride: Color? = nil) {
+    // Keyboard / Overlay state passed from parent
+    @Binding var isKeyboardVisible: Bool
+    @Binding var keyboardUnit: String
+    @Binding var onUnitChange: ((String) -> Void)?
+    @Binding var onDismiss: (() -> Void)?
+    
+    @Binding var isSimpleKeyboardVisible: Bool
+    @Binding var onSimpleDismiss: (() -> Void)?
+    
+    init(
+        date: Date,
+        accentColorOverride: Color? = nil,
+        isKeyboardVisible: Binding<Bool> = .constant(false),
+        keyboardUnit: Binding<String> = .constant("°F"),
+        onUnitChange: Binding<((String) -> Void)?> = .constant(nil),
+        onDismiss: Binding<(() -> Void)?> = .constant(nil),
+        isSimpleKeyboardVisible: Binding<Bool> = .constant(false),
+        onSimpleDismiss: Binding<(() -> Void)?> = .constant(nil)
+    ) {
+        self.date = date
         self.accentColorOverride = accentColorOverride
+        _isKeyboardVisible = isKeyboardVisible
+        _keyboardUnit = keyboardUnit
+        _onUnitChange = onUnitChange
+        _onDismiss = onDismiss
+        _isSimpleKeyboardVisible = isSimpleKeyboardVisible
+        _onSimpleDismiss = onSimpleDismiss
+        
+        let localCal = Calendar.current
+        let components = localCal.dateComponents([.year, .month, .day], from: date)
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let dayStart = utcCal.date(from: components) ?? utcCal.startOfDay(for: date)
+        
+        _days = Query(filter: #Predicate<Day> { $0.date == dayStart })
     }
     
     var body: some View {
@@ -141,19 +101,29 @@ struct RecoveryTrackingSection: View {
                 .padding(.horizontal)
             } else {
                 ForEach(RecoveryCategory.allCases.filter { visibleCategories.contains($0) }) { category in
+                    let catSessions = (day?.recoverySessions ?? []).filter { $0.category == category }
+
                     VStack(spacing: 12) {
                         RecoveryCategoryCard(
                             category: category,
                             tint: tint,
+                            isKeyboardVisible: $isKeyboardVisible,
+                            keyboardUnit: $keyboardUnit,
+                            onUnitChange: $onUnitChange,
+                            onDismiss: $onDismiss,
+                            isSimpleKeyboardVisible: $isSimpleKeyboardVisible,
+                            onSimpleDismiss: $onSimpleDismiss,
                             onSave: saveSession
                         )
-                        
-                        RecoverySummarySection(
-                            category: category,
-                            sessions: sessions.filter { $0.category == category },
-                            tint: tint,
-                            onDelete: deleteSession
-                        )
+
+                        if !catSessions.isEmpty {
+                            RecoverySummarySection(
+                                category: category,
+                                sessions: catSessions,
+                                tint: tint,
+                                onDelete: deleteSession
+                            )
+                        }
                     }
                     .padding(.bottom, 8)
                 }
@@ -169,39 +139,41 @@ struct RecoveryTrackingSection: View {
     }
     
     private func loadData() {
-        if let data = visibleCategoriesJSON.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([RecoveryCategory].self, from: data) {
-            visibleCategories = Set(decoded)
-        }
-        
-        if let data = sessionsJSON.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([RecoverySession].self, from: data) {
-            sessions = decoded
+        let saved = account.recoveryCategories.compactMap { RecoveryCategory(rawValue: $0) }
+        if saved.isEmpty {
+            // Default only if list was never set (empty list might be intentional but let's assume default for now if none found)
+            if account.recoveryCategories.isEmpty {
+                 visibleCategories = [.sauna, .coldPlunge, .spa]
+            } else {
+                 visibleCategories = []
+            }
+        } else {
+            visibleCategories = Set(saved)
         }
     }
     
     private func saveSettings() {
-        if let data = try? JSONEncoder().encode(Array(visibleCategories)),
-           let str = String(data: data, encoding: .utf8) {
-            visibleCategoriesJSON = str
-        }
+        account.recoveryCategories = Array(visibleCategories).map { $0.rawValue }
+        AccountFirestoreService().saveAccount(account) { _ in }
     }
     
     private func saveSession(_ session: RecoverySession) {
-        sessions.append(session)
-        if let data = try? JSONEncoder().encode(sessions),
-           let str = String(data: data, encoding: .utf8) {
-            sessionsJSON = str
+        let targetDay: Day
+        if let d = day {
+            targetDay = d
+        } else {
+            targetDay = Day.fetchOrCreate(for: date, in: modelContext)
         }
+        
+        targetDay.recoverySessions.append(session)
+        DayFirestoreService().saveDay(targetDay) { _ in }
     }
     
     private func deleteSession(_ id: UUID) {
-        if let index = sessions.firstIndex(where: { $0.id == id }) {
-            sessions.remove(at: index)
-            if let data = try? JSONEncoder().encode(sessions),
-               let str = String(data: data, encoding: .utf8) {
-                sessionsJSON = str
-            }
+        guard let targetDay = day else { return }
+        if let index = targetDay.recoverySessions.firstIndex(where: { $0.id == id }) {
+            targetDay.recoverySessions.remove(at: index)
+            DayFirestoreService().saveDay(targetDay) { _ in }
         }
     }
 }
@@ -335,21 +307,37 @@ fileprivate struct RecoveryEditSectionHeader: View {
 fileprivate struct RecoveryCategoryCard: View {
     let category: RecoveryCategory
     let tint: Color
+    @Binding var isKeyboardVisible: Bool
+    @Binding var keyboardUnit: String
+    @Binding var onUnitChange: ((String) -> Void)?
+    @Binding var onDismiss: (() -> Void)?
+    @Binding var isSimpleKeyboardVisible: Bool
+    @Binding var onSimpleDismiss: (() -> Void)?
     let onSave: (RecoverySession) -> Void
     
     // Inputs (Defaults)
     @State private var tempString: String = "180" // Default F
+    @State private var tempUnit: String = "°F"
+    @FocusState private var isTempFocused: Bool
+    @FocusState private var isHrStartFocused: Bool
+    @FocusState private var isHrEndFocused: Bool
     @State private var durationMinutes: Double = 15
     @State private var hydrationMinutes: Double = 5
     
+    @State private var startHrString: String = ""
+    @State private var endHrString: String = ""
     @State private var selectedSaunaType: SaunaType = .dry
     @State private var selectedPlungeType: ColdPlungeType = .iceBath
     @State private var selectedSpaType: SpaType = .massage
     @State private var selectedBodyPart: SpaBodyPart = .fullBody
     @State private var customType: String = ""
+    @State private var showExplainer = false
+    
+    @AppStorage("alerts.recoveryTimersEnabled") private var recoveryTimersAlertsEnabled: Bool = true
     
     // Active State
     @State private var isRunning = false
+    @State private var activeSessionId = UUID()
     @State private var timeRemaining: TimeInterval = 0
     @State private var hydrationTimeRemaining: TimeInterval = 0
     @State private var startDate: Date?
@@ -382,16 +370,146 @@ fileprivate struct RecoveryCategoryCard: View {
             }
             .padding(16)
             
-            if isRunning && isTimerBased {
-                activeView
-                    .transition(.opacity)
+            configView
+            
+            if isTimerBased {
+                timerActionArea
             } else {
-                configView
-                    .transition(.opacity)
+                Button(action: startOrLog) {
+                    HStack {
+                        Text(category == .spa ? "Log Session" : "Start Timer")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(tint)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .padding(16)
+            }
+
+            if category != .spa {
+                Button(action: { showExplainer = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                        Text("Tap for Explanation and Source")
+                        Spacer()
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding([.leading, .bottom], 12)
             }
         }
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal)
+        .onChange(of: isTempFocused) { _, focused in
+            if focused {
+                keyboardUnit = tempUnit
+                onDismiss = { isTempFocused = false }
+                onUnitChange = { unit in
+                    if unit != tempUnit {
+                         if let val = Double(tempString) {
+                             let converted = unit == "°F" ? (val * 9/5 + 32) : ((val - 32) * 5/9)
+                             tempString = String(format: "%.0f", converted)
+                         }
+                        tempUnit = unit
+                        keyboardUnit = unit
+                    }
+                }
+                isKeyboardVisible = true
+            } else {
+                // When focus is lost, we delay briefly to allow focus to transfer
+                // to another field if applicable, or for the parent to handle dismissal logic.
+                // However, simplistic "turn off" works if no other field grabbed it.
+                // But we don't want to turn it off if we just swapped units.
+                // The parent manages visibility via bindings.
+                // We'll trust the parent or just let it stay until dismissed by "Done" or scroll?
+                // Actually, standard keyboard behavior is it stays until dismissed.
+                // But here we might want to hide it if we tapped outside.
+                // We can set isKeyboardVisible = false here immediately.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                     if !isTempFocused && isKeyboardVisible {
+                         // Check if another field took over?
+                         // We can't easily check global focus.
+                         // But if we just became unfocused, we can signal visibility off.
+                         // The issue is if we tap from one field to another in a different card.
+                         // We shouldn't hide it.
+                         // For now, let's behave reactively.
+                         isKeyboardVisible = false
+                     }
+                }
+            }
+        }
+        .onChange(of: isHrStartFocused) { _, focused in
+            if focused {
+                onSimpleDismiss = { isHrStartFocused = false }
+                isSimpleKeyboardVisible = true
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if !isHrStartFocused && !isHrEndFocused && isSimpleKeyboardVisible {
+                        isSimpleKeyboardVisible = false
+                    }
+                }
+            }
+        }
+        .onChange(of: isHrEndFocused) { _, focused in
+            if focused {
+                onSimpleDismiss = { isHrEndFocused = false }
+                isSimpleKeyboardVisible = true
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    if !isHrStartFocused && !isHrEndFocused && isSimpleKeyboardVisible {
+                        isSimpleKeyboardVisible = false
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showExplainer) {
+            NavigationStack {
+                if category == .sauna {
+                    RecoveryCardioExplainer()
+                        .navigationTitle("Recovery Cardio Benefits")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showExplainer = false
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
+                } else {
+                    RecoveryMetabolicExplainer()
+                        .navigationTitle("Recovery Metabolic Benefits")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Done") {
+                                    showExplainer = false
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                        }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .onChange(of: recoveryTimersAlertsEnabled) { _, enabled in
+            if isRunning, let start = startDate {
+                if enabled {
+                    let endDate = start.addingTimeInterval(TimeInterval(durationMinutes * 60))
+                    if endDate > Date() {
+                        NotificationsHelper.scheduleRecoveryTimerNotification(id: activeSessionId.uuidString, category: category.rawValue, endDate: endDate)
+                    }
+                } else {
+                    NotificationsHelper.removeRecoveryTimerNotification(id: activeSessionId.uuidString)
+                }
+            }
+        }
         .onReceive(timer) { _ in
             guard isRunning else { return }
             if timeRemaining > 0 {
@@ -423,51 +541,95 @@ fileprivate struct RecoveryCategoryCard: View {
             .padding(.top, 16)
             
             // Input Fields
-            HStack(alignment: .top, spacing: 16) {
-                // Temp Input
+            VStack(spacing: 16) {
                 if category == .sauna || category == .coldPlunge {
+                    HStack(spacing: 16) {
+                        // Temp Input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("TEMP (\(tempUnit))")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                            
+                            TextField("0", text: $tempString)
+                                .focused($isTempFocused)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 20, weight: .semibold))
+                                .multilineTextAlignment(.center)
+                                .frame(height: 44)
+                                .background(Color.secondary.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        
+                        // HR Start Input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("HR (START)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.secondary)
+                            
+                            TextField("--", text: $startHrString)
+                                .focused($isHrStartFocused)
+                                .keyboardType(.numberPad)
+                                .font(.system(size: 20, weight: .semibold))
+                                .multilineTextAlignment(.center)
+                                .frame(height: 44)
+                                .background(Color.secondary.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    
+                    // Duration Input for Sauna/Cold Plunge
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("TEMP (°F)")
+                        Text("TIMER")
                             .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
                         
-                        TextField("0", text: $tempString)
-                            .keyboardType(.decimalPad)
-                            .font(.system(size: 24, weight: .semibold))
-                            .multilineTextAlignment(.center)
-                            .frame(height: 50)
-                            .background(Color.secondary.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        HStack {
+                            Text("\(Int(durationMinutes))")
+                                .font(.system(size: 20, weight: .semibold))
+                            Text("min")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            
+                            Spacer()
+                            
+                            Stepper("", value: $durationMinutes, in: 1...20, step: 1)
+                                .labelsHidden()
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 44)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .frame(width: 100)
-                }
-                
-                // Duration Input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(category == .spa ? "DURATION" : "TIMER")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                    
-                    HStack {
-                        Text("\(Int(durationMinutes))")
-                            .font(.system(size: 24, weight: .semibold))
-                        Text("min")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                } else {
+                    // Duration Input for Spa
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("DURATION")
+                            .font(.caption)
+                            .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
-                            .padding(.bottom, 4)
                         
-                        Spacer()
-                        
-                        Stepper("", value: $durationMinutes, in: 1...180, step: 5)
-                            .labelsHidden()
+                        HStack {
+                            Text("\(Int(durationMinutes))")
+                                .font(.system(size: 20, weight: .semibold))
+                            Text("min")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            
+                            Spacer()
+                            
+                            Stepper("", value: $durationMinutes, in: 1...360, step: 5)
+                                .labelsHidden()
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 44)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .padding(.horizontal, 12)
-                    .frame(height: 50)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             .padding(.horizontal, 16)
@@ -527,23 +689,9 @@ fileprivate struct RecoveryCategoryCard: View {
                 .padding(.horizontal, 16)
             }
             
-            // Action Button
-            Button(action: startOrLog) {
-                HStack {
-                    if category != .spa {
-                        Image(systemName: "play.fill")
-                            .font(.subheadline)
-                    }
-                    Text(category == .spa ? "Log Session" : "Start Timer")
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(tint)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .padding(16)
+            
+            // Action Button Removed (Moved to body)
+
         }
     }
     
@@ -581,60 +729,140 @@ fileprivate struct RecoveryCategoryCard: View {
         }
     }
     
-    // MARK: - Active View (Timer)
-    private var activeView: some View {
-        VStack(spacing: 32) {
-            HStack(spacing: 30) {
-                VStack(spacing: 8) {
-                    Text("REMAINING")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.secondary)
-                    Text(timeString(from: timeRemaining))
-                        .font(.system(size: 44, weight: .light, design: .monospaced))
-                        .foregroundStyle(timeRemaining < 60 ? .red : .primary)
-                }
-                
-                if category == .sauna {
-                    VStack(spacing: 8) {
-                        Text("HYDRATE IN")
-                            .font(.caption2)
-                            .fontWeight(.bold)
+    private var totalDuration: TimeInterval {
+        max(1, durationMinutes * 60)
+    }
+
+    private var progress: Double {
+        guard totalDuration > 0 else { return 0 }
+        let current = isRunning ? timeRemaining : totalDuration
+        return 1.0 - (current / totalDuration)
+    }
+
+    private var timerActionArea: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 24) {
+                // Circle Timer
+                ZStack {
+                    Circle()
+                        .stroke(tint.opacity(0.15), lineWidth: 8)
+                    
+                    Circle()
+                        .trim(from: 0, to: isRunning ? (1.0 - (timeRemaining / totalDuration)) : 0)
+                        .stroke(tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.linear(duration: 1), value: timeRemaining)
+                    
+                    VStack(spacing: 2) {
+                        Text(isRunning ? "Remaining" : "Duration")
+                            .font(.system(size: 10, weight: .bold))
+                            .textCase(.uppercase)
                             .foregroundStyle(.secondary)
-                        Text(timeString(from: hydrationTimeRemaining))
-                            .font(.system(size: 44, weight: .light, design: .monospaced))
-                            .foregroundStyle(.blue)
+                        
+                        Text(timeString(from: isRunning ? timeRemaining : totalDuration))
+                            .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                            .contentTransition(.numericText())
                     }
                 }
+                .frame(width: 84, height: 84)
+                
+                // Controls
+                VStack(spacing: 0) {
+                    if isRunning {
+                        runningControls
+                    } else {
+                        idleControls
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 84) 
             }
-            .padding(.top, 10)
-            
-            HStack(spacing: 16) {
-                Button(action: stopSession) {
-                    Text("Cancel")
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color.red.opacity(0.1))
-                        .foregroundStyle(.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(20)
+        }
+    }
+    
+    private var runningControls: some View {
+        VStack(spacing: 12) {
+            // Metrics Row
+            HStack {
+                if category == .sauna {
+                     HStack(spacing: 4) {
+                        Image(systemName: "drop.fill")
+                        Text(timeString(from: hydrationTimeRemaining))
+                            .monospacedDigit()
+                     }
+                     .font(.caption.weight(.medium))
+                     .foregroundStyle(.blue)
+                     .padding(.horizontal, 8)
+                     .padding(.vertical, 4)
+                     .background(Color.blue.opacity(0.1))
+                     .clipShape(Capsule())
+                } else {
+                    Spacer()
                 }
                 
-                Button(action: {
-                    finishSession()
-                }) {
-                    Text("Finish")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(tint)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                if category == .sauna { Spacer() }
+                
+                HStack(spacing: 6) {
+                    Text("HR (END)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    TextField("--", text: $endHrString)
+                        .focused($isHrEndFocused)
+                        .keyboardType(.numberPad)
+                        .font(.callout.weight(.bold))
+                        .multilineTextAlignment(.center)
+                        .frame(width: 40)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
+            .frame(height: 24)
+            
+            // Buttons Row
+            HStack(spacing: 10) {
+                Button(action: stopSession) {
+                    Text("Cancel")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                
+                Button(action: finishSession) {
+                    Text("Finish")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(tint)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            .frame(height: 38)
         }
+    }
+    
+    private var idleControls: some View {
+        Button(action: startOrLog) {
+            HStack {
+                Image(systemName: "play.fill")
+                    .font(.subheadline)
+                Text("Start Timer")
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(tint)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .padding(.vertical, 14) // Center vertically in the 84 height
     }
     
     // MARK: - Logic
@@ -645,24 +873,39 @@ fileprivate struct RecoveryCategoryCard: View {
                 date: Date(),
                 category: .spa,
                 durationSeconds: durationMinutes * 60,
+                saunaType: nil,
+                coldPlungeType: nil,
                 spaType: selectedSpaType,
-                startBodyPart: selectedBodyPart,
+                temperature: nil,
+                hydrationTimerSeconds: nil,
+                heartRateBefore: nil,
+                heartRateAfter: nil,
+                bodyPart: selectedBodyPart,
                 customType: customType.isEmpty ? nil : customType
             )
             onSave(session)
         } else {
-            timeRemaining = durationMinutes * 60
+            let duration = durationMinutes * 60
+            timeRemaining = duration
             hydrationTimeRemaining = hydrationMinutes * 60
             isRunning = true
             startDate = Date()
+            activeSessionId = UUID()
+            
+            if recoveryTimersAlertsEnabled {
+                let endDate = Date().addingTimeInterval(duration)
+                NotificationsHelper.scheduleRecoveryTimerNotification(id: activeSessionId.uuidString, category: category.rawValue, endDate: endDate)
+            }
         }
     }
     
     private func stopSession() {
+        NotificationsHelper.removeRecoveryTimerNotification(id: activeSessionId.uuidString)
         isRunning = false
     }
     
     private func finishSession() {
+        NotificationsHelper.removeRecoveryTimerNotification(id: activeSessionId.uuidString)
         isRunning = false
         // Calculate based on configured, since we don't track elapsed if cancelled/early finish simply
         let duration = durationMinutes * 60 
@@ -670,17 +913,29 @@ fileprivate struct RecoveryCategoryCard: View {
         var temp: Double?
         if let t = Double(tempString) { temp = t }
         
+        let hrBefore = Int(startHrString)
+        let hrAfter = Int(endHrString)
+        
         let session = RecoverySession(
             date: Date(),
             category: category,
             durationSeconds: duration,
             saunaType: category == .sauna ? selectedSaunaType : nil,
             coldPlungeType: category == .coldPlunge ? selectedPlungeType : nil,
+            spaType: nil,
             temperature: temp,
             hydrationTimerSeconds: category == .sauna ? hydrationMinutes * 60 : nil,
+            heartRateBefore: hrBefore,
+            heartRateAfter: hrAfter,
+            bodyPart: nil,
             customType: customType.isEmpty ? nil : customType
         )
         onSave(session)
+        
+        // Reset Inputs
+        endHrString = ""
+        startHrString = ""
+        // Keep temp and other settings as they likely don't change often
     }
     
     private func timeString(from seconds: TimeInterval) -> String {
@@ -690,22 +945,7 @@ fileprivate struct RecoveryCategoryCard: View {
     }
 }
 
-extension RecoverySession {
-    init(date: Date, category: RecoveryCategory, durationSeconds: TimeInterval, spaType: SpaType, startBodyPart: SpaBodyPart, customType: String?) {
-        self.date = date
-        self.category = category
-        self.durationSeconds = durationSeconds
-        self.spaType = spaType
-        self.bodyPart = startBodyPart
-        self.customType = customType
-        
-        // Initialize other properties to nil
-        self.saunaType = nil
-        self.coldPlungeType = nil
-        self.temperature = nil
-        self.hydrationTimerSeconds = nil
-    }
-}
+
 
 
 
@@ -774,92 +1014,102 @@ fileprivate struct RecoverySummarySection: View {
                     .chartYAxis {
                         AxisMarks(position: .leading)
                     }
-                    .frame(height: 200)
+                    .frame(height: 150)
                     
                     // Detail List
                     VStack(spacing: 0) {
-                        ForEach(last7Days.reversed(), id: \.self) { day in
+                        let daysWithSessions = last7Days.reversed().filter { day in
+                            sessions.contains { Calendar.current.isDate($0.date, inSameDayAs: day) }
+                        }
+
+                        ForEach(daysWithSessions, id: \.self) { day in
                             let daySessions = sessions
                                 .filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
                                 .sorted { $0.date > $1.date }
-                            
-                            if !daySessions.isEmpty {
-                                Section(header:
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(DateFormatter.weekdayFull.string(from: day))
-                                                .font(.subheadline.weight(.semibold))
-                                            Text(DateFormatter.longDate.string(from: day))
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Text("\(Int(daySessions.reduce(0) { $0 + $1.durationSeconds } / 60)) min")
+
+                            Section(header:
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(DateFormatter.weekdayFull.string(from: day))
                                             .font(.subheadline.weight(.semibold))
+                                        Text(DateFormatter.longDate.string(from: day))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text("\(Int(daySessions.reduce(0) { $0 + $1.durationSeconds } / 60)) min")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .padding(.vertical, 8)
+                            ) {
+                                ForEach(daySessions) { session in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            // Primary Type Label
+                                            if let type = session.saunaType?.rawValue ?? session.coldPlungeType?.rawValue ?? session.spaType?.rawValue {
+                                                Text(type)
+                                                    .font(.subheadline)
+                                            } else if let custom = session.customType {
+                                                Text(custom)
+                                                    .font(.subheadline)
+                                            } else {
+                                                Text(session.category.rawValue)
+                                                    .font(.subheadline)
+                                            }
+
+                                            // Detail metrics
+                                            HStack(spacing: 4) {
+                                                Text("\(Int(session.durationSeconds / 60)) min")
+                                                if let temp = session.temperature {
+                                                    Text("• \(Int(temp))°")
+                                                }
+                                                if let part = session.bodyPart?.rawValue {
+                                                    Text("• \(part)")
+                                                }
+                                                // Heart Rate display
+                                                if let start = session.heartRateBefore, let end = session.heartRateAfter {
+                                                     Text("• HR: \(start)→\(end)")
+                                                } else if let start = session.heartRateBefore {
+                                                     Text("• HR: \(start)")
+                                                } else if let end = session.heartRateAfter {
+                                                     Text("• HR End: \(end)")
+                                                }
+                                            }
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Text(DateFormatter.time.string(from: session.date))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+
+                                        Menu {
+                                            Button("Delete", role: .destructive) {
+                                                onDelete(session.id)
+                                            }
+                                        } label: {
+                                            Image(systemName: "ellipsis.circle")
+                                                .font(.callout)
+                                                .foregroundStyle(.primary)
+                                        }
+                                        .menuStyle(.borderlessButton)
+                                        .padding(.leading, 8)
                                     }
                                     .padding(.vertical, 8)
-                                ) {
-                                    ForEach(daySessions) { session in
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                // Primary Type Label
-                                                if let type = session.saunaType?.rawValue ?? session.coldPlungeType?.rawValue ?? session.spaType?.rawValue {
-                                                    Text(type)
-                                                        .font(.subheadline)
-                                                } else if let custom = session.customType {
-                                                    Text(custom)
-                                                        .font(.subheadline)
-                                                } else {
-                                                    Text(session.category.rawValue)
-                                                        .font(.subheadline)
-                                                }
-                                                
-                                                // Detail metrics
-                                                HStack(spacing: 4) {
-                                                    Text("\(Int(session.durationSeconds / 60)) min")
-                                                    if let temp = session.temperature {
-                                                        Text("• \(Int(temp))°")
-                                                    }
-                                                    if let part = session.bodyPart?.rawValue {
-                                                        Text("• \(part)")
-                                                    }
-                                                }
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                            }
-                                            
-                                            Spacer()
-                                            
-                                            Text(DateFormatter.time.string(from: session.date))
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                            
-                                            Menu {
-                                                Button("Delete", role: .destructive) {
-                                                    onDelete(session.id)
-                                                }
-                                            } label: {
-                                                Image(systemName: "ellipsis.circle")
-                                                    .font(.callout)
-                                                    .foregroundStyle(.primary)
-                                            }
-                                            .menuStyle(.borderlessButton)
-                                            .padding(.leading, 8)
-                                        }
-                                        .padding(.vertical, 8)
-                                        
-                                        if session.id != daySessions.last?.id {
-                                            Divider()
-                                        }
+
+                                    if session.id != daySessions.last?.id {
+                                        Divider()
                                     }
                                 }
-                                
-                                if day != last7Days.first {
-                                    Divider().padding(.vertical, 12)
-                                }
+                            }
+
+                            if day != daysWithSessions.last {
+                                Divider().padding(.vertical, 12)
                             }
                         }
-                        
+
                         if sessions.isEmpty {
                             Text("No recorded sessions this week.")
                                 .font(.caption)

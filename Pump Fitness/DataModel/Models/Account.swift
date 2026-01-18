@@ -1216,6 +1216,7 @@ class Account: ObservableObject {
     var teamMetrics: [TeamMetric] = TeamMetric.defaultMetrics
     var weightGroups: [WeightGroupDefinition] = []
     var activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers
+    var recoveryCategories: [String] = []
     var injuries: [Injury] = []
     var trialPeriodEnd: Date? = nil
     var manualPro: Date? = nil
@@ -1272,6 +1273,7 @@ class Account: ObservableObject {
         distanceGoal: Double = 3_000,
         weightGroups: [WeightGroupDefinition] = [],
         activityTimers: [ActivityTimerItem] = ActivityTimerItem.defaultTimers,
+        recoveryCategories: [String] = [],
         injuries: [Injury] = [],
         trialPeriodEnd: Date? = nil,
         proPeriodEnd: Date? = nil,
@@ -1327,6 +1329,7 @@ class Account: ObservableObject {
         self.teamMetrics = teamMetrics
         self.weightGroups = weightGroups
         self.activityTimers = activityTimers
+        self.recoveryCategories = recoveryCategories
         self.injuries = injuries
         self.manualPro = manualPro
         self.overridePro = overridePro

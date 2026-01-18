@@ -228,6 +228,32 @@ struct NotificationsHelper {
         center.removePendingNotificationRequests(withIdentifiers: ["activityTimer.\(id)"])
     }
 
+    static func scheduleRecoveryTimerNotification(id: String, category: String, endDate: Date) {
+        let center = UNUserNotificationCenter.current()
+        
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            guard granted else { return }
+            
+            let content = UNMutableNotificationContent()
+            content.title = "Recovery Tracking"
+            content.body = "Your \(category) session is complete!"
+            content.sound = .default
+            
+            let interval = endDate.timeIntervalSinceNow
+            guard interval > 0 else { return }
+            
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+            let request = UNNotificationRequest(identifier: "recoveryTimer.\(id)", content: content, trigger: trigger)
+            
+            center.add(request)
+        }
+    }
+
+    static func removeRecoveryTimerNotification(id: String) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["recoveryTimer.\(id)"])
+    }
+
     static func scheduleHabitNotifications(_ habits: [HabitDefinition], completedHabitIds: Set<UUID> = []) {
         let center = UNUserNotificationCenter.current()
         

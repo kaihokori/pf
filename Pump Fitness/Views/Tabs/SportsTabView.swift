@@ -35,6 +35,15 @@ struct SportsTabView: View {
     private let healthKitService = HealthKitService()
     @State private var healthKitAuthorized = false
 
+    // Keyboard Toolbar State
+    @State private var isKeyboardBarVisible = false
+    @State private var keyboardBarUnit = "°F"
+    @State private var onKeyboardUnitChange: ((String) -> Void)? = nil
+    @State private var onKeyboardDismiss: (() -> Void)? = nil
+
+    @State private var isSimpleKeyboardBarVisible = false
+    @State private var onSimpleKeyboardDismiss: (() -> Void)? = nil
+
     var accentOverride: Color? {
         guard themeManager.selectedTheme != .multiColour else { return nil }
         return themeManager.selectedTheme.accent(for: colorScheme)
@@ -378,67 +387,66 @@ struct SportsTabView: View {
 
                             VStack(spacing: 0) {
                                 if Calendar.current.isDateInToday(selectedDate) {
-                                HStack {
-                                    Text("Weather")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
+                                    let _isNight = !(weatherModel.currentSnapshot?.isDaylight ?? true)
+                                    let adjustedGroup: WeatherGroup = {
+                                        guard let snapshot = weatherModel.currentSnapshot else { return .other }
+                                        let base = WeatherGroup(symbolName: snapshot.symbol)
+                                        if _isNight { return base }
+                                        if case .night = base {
+                                            let desc = snapshot.description.lowercased()
+                                            if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") { return .rainy }
+                                            if desc.contains("cloud") || desc.contains("fog") || desc.contains("overcast") { return .cloudy }
+                                            if desc.contains("snow") || desc.contains("sleet") || desc.contains("hail") { return .snowy }
+                                            if desc.contains("clear") || desc.contains("sun") { return .clear }
+                                            return .clear
+                                        }
+                                        return base
+                                    }()
+                                    let _overlayOpacity = (_isNight ? 0.45 : 0.28)
+                                    let _imageName: String = {
+                                        switch adjustedGroup {
+                                        case .clear: return _isNight ? "weather_clear_night" : "weather_clear_day"
+                                        case .rainy: return _isNight ? "weather_rainy_night" : "weather_rainy_day"
+                                        case .cloudy: return _isNight ? "weather_cloudy_night" : "weather_cloudy_day"
+                                        case .snowy: fallthrough
+                                        case .other: fallthrough
+                                        case .night: return _isNight ? "weather_clear_night" : "weather_clear_day"
+                                        }
+                                    }()
 
-                                    Spacer()
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 18)
-                                .padding(.top, 38)
-                                .padding(.bottom, 8)
+                                    HStack {
+                                        Text("Weather")
+                                            .font(.title3)
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.primary)
 
-                                let _isNight = !(weatherModel.currentSnapshot?.isDaylight ?? true)
-                                let adjustedGroup: WeatherGroup = {
-                                    guard let snapshot = weatherModel.currentSnapshot else { return .other }
-                                    let base = WeatherGroup(symbolName: snapshot.symbol)
-                                    if _isNight { return base }
-                                    if case .night = base {
-                                        let desc = snapshot.description.lowercased()
-                                        if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") { return .rainy }
-                                        if desc.contains("cloud") || desc.contains("fog") || desc.contains("overcast") { return .cloudy }
-                                        if desc.contains("snow") || desc.contains("sleet") || desc.contains("hail") { return .snowy }
-                                        if desc.contains("clear") || desc.contains("sun") { return .clear }
-                                        return .clear
+                                        Spacer()
                                     }
-                                    return base
-                                }()
-                                let _overlayOpacity = (_isNight ? 0.45 : 0.28)
-                                let _imageName: String = {
-                                    switch adjustedGroup {
-                                    case .clear: return _isNight ? "weather_clear_night" : "weather_clear_day"
-                                    case .rainy: return _isNight ? "weather_rainy_night" : "weather_rainy_day"
-                                    case .cloudy: return _isNight ? "weather_cloudy_night" : "weather_cloudy_day"
-                                    case .snowy: fallthrough
-                                    case .other: fallthrough
-                                    case .night: return _isNight ? "weather_clear_night" : "weather_clear_day"
-                                    }
-                                }()
-
-                                WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 18)
-                                    .padding(.vertical, 18)
-                                    .background {
-                                        if weatherModel.state == .loaded {
-                                            ZStack {
-                                                Image(_imageName)
-                                                    .resizable()
-                                                    .scaledToFill()
-                                                    .clipped()
-                                                    .blur(radius: 5)
-                                                // stronger dark scrim for better contrast
-                                                LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
+                                    .padding(.top, 38)
+
+                                    WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 18)
+                                        .background {
+                                            if weatherModel.state == .loaded {
+                                                ZStack {
+                                                    Image(_imageName)
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                        .clipped()
+                                                        .blur(radius: 5)
+                                                    // stronger dark scrim for better contrast
+                                                    LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
+                                                }
                                             }
                                         }
-                                    }
-                                    .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
-                                    .padding(.horizontal, 18)
-                                    .frame(height: 500)
-                                    .padding(.top, 10)
-                                    .sportsTip(.weather, isEnabled: isPro, onStepChange: { step in
+                                        .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
+                                        .padding(.horizontal, 18)
+                                        .frame(height: 500)
+                                        .padding(.top, 18)
+                                        .sportsTip(.weather, isEnabled: isPro, onStepChange: { step in
                                         if step == 1 {
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                                 withAnimation {
@@ -620,7 +628,16 @@ struct SportsTabView: View {
                                     }
                                 }
 
-                                RecoveryTrackingSection(accentColorOverride: accentOverride)
+                                RecoveryTrackingSection(
+                                    date: selectedDate,
+                                    accentColorOverride: accentOverride,
+                                    isKeyboardVisible: $isKeyboardBarVisible,
+                                    keyboardUnit: $keyboardBarUnit,
+                                    onUnitChange: $onKeyboardUnitChange,
+                                    onDismiss: $onKeyboardDismiss,
+                                    isSimpleKeyboardVisible: $isSimpleKeyboardBarVisible,
+                                    onSimpleDismiss: $onSimpleKeyboardDismiss
+                                )
                                 
                         }
                       }
@@ -635,6 +652,30 @@ struct SportsTabView: View {
                         .onTapGesture { showCalendar = false }
                     CalendarComponent(selectedDate: $selectedDate, showCalendar: $showCalendar)
                 }
+            }
+            .overlay(alignment: .bottom) {
+                KeyboardDismissBar(
+                    isVisible: isKeyboardBarVisible,
+                    selectedUnit: keyboardBarUnit,
+                    availableUnits: ["°F", "°C"],
+                    tint: accentOverride ?? .accentColor,
+                    onDismiss: {
+                        onKeyboardDismiss?()
+                        isKeyboardBarVisible = false
+                    },
+                    onSelectUnit: { unit in
+                        onKeyboardUnitChange?(unit)
+                        keyboardBarUnit = unit
+                    }
+                )
+                SimpleKeyboardDismissBar(
+                    isVisible: isSimpleKeyboardBarVisible,
+                    tint: accentOverride ?? .accentColor,
+                    onDismiss: {
+                        onSimpleKeyboardDismiss?()
+                        isSimpleKeyboardBarVisible = false
+                    }
+                )
             }
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
@@ -764,6 +805,36 @@ struct SportsTabView: View {
                 if ok {
                     refreshWellnessValues()
                 }
+            }
+        }
+    }
+}
+
+private struct SimpleKeyboardDismissBar: View {
+    var isVisible: Bool
+    var tint: Color
+    var onDismiss: () -> Void
+
+    var body: some View {
+        Group {
+            if isVisible {
+                HStack {
+                    Spacer()
+
+                    Button(action: onDismiss) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                            .foregroundStyle(tint)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
     }
@@ -1154,5 +1225,61 @@ private extension DateFormatter {
 private extension Calendar {
     func isDateInFuture(_ date: Date) -> Bool {
         compare(date, to: Date(), toGranularity: .day) == .orderedDescending
+    }
+}
+
+private struct KeyboardDismissBar: View {
+    var isVisible: Bool
+    var selectedUnit: String?
+    var availableUnits: [String] = []
+    var tint: Color = .accentColor
+    var onDismiss: () -> Void
+    var onSelectUnit: ((String) -> Void)? = nil
+
+    var body: some View {
+        Group {
+            if isVisible {
+                HStack(spacing: 12) {
+                    if !availableUnits.isEmpty {
+                        ForEach(availableUnits, id: \.self) { unit in
+                            // Comparison handles mixed case ("kg" vs "KG") or degrees symbol
+                            let isSelected = selectedUnit?.lowercased() == unit.lowercased()
+                            Button {
+                                onSelectUnit?(unit)
+                            } label: {
+                                Text(unit.uppercased())
+                                    .font(.callout.weight(.semibold))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                                    .foregroundStyle(isSelected ? tint : .primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button(action: onDismiss) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                            .foregroundStyle(tint)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 6)
+                .padding(.bottom, 6)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: isVisible)
+            } else {
+                EmptyView()
+                    .frame(height: 0)
+            }
+        }
     }
 }

@@ -704,6 +704,7 @@ struct AccountsView: View {
         @AppStorage("alerts.timeTrackingEnabled") private var timeTrackingAlertsEnabled: Bool = true
         @AppStorage("alerts.dailyCheckInEnabled") private var dailyCheckInAlertsEnabled: Bool = true
         @AppStorage("alerts.activityTimersEnabled") private var activityTimersAlertsEnabled: Bool = true
+        @AppStorage("alerts.recoveryTimersEnabled") private var recoveryTimersAlertsEnabled: Bool = true
         @AppStorage("alerts.fastingEnabled") private var fastingAlertsEnabled: Bool = true
         @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
         @AppStorage("alerts.weeklyProgressEnabled") private var weeklyProgressAlertsEnabled: Bool = true
@@ -834,6 +835,17 @@ struct AccountsView: View {
                                         Text("Activity Timers")
                                             .font(.subheadline.weight(.semibold))
                                         Text("Receive a notification when an activity timer finishes.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
+
+                                Toggle(isOn: $recoveryTimersAlertsEnabled) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Recovery Timers")
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("Receive a notification when a sauna or cold plunge timer finishes.")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }

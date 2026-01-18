@@ -47,6 +47,7 @@ class AccountFirestoreService {
                 let remoteWeightGroups = (data["weightGroups"] as? [[String: Any]] ?? []).compactMap { WeightGroupDefinition(dictionary: $0) }
                 let remoteActivityTimers = (data["activityTimers"] as? [[String: Any]] ?? []).compactMap { ActivityTimerItem(dictionary: $0) }
                 let remoteInjuries = (data["injuries"] as? [[String: Any]] ?? []).compactMap { Injury(dictionary: $0) }
+                let remoteRecoveryCategories = (data["recoveryCategories"] as? [String]) ?? []
                 let remoteGoals = (data["goals"] as? [[String: Any]] ?? []).compactMap { GoalItem(dictionary: $0) }
                 let remoteHabits = (data["habits"] as? [[String: Any]] ?? []).compactMap { HabitDefinition(dictionary: $0) }
                 let remoteGroceries = (data["groceryItems"] as? [[String: Any]] ?? []).compactMap { GroceryItem(dictionary: $0) }
@@ -115,6 +116,7 @@ class AccountFirestoreService {
                     weightGroups: remoteWeightGroups,
                     // Preserve empty remote activity timers arrays rather than substituting defaults.
                     activityTimers: remoteActivityTimers,
+                    recoveryCategories: remoteRecoveryCategories,
                     injuries: remoteInjuries,
                     trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue(),
                     proPeriodEnd: (data["proPeriodEnd"] as? Timestamp)?.dateValue(),
@@ -350,6 +352,7 @@ class AccountFirestoreService {
         let soloMetrics = account.soloMetrics
         let teamMetrics = account.teamMetrics
         let activityTimers = account.activityTimers
+        let recoveryCategories = account.recoveryCategories
         let injuries = account.injuries
         let workoutSchedule = account.workoutSchedule
         let mealSchedule = account.mealSchedule
@@ -454,6 +457,7 @@ class AccountFirestoreService {
             data["dailySummaryMetrics"] = account.dailySummaryMetrics.map { $0.asDictionary }
             data["dailyWellnessMetrics"] = account.dailyWellnessMetrics.map { $0.asDictionary }
             data["activityTimers"] = activityTimers.map { $0.asDictionary }
+            data["recoveryCategories"] = recoveryCategories
             data["injuries"] = injuries.map { $0.asDictionary }
             data["workoutSchedule"] = workoutSchedule.map { $0.asDictionary }
             data["mealSchedule"] = mealSchedule.map { $0.asDictionary }

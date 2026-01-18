@@ -2477,7 +2477,8 @@ private extension RootView {
                 local.groceryItems = fetched.groceryItems
                 local.expenseCategories = fetched.expenseCategories
                 local.expenseCurrencySymbol = fetched.expenseCurrencySymbol
-                    local.weeklyProgress = fetched.weeklyProgress
+                local.recoveryCategories = fetched.recoveryCategories
+                local.weeklyProgress = fetched.weeklyProgress
                     // Persist supplements from server into local Account
                     local.workoutSupplements = fetched.workoutSupplements
                     local.nutritionSupplements = fetched.nutritionSupplements
@@ -2558,7 +2559,8 @@ private extension RootView {
                     stepsGoal: fetched.stepsGoal,
                     distanceGoal: fetched.distanceGoal,
                     weightGroups: fetched.weightGroups,
-                    activityTimers: fetched.activityTimers
+                    activityTimers: fetched.activityTimers,
+                    recoveryCategories: fetched.recoveryCategories
                 )
                     weightGroups = newAccount.weightGroups
                 goals = newAccount.goals

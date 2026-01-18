@@ -620,7 +620,8 @@ struct SportsTabView: View {
                                     }
                                 }
 
-                                // Recovery Tracking Section
+                                RecoveryTrackingSection(accentColorOverride: accentOverride)
+                                
                         }
                       }
                       .padding(.bottom, 24)

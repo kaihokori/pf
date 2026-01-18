@@ -2557,8 +2557,6 @@ private extension MacroMetric {
     }
 }
 
-
-
 struct MacroEditorSheet: View {
     @Binding var macros: [MacroMetric]
     var tint: Color

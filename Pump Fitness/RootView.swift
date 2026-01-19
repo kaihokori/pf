@@ -113,6 +113,8 @@ struct RootView: View {
     @AppStorage("alerts.hasRequestedPermission") private var hasRequestedNotificationPermission: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var weatherModel = WeatherViewModel()
+    @StateObject private var sportsService = LiveSportsService.shared
+    @AppStorage("trackedLeagueIds") private var trackedLeagueIdsRaw: String = "4387,4328"
     @Query private var accounts: [Account]
     @State private var authStateHandle: AuthStateDidChangeListenerHandle?
     @State private var isCheckingOnboarding: Bool = false
@@ -331,8 +333,16 @@ struct RootView: View {
         initializeMealRemindersFromLocal()
         scheduleAllNotifications()
         printSignedInUserDetails()
-        
+
         let group = DispatchGroup()
+        
+        // Load Sports Data
+        group.enter()
+        Task {
+            let ids = trackedLeagueIdsRaw.split(separator: ",").map(String.init)
+            await sportsService.loadInitialData(trackedLeagueIds: ids)
+            group.leave()
+        }
 
         // Ensure today's Day exists locally and attempt to sync to Firestore
         group.enter()
@@ -887,7 +897,7 @@ struct RootView: View {
     /// Decides when to hide the splash once initial data and onboarding checks are done.
     private func updateSplashVisibility() {
         if showWelcomeVideo { return }
-        if hasLoadedInitialData && !isCheckingOnboarding {
+        if hasLoadedInitialData && !isCheckingOnboarding && sportsService.isLoaded {
             withAnimation(.easeOut(duration: 0.35)) {
                 isShowingSplash = false
             }

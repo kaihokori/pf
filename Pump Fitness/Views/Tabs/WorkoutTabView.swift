@@ -1294,8 +1294,7 @@ struct WorkoutTabView: View {
                     }
 
                     // Live Games Tracking
-                    LiveGamesTrackingView()
-                        .padding(.top, 38)
+                    LiveGamesTrackingView(selectedDate: $selectedDate)
                     .opacity(isPro ? 1 : 0.5)
                     .blur(radius: isPro ? 0 : 4)
                     .disabled(!isPro)
@@ -1375,7 +1374,7 @@ struct WorkoutTabView: View {
 
                     // Coaching inquiry card
                     CoachingInquiryCTA()
-                        .padding(.top, 24)
+                        .padding(.top, 48)
                     
                     ShareWorkoutCTA(accentColor: accentOverride ?? .accentColor) {
                         showShareSheet = true
@@ -1756,9 +1755,9 @@ struct WorkoutTabView: View {
                         Button(action: onEdit) {
                             Image(systemName: "pencil")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.blue.opacity(0.8))
+                                .foregroundStyle(Color.accentColor.opacity(0.8))
                                 .padding(8)
-                                .background(.blue.opacity(0.1), in: Circle())
+                                .background(Color.accentColor.opacity(0.1), in: Circle())
                         }
                         .buttonStyle(.plain)
 

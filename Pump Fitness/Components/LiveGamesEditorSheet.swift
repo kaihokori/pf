@@ -1,17 +1,38 @@
 import SwiftUI
 
 struct LiveGamesEditorSheet: View {
-    @AppStorage("trackedLiveSports") private var trackedSportsRaw: String = "basketball,football" 
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
+    @AppStorage("trackedLeagueIds") private var trackedLeagueIdsRaw: String = ""
     @StateObject private var service = LiveSportsService.shared
     
     var onDismiss: () -> Void
 
-    private var trackedSports: [String] {
-        trackedSportsRaw.split(separator: ",").map(String.init)
+    private var themeAccent: Color? {
+        themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    private var trackedIds: [String] {
+        trackedLeagueIdsRaw.split(separator: ",").map(String.init)
     }
     
-    private var availableSports: [SportDefinition] {
-        service.availableSports.filter { !trackedSports.contains($0.id) }
+    private var displayedLeagues: [SportsDBLeague] {
+        service.availableLeagues
+    }
+    
+    // Grouping by Sport
+    private var leaguesBySport: [String: [SportsDBLeague]] {
+        Dictionary(grouping: displayedLeagues, by: { $0.strSport ?? "Other" })
+    }
+    
+    // Sort sports alphabetically, but keep "Other" last if needed
+    private var sortedSports: [String] {
+        leaguesBySport.keys.sorted().filter { $0 != "Other" } + (leaguesBySport.keys.contains("Other") ? ["Other"] : [])
+    }
+    
+    // Tracked league objects (resolved from IDs)
+    private var trackedLeagues: [SportsDBLeague] {
+        service.availableLeagues.filter { trackedIds.contains($0.idLeague) }
     }
 
     var body: some View {
@@ -19,129 +40,170 @@ struct LiveGamesEditorSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
                     
-                    // Tracked Categories
-                    if !trackedSports.isEmpty {
+                    // MARK: - Tracked Section
+                    if !trackedLeagues.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            LiveGamesEditorHeader(title: "Tracked Categories")
-
+                            SectionTitle("Tracked Leagues")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 4)
+                            
                             VStack(spacing: 12) {
-                                ForEach(trackedSports, id: \.self) { sportId in
-                                    let sportName = service.availableSports.first(where: { $0.id == sportId })?.name ?? sportId.capitalized
-                                    
-                                    HStack(spacing: 12) {
-                                        Circle()
-                                            .fill(Color.accentColor.opacity(0.15))
-                                            .frame(width: 44, height: 44)
-                                            .overlay(
-                                                Image(systemName: "sportscourt.fill")
-                                                    .foregroundStyle(Color.accentColor)
-                                            )
-
-                                        Text(sportName)
-                                            .font(.subheadline.weight(.semibold))
-
-                                        Spacer()
-
-                                        Button(role: .destructive) {
-                                            removeSport(sportId)
-                                        } label: {
-                                            Image(systemName: "trash")
-                                                .foregroundStyle(.red)
-                                        }
-                                        .buttonStyle(.plain)
+                                ForEach(trackedLeagues) { league in
+                                    LeagueCard(league: league, isTracked: true, color: themeAccent ?? color(for: league.strSport)) {
+                                        toggleLeague(league.idLeague)
                                     }
-                                    .padding()
-                                    .surfaceCard(16)
                                 }
                             }
                         }
                     }
+                    
+                    // MARK: - Browse Section
+                    VStack(alignment: .leading, spacing: 20) {
+                        SectionTitle(trackedLeagues.isEmpty ? "All Leagues" : "Quick Add")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 4)
 
-                    // Quick Add
-                    if !availableSports.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            LiveGamesEditorHeader(title: "Quick Add")
-
-                            VStack(spacing: 12) {
-                                ForEach(availableSports) { sport in
-                                    HStack(spacing: 14) {
-                                        Circle()
-                                            .fill(Color.accentColor.opacity(0.15))
-                                            .frame(width: 44, height: 44)
-                                            .overlay(
-                                                Image(systemName: "sportscourt.fill")
-                                                    .foregroundStyle(Color.accentColor)
-                                            )
-
-                                        VStack(alignment: .leading) {
-                                            Text(sport.name)
-                                                .font(.subheadline.weight(.semibold))
+                        // Browse by Sport
+                        ForEach(sortedSports, id: \.self) { sport in
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(sport)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+                                    .textCase(.uppercase)
+                                
+                                VStack(spacing: 12) {
+                                    ForEach(leaguesBySport[sport] ?? []) { league in
+                                        // Show only untracked in Quick Add style
+                                        if !trackedIds.contains(league.idLeague) {
+                                            LeagueCard(league: league, isTracked: false, color: themeAccent ?? color(for: sport)) {
+                                                toggleLeague(league.idLeague)
+                                            }
                                         }
-
-                                        Spacer()
-
-                                        Button {
-                                            addSport(sport.id)
-                                        } label: {
-                                            Image(systemName: "plus.circle.fill")
-                                                .font(.system(size: 24, weight: .semibold))
-                                                .foregroundStyle(Color.accentColor)
-                                        }
-                                        .buttonStyle(.plain)
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 14)
-                                    .surfaceCard(18)
                                 }
                             }
                         }
-                    } else if service.availableSports.isEmpty {
-                         ProgressView()
-                             .padding()
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 24)
             }
-            .navigationTitle("Live Games")
+            .navigationTitle("Manage Leagues")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         onDismiss()
                     }
                     .fontWeight(.semibold)
                 }
             }
-            .task {
-                await service.fetchSports()
+        }
+        .task {
+             if service.availableLeagues.count < 15 {
+                await service.fetchAllLeagues()
             }
         }
     }
     
-    private func addSport(_ id: String) {
-        var current = trackedSports
-        if !current.contains(id) {
+    private func toggleLeague(_ id: String) {
+        var current = trackedIds
+        if let idx = current.firstIndex(of: id) {
+            current.remove(at: idx)
+        } else {
             current.append(id)
-            trackedSportsRaw = current.joined(separator: ",")
+        }
+        trackedLeagueIdsRaw = current.joined(separator: ",")
+    }
+    
+    private func color(for sport: String?) -> Color {
+        switch sport?.lowercased() {
+        case "soccer": return .green
+        case "basketball": return .orange
+        case "american football": return .brown
+        case "baseball": return .red
+        case "motorsport": return .purple
+        case "fighting": return .red
+        case "ice hockey": return .cyan
+        case "golf": return .green
+        case "tennis": return .yellow
+        default: return .blue
         }
     }
     
-    private func removeSport(_ id: String) {
-        var current = trackedSports
-        current.removeAll(where: { $0 == id })
-        trackedSportsRaw = current.joined(separator: ",")
-    }
-}
+    struct LeagueCard: View {
+        let league: SportsDBLeague
+        let isTracked: Bool
+        let color: Color
+        let onAction: () -> Void
+        
+        var iconName: String {
+             switch league.strSport?.lowercased() {
+                case "soccer": return "soccerball"
+                case "basketball": return "basketball.fill"
+                case "american football": return "football.fill"
+                case "baseball": return "baseball.fill"
+                case "tennis": return "tennis.racket"
+                case "rugby": return "figure.rugby"
+                case "motorsport": return "flag.checkered"
+                case "fighting": return "figure.boxing"
+                case "ice hockey": return "hockey.puck.fill"
+                case "golf": return "figure.golf"
+                default: return "trophy.fill"
+            }
+        }
+        
+        var body: some View {
+            HStack(spacing: 14) {
+                Circle()
+                    .fill(color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: iconName)
+                            .foregroundStyle(color)
+                    )
 
-private struct LiveGamesEditorHeader: View {
-    var title: String
+                VStack(alignment: .leading) {
+                    Text(league.strLeague)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    if let alt = league.strLeagueAlternate, !alt.isEmpty {
+                        Text(alt)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else if let sport = league.strSport {
+                         Text(sport)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
-    var body: some View {
-        Text(title.uppercased())
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 4)
+                Spacer()
+
+                Button(action: onAction) {
+                    if isTracked {
+                        Image(systemName: "trash")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.red)
+                            .frame(width: 32, height: 32)
+                            .background(Color.red.opacity(0.1))
+                            .clipShape(Circle())
+                    } else {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(color)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(18)
+        }
     }
 }

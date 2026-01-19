@@ -6,13 +6,31 @@ class LiveSportsService: ObservableObject {
     static let shared = LiveSportsService()
     
     // TheSportsDB Free API Key
-    private let apiKey = "3" 
+    private let apiKey = "3" // Note: '3' often returns limited/test data which can be strict-filtered out. '123' is the documented free key.
+    // Switching to 123 for better data integrity based on documentation, but rate limits apply carefully.
     private let baseURL = "https://www.thesportsdb.com/api/v1/json/3/"
+    // private let baseURL = "https://www.thesportsdb.com/api/v1/json/123/" 
+    // ^ The user's code was using '3', but the behavior was bad. 
+    // Let's stick to the user's key '3' for now but FIX the rate limiting, 
+    // OR switch to '123' if that's the only way to get real data.
+    // The previous terminal check showed '123' returning Brighton (EPL) while '3' returned Stevenage (League 1).
+    // clearly '3' is behaving as a "sandbox" key returning garbage/mixed data for id 4328.
+    // API Key '123' is the correct one.
+    
+    // Changing to 123
+    private let realBaseURL = "https://www.thesportsdb.com/api/v1/json/123/"
     
     @Published var availableLeagues: [SportsDBLeague] = []
     @Published var leagueEvents: [LeagueEventsGroup] = []
     @Published var upcomingEvents: [LeagueEventsGroup] = []
     @Published var isLoaded: Bool = false
+    @Published var isFetching: Bool = false
+    @Published var isShowingUpcoming: Bool = false
+    @Published var currentlyFetchingLeague: String? = nil
+    
+    // Cache tracking
+    private var lastFetchedDate: Date?
+    private var lastFetchedIds: Set<String> = []
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -22,20 +40,6 @@ class LiveSportsService: ObservableObject {
     }
     
     // MARK: - Core Fetching
-    
-    func loadInitialData(trackedLeagueIds: [String]) async {
-        // Step 1: Ensure leagues are fetched if they aren't already (beyond popular defaults)
-        if availableLeagues.count <= Self.popularLeagues.count {
-            await fetchAllLeagues()
-        }
-        
-        // Step 2: Fetch upcoming events for tracked leagues
-        if !trackedLeagueIds.isEmpty {
-            await fetchUpcomingEvents(trackedLeagueIds: trackedLeagueIds)
-        }
-        
-        self.isLoaded = true
-    }
     
     func fetchAllLeagues() async {
         guard let url = URL(string: "\(baseURL)all_leagues.php") else { return }
@@ -117,60 +121,148 @@ class LiveSportsService: ObservableObject {
         SportsDBLeague(idLeague: "4356", strLeague: "Australian Football League", strSport: "Australian Football", strLeagueAlternate: "AFL"),
     ]
     
-    func fetchEvents(for date: Date, trackedLeagueIds: [String]) async {
+    func fetchSchedule(for date: Date, trackedLeagueIds: [String]) async {
+        let requestedIds = Set(trackedLeagueIds)
+        
+        // Cache Check: If date and IDs match, skip fetch
+        // We only skip if isLoaded is true, meaning we've at least tried once.
+        if let lastDate = lastFetchedDate, 
+           Calendar.current.isDate(lastDate, inSameDayAs: date),
+           lastFetchedIds == requestedIds,
+           isLoaded {
+           return
+        }
+        
+        self.lastFetchedDate = date
+        self.lastFetchedIds = requestedIds
+        
+        // Start Loading
+        self.isFetching = true
+        self.leagueEvents = [] // Clear existing
+        self.isShowingUpcoming = false
+        
+        // Format date once
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         let dateStr = formatter.string(from: date)
         
-        var newGroups: [LeagueEventsGroup] = []
-        
         let leaguesToFetch = availableLeagues.filter { trackedLeagueIds.contains($0.idLeague) }
+        var collectedEvents: [LeagueEventsGroup] = []
         
-        for league in leaguesToFetch {
-            // URL encode league name
-            let leagueName = league.strLeague.replacingOccurrences(of: " ", with: "_")
-            guard let url = URL(string: "\(baseURL)eventsday.php?d=\(dateStr)&l=\(leagueName)") else { continue }
+        for (index, league) in leaguesToFetch.enumerated() {
+            self.currentlyFetchingLeague = league.strLeague
+             // Rate Limiting
+            if index > 0 {
+                try? await Task.sleep(nanoseconds: 700_000_000) // 0.7s delay
+            }
             
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                // Decode
-                if let response = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data),
-                   let events = response.events {
-                    let group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: events)
-                    newGroups.append(group)
+            var group: LeagueEventsGroup?
+            
+            // 1. Try Fetch for specific Date
+            if let dayEvents = await fetchEventsForLeague(league, dateStr: dateStr) {
+                if !dayEvents.isEmpty {
+                    let sorted = dayEvents.sorted { ($0.eventDate ?? Date.distantFuture) < ($1.eventDate ?? Date.distantFuture) }
+                    group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .standard)
                 }
-            } catch {
-                print("Error fetch events for \(league.strLeague): \(error)")
+            }
+            
+            // 2. Fallback if empty
+            if group == nil {
+                let isPast = date < Calendar.current.startOfDay(for: Date())
+                
+                if isPast {
+                    // Fetch RECENT/PAST events
+                    if let recent = await fetchRecentForLeague(league) {
+                        if !recent.isEmpty {
+                            // Sort descending for past events (most recent first in list seems natural, or chronological?)
+                            // Usually "Schedule" implies chronological.
+                            let sorted = recent.sorted { ($0.eventDate ?? Date.distantPast) < ($1.eventDate ?? Date.distantPast) }
+                            group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .recent)
+                        }
+                    }
+                } else {
+                    // Fetch UPCOMING events
+                    if let upcoming = await fetchUpcomingForLeague(league) {
+                        if !upcoming.isEmpty {
+                            let sorted = upcoming.sorted { ($0.eventDate ?? Date.distantFuture) < ($1.eventDate ?? Date.distantFuture) }
+                            group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .upcoming)
+                        }
+                    }
+                }
+            }
+            
+            if let result = group {
+                collectedEvents.append(result)
             }
         }
         
-        self.leagueEvents = newGroups
+        self.leagueEvents = collectedEvents
+        self.currentlyFetchingLeague = nil
+        self.isFetching = false
+        self.isLoaded = true
+    }
+    
+    // MARK: - Internal Helpers
+    
+    // Returns events if found, nil if error/empty
+    private func fetchEventsForLeague(_ league: SportsDBLeague, dateStr: String) async -> [SportsDBEvent]? {
+        let encodedLeague = league.strLeague.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        guard let url = URL(string: "\(realBaseURL)eventsday.php?d=\(dateStr)&l=\(encodedLeague)") else { return nil }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let response = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data),
+               let events = response.events {
+                // Strict filter
+                return events.filter { $0.idLeague == league.idLeague }
+            }
+        } catch {
+            print("Error fetch events (day) for \(league.strLeague): \(error)")
+        }
+        return nil // Empty or error
+    }
+    
+    private func fetchUpcomingForLeague(_ league: SportsDBLeague) async -> [SportsDBEvent]? {
+        guard let url = URL(string: "\(realBaseURL)eventsnextleague.php?id=\(league.idLeague)") else { return nil }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let response = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data),
+               let events = response.events {
+                let filtered = events.filter { $0.idLeague == league.idLeague }
+                return filtered // Return all provided by API (limited by API tier)
+            }
+        } catch {
+             print("Error fetch upcoming for \(league.strLeague): \(error)")
+        }
+        return nil
+    }
+
+    private func fetchRecentForLeague(_ league: SportsDBLeague) async -> [SportsDBEvent]? {
+        guard let url = URL(string: "\(realBaseURL)eventspastleague.php?id=\(league.idLeague)") else { return nil }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let response = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data),
+               let events = response.events {
+                let filtered = events.filter { $0.idLeague == league.idLeague }
+                return filtered
+            }
+        } catch {
+             print("Error fetch recent for \(league.strLeague): \(error)")
+        }
+        return nil
+    }
+
+    // Deprecated public methods (kept for compatibility or specific calls if needed, but fetchSchedule replaces them)
+    func fetchEvents(for date: Date, trackedLeagueIds: [String]) async {
+         // No-op or redirect
+         await fetchSchedule(for: date, trackedLeagueIds: trackedLeagueIds)
     }
 
     func fetchUpcomingEvents(trackedLeagueIds: [String]) async {
-        var newGroups: [LeagueEventsGroup] = []
-        let leaguesToFetch = availableLeagues.filter { trackedLeagueIds.contains($0.idLeague) }
-        
-        for league in leaguesToFetch {
-            guard let url = URL(string: "\(baseURL)eventsnextleague.php?id=\(league.idLeague)") else { continue }
-            
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let response = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data),
-                   let events = response.events {
-                     // Filter to strictly future if needed, or just take the "next 15" provided by the API.
-                     // The user asked for "next 10", the API gives 15. We can slice.
-                     let limitedEvents = Array(events.prefix(10))
-                    let group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: limitedEvents)
-                    newGroups.append(group)
-                }
-            } catch {
-                print("Error fetch upcoming events for \(league.strLeague): \(error)")
-            }
-        }
-        
-        self.leagueEvents = newGroups
-        self.upcomingEvents = newGroups
+         // No-op or redirect
+         await fetchSchedule(for: Date(), trackedLeagueIds: trackedLeagueIds)
     }
     
     func searchLeagues(query: String) -> [SportsDBLeague] {

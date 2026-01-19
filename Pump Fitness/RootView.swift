@@ -336,14 +336,6 @@ struct RootView: View {
 
         let group = DispatchGroup()
         
-        // Load Sports Data
-        group.enter()
-        Task {
-            let ids = trackedLeagueIdsRaw.split(separator: ",").map(String.init)
-            await sportsService.loadInitialData(trackedLeagueIds: ids)
-            group.leave()
-        }
-
         // Ensure today's Day exists locally and attempt to sync to Firestore
         group.enter()
         loadDay(for: selectedDate) {
@@ -897,7 +889,7 @@ struct RootView: View {
     /// Decides when to hide the splash once initial data and onboarding checks are done.
     private func updateSplashVisibility() {
         if showWelcomeVideo { return }
-        if hasLoadedInitialData && !isCheckingOnboarding && sportsService.isLoaded {
+        if hasLoadedInitialData && !isCheckingOnboarding {
             withAnimation(.easeOut(duration: 0.35)) {
                 isShowingSplash = false
             }

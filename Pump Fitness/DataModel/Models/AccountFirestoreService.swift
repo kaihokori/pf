@@ -41,12 +41,15 @@ class AccountFirestoreService {
                 } else {
                     print("AccountFirestoreService: Finishing fetchAccount with NIL image data.")
                 }
-                let soloMetricDefs = (data["soloMetrics"] as? [[String: Any]] ?? []).compactMap { SoloMetric(dictionary: $0) }
+                
+                DispatchQueue.main.async {
+                    let soloMetricDefs = (data["soloMetrics"] as? [[String: Any]] ?? []).compactMap { SoloMetric(dictionary: $0) }
                 let teamMetricDefs = (data["teamMetrics"] as? [[String: Any]] ?? []).compactMap { TeamMetric(dictionary: $0) }
 
                 let remoteWeightGroups = (data["weightGroups"] as? [[String: Any]] ?? []).compactMap { WeightGroupDefinition(dictionary: $0) }
                 let remoteActivityTimers = (data["activityTimers"] as? [[String: Any]] ?? []).compactMap { ActivityTimerItem(dictionary: $0) }
                 let remoteInjuries = (data["injuries"] as? [[String: Any]] ?? []).compactMap { Injury(dictionary: $0) }
+                let remoteTrackedLeagueIds = (data["trackedLeagueIds"] as? [String]) ?? []
                 let remoteRecoveryCategories = (data["recoveryCategories"] as? [String]) ?? []
                 let remoteGoals = (data["goals"] as? [[String: Any]] ?? []).compactMap { GoalItem(dictionary: $0) }
                 let remoteHabits = (data["habits"] as? [[String: Any]] ?? []).compactMap { HabitDefinition(dictionary: $0) }
@@ -116,6 +119,7 @@ class AccountFirestoreService {
                     weightGroups: remoteWeightGroups,
                     // Preserve empty remote activity timers arrays rather than substituting defaults.
                     activityTimers: remoteActivityTimers,
+                    trackedLeagueIds: remoteTrackedLeagueIds,
                     recoveryCategories: remoteRecoveryCategories,
                     injuries: remoteInjuries,
                     trialPeriodEnd: (data["trialPeriodEnd"] as? Timestamp)?.dateValue(),
@@ -126,9 +130,10 @@ class AccountFirestoreService {
                     subscriptionStatusUpdatedAt: (data["subscriptionStatusUpdatedAt"] as? Timestamp)?.dateValue(),
                     didCompleteOnboarding: data["didCompleteOnboarding"] as? Bool ?? false,
                     googleRefreshToken: data["googleRefreshToken"] as? String
-                )
+                    )
 
-                completion(account)
+                    completion(account)
+                }
             }
 
             if let avatarString = profileAvatar, !avatarString.isEmpty {
@@ -352,6 +357,7 @@ class AccountFirestoreService {
         let soloMetrics = account.soloMetrics
         let teamMetrics = account.teamMetrics
         let activityTimers = account.activityTimers
+        let trackedLeagueIds = account.trackedLeagueIds
         let recoveryCategories = account.recoveryCategories
         let injuries = account.injuries
         let workoutSchedule = account.workoutSchedule
@@ -456,6 +462,7 @@ class AccountFirestoreService {
             data["teamMetrics"] = teamMetrics.map { $0.asDictionary }
             data["dailySummaryMetrics"] = account.dailySummaryMetrics.map { $0.asDictionary }
             data["dailyWellnessMetrics"] = account.dailyWellnessMetrics.map { $0.asDictionary }
+            data["trackedLeagueIds"] = trackedLeagueIds
             data["activityTimers"] = activityTimers.map { $0.asDictionary }
             data["recoveryCategories"] = recoveryCategories
             data["injuries"] = injuries.map { $0.asDictionary }

@@ -108,16 +108,8 @@ struct LiveGamesTrackingView: View {
                 .padding(.horizontal, 18)
             }
         }
-        .task {
+        .task(id: trackedLeagueIdsRaw + selectedDate.description) {
             await loadData()
-        }
-        .onChange(of: trackedLeagueIdsRaw) {
-            Task { await loadData() }
-        }
-        .onChange(of: selectedDate) {
-            Task { 
-                await loadData() 
-            }
         }
         .sheet(isPresented: $showEditor) {
             LiveGamesEditorSheet {
@@ -182,7 +174,6 @@ struct SportsGameCard: View {
                                 
                                 // Only show brackets if time OR date is different
                                 if userTime != gameTimeTrimmed || userDateStr != gameDateLocal {
-                                    let gDateFormatted = formatDateShortOrdinal(gameDateLocal)
                                     if userDateStr != gameDateLocal {
                                         Text("\(userTime) (\(gameTimeTrimmed) local)")
                                             .font(.SystemBold(10))

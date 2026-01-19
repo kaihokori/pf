@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct BodyDiagramView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
+    
     // Read-only visualization mode
     var injuries: [Injury]
-    var theme: String?
+    var highlightedParts: Set<BodyPart>? = nil
     var selectedDate: Date = Date()
     
     // Default color for uninjured parts
@@ -32,6 +35,13 @@ struct BodyDiagramView: View {
     // Simplified: Check if ANY injury corresponds to range of parts
     // E.g. Thigh should light up if Quad OR Hamstring is injured
     func color(for visualPart: VisualBodyPart) -> Color {
+        if let highlightedParts = highlightedParts {
+            if !visualPart.mappedParts.isDisjoint(with: highlightedParts) {
+                return themeManager.selectedTheme.accent(for: colorScheme).opacity(0.6)
+            }
+            return uninjuredColor
+        }
+
         // Find existing injuries that map to this visual part
         let matchingInjuries = injuries.filter { injury in
             // Filter out injuries that haven't occurred yet or have fully healed by selectedDate
@@ -62,7 +72,7 @@ struct BodyDiagramView: View {
             // "Percentage of days left divided by 60"
             let intensity = max(0, min(1, remainingDays / 60.0))
             
-            let isMultiColor = (theme == AppTheme.multiColour.rawValue)
+            let isMultiColor = (themeManager.selectedTheme == .multiColour)
             if isMultiColor {
                 // Gradually shift from red (intensity 1.0 -> hue 0.0) to green (intensity 0.0 -> hue 0.33)
                 let hue = 0.33 * (1.0 - intensity)
@@ -70,7 +80,7 @@ struct BodyDiagramView: View {
             } else {
                 // Opacity is simple percentage of days left / 60
                 // We keep a small minimum opacity so it doesn't vanish entirely if it's technically day 0 of healing
-                return Color.red.opacity(max(0.1, intensity))
+                return themeManager.selectedTheme.accent(for: colorScheme).opacity(max(0.1, intensity))
             }
         }
         return uninjuredColor

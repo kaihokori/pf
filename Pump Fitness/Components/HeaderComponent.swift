@@ -153,7 +153,7 @@ struct HeaderComponent: View {
                             .frame(width: 58, height: 58)
                             .clipShape(Circle())
                     } else if let avatarUrl = account.profileAvatar,
-                              let url = URL(string: avatarUrl),
+                              let url = URL(string: avatarUrl) ?? URL(string: avatarUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""),
                               avatarUrl.hasPrefix("http") {
                         AsyncImage(url: url) { phase in
                             switch phase {

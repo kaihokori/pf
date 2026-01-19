@@ -66,25 +66,23 @@ struct RecoveryTrackingSection: View {
                     .foregroundStyle(.primary)
 
                 Spacer()
+
+                Button {
+                    showEditSheet = true
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 18)
             .padding(.top, 48)
-
-            Button {
-                showEditSheet = true
-            } label: {
-                Label("Change Goal", systemImage: "pencil")
-                  .font(.callout.weight(.semibold))
-                  .padding(.vertical, 18)
-                  .frame(maxWidth: .infinity, minHeight: 52)
-                  .glassEffect(in: .rect(cornerRadius: 16.0))
-                  .contentShape(Rectangle())
-            }
-            .nutritionTip(.editCalorieGoal)
-            .padding(.horizontal, 18)
-            .padding(.top, 8)
-            .buttonStyle(.plain)
             
             if visibleCategories.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -348,6 +346,14 @@ fileprivate struct RecoveryCategoryCard: View {
     private var isTimerBased: Bool {
         return category == .sauna || category == .coldPlunge
     }
+
+    private var isCustomSelected: Bool {
+        switch category {
+        case .sauna: return selectedSaunaType == .custom
+        case .coldPlunge: return selectedPlungeType == .custom
+        case .spa: return selectedSpaType == .custom
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -540,6 +546,23 @@ fileprivate struct RecoveryCategoryCard: View {
             }
             .padding(.top, 16)
             
+            if isCustomSelected {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("CUSTOM TYPE")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    
+                    TextField("Enter description", text: $customType)
+                        .font(.body)
+                        .padding(.horizontal, 12)
+                        .frame(height: 44)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal, 16)
+            }
+            
             // Input Fields
             VStack(spacing: 16) {
                 if category == .sauna || category == .coldPlunge {
@@ -687,6 +710,10 @@ fileprivate struct RecoveryCategoryCard: View {
                     }
                 }
                 .padding(.horizontal, 16)
+                
+                BodyDiagramView(injuries: [], highlightedParts: selectedBodyPart.mappedBodyParts)
+                    .frame(height: 150)
+                    .padding(.vertical, 8)
             }
             
             
@@ -881,7 +908,7 @@ fileprivate struct RecoveryCategoryCard: View {
                 heartRateBefore: nil,
                 heartRateAfter: nil,
                 bodyPart: selectedBodyPart,
-                customType: customType.isEmpty ? nil : customType
+                customType: (isCustomSelected && !customType.isEmpty) ? customType : nil
             )
             onSave(session)
         } else {
@@ -928,7 +955,7 @@ fileprivate struct RecoveryCategoryCard: View {
             heartRateBefore: hrBefore,
             heartRateAfter: hrAfter,
             bodyPart: nil,
-            customType: customType.isEmpty ? nil : customType
+            customType: (isCustomSelected && !customType.isEmpty) ? customType : nil
         )
         onSave(session)
         
@@ -1047,8 +1074,13 @@ fileprivate struct RecoverySummarySection: View {
                                         VStack(alignment: .leading, spacing: 4) {
                                             // Primary Type Label
                                             if let type = session.saunaType?.rawValue ?? session.coldPlungeType?.rawValue ?? session.spaType?.rawValue {
-                                                Text(type)
-                                                    .font(.subheadline)
+                                                if type == "Other", let customName = session.customType, !customName.isEmpty {
+                                                    Text("\(customName) (Other)")
+                                                        .font(.subheadline)
+                                                } else {
+                                                    Text(type)
+                                                        .font(.subheadline)
+                                                }
                                             } else if let custom = session.customType {
                                                 Text(custom)
                                                     .font(.subheadline)
@@ -1154,4 +1186,17 @@ private extension DateFormatter {
         df.timeStyle = .short
         return df
     }()
+}
+
+extension SpaBodyPart {
+    var mappedBodyParts: Set<BodyPart> {
+        switch self {
+        case .back: return [.upperBack, .lowerBack, .trapezius, .lats]
+        case .shoulder: return [.leftShoulder, .rightShoulder]
+        case .legs: return [.leftThigh, .rightThigh, .leftShin, .rightShin, .leftHamstring, .rightHamstring, .leftCalf, .rightCalf, .leftGlute, .rightGlute]
+        case .feet: return [.leftFoot, .rightFoot]
+        case .head: return [.head, .neck]
+        case .fullBody: return Set(BodyPart.allCases)
+        }
+    }
 }

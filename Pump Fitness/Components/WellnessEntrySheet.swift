@@ -2,6 +2,8 @@ import SwiftUI
 
 struct WellnessEntrySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
     
     var metrics: [TrackedWellnessMetric]
     var hkValues: [WellnessMetricType: Double]
@@ -14,6 +16,14 @@ struct WellnessEntrySheet: View {
     
     private var selectedMetric: TrackedWellnessMetric? {
         metrics.first { $0.id == selectedMetricID }
+    }
+    
+    private func metricColor(_ metric: TrackedWellnessMetric) -> Color {
+        if themeManager.selectedTheme == .multiColour {
+            return Color(hex: metric.colorHex) ?? .accentColor
+        } else {
+            return themeManager.selectedTheme.accent(for: colorScheme)
+        }
     }
     
     private func formattedValue(_ val: Double, for type: WellnessMetricType) -> String {
@@ -70,7 +80,7 @@ struct WellnessEntrySheet: View {
                                         .padding(.vertical, 12)
                                         .background(
                                             RoundedRectangle(cornerRadius: 12)
-                                                .fill(selectedMetricID == metric.id ? (Color(hex: metric.colorHex) ?? .accentColor) : Color.secondary.opacity(0.1))
+                                                .fill(selectedMetricID == metric.id ? metricColor(metric) : Color.secondary.opacity(0.1))
                                         )
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 12)
@@ -152,7 +162,7 @@ struct WellnessEntrySheet: View {
                                             .fontWeight(.medium)
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 10)
-                                            .background(selectedOperation == op ? (Color(hex: selected.colorHex) ?? .accentColor) : Color.clear)
+                                            .background(selectedOperation == op ? metricColor(selected) : Color.clear)
                                             .foregroundStyle(selectedOperation == op ? .white : .primary)
                                             .contentShape(Rectangle())
                                     }

@@ -149,57 +149,78 @@ class LiveSportsService: ObservableObject {
         let leaguesToFetch = availableLeagues.filter { trackedLeagueIds.contains($0.idLeague) }
         var collectedEvents: [LeagueEventsGroup] = []
         
-        for (index, league) in leaguesToFetch.enumerated() {
-            self.currentlyFetchingLeague = league.strLeague
-             // Rate Limiting
-            if index > 0 {
-                try? await Task.sleep(nanoseconds: 700_000_000) // 0.7s delay
-            }
-            
-            var group: LeagueEventsGroup?
-            
-            // 1. Try Fetch for specific Date
-            if let dayEvents = await fetchEventsForLeague(league, dateStr: dateStr) {
-                if !dayEvents.isEmpty {
-                    let sorted = dayEvents.sorted { ($0.eventDate ?? Date.distantFuture) < ($1.eventDate ?? Date.distantFuture) }
-                    group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .standard)
-                }
-            }
-            
-            // 2. Fallback if empty
-            if group == nil {
-                let isPast = date < Calendar.current.startOfDay(for: Date())
+        do {
+            for (index, league) in leaguesToFetch.enumerated() {
+                // 0. Check Cancellation
+                try Task.checkCancellation()
                 
-                if isPast {
-                    // Fetch RECENT/PAST events
-                    if let recent = await fetchRecentForLeague(league) {
-                        if !recent.isEmpty {
-                            // Sort descending for past events (most recent first in list seems natural, or chronological?)
-                            // Usually "Schedule" implies chronological.
-                            let sorted = recent.sorted { ($0.eventDate ?? Date.distantPast) < ($1.eventDate ?? Date.distantPast) }
-                            group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .recent)
-                        }
+                self.currentlyFetchingLeague = league.strLeague
+                
+                // Rate Limiting
+                if index > 0 {
+                    try await Task.sleep(nanoseconds: 700_000_000) // 0.7s delay
+                }
+                
+                var group: LeagueEventsGroup?
+                
+                // 1. Try Fetch for specific Date
+                if let dayEvents = await fetchEventsForLeague(league, dateStr: dateStr) {
+                    if !dayEvents.isEmpty {
+                        let sorted = dayEvents.sorted { ($0.eventDate ?? Date.distantFuture) < ($1.eventDate ?? Date.distantFuture) }
+                        group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .standard)
                     }
-                } else {
-                    // Fetch UPCOMING events
-                    if let upcoming = await fetchUpcomingForLeague(league) {
-                        if !upcoming.isEmpty {
-                            let sorted = upcoming.sorted { ($0.eventDate ?? Date.distantFuture) < ($1.eventDate ?? Date.distantFuture) }
-                            group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .upcoming)
+                }
+                
+                // 2. Fallback if empty
+                if group == nil {
+                    // Check cancellation again before fallback fetches
+                    try Task.checkCancellation()
+                    
+                    let isPast = date < Calendar.current.startOfDay(for: Date())
+                    
+                    if isPast {
+                        // Fetch RECENT/PAST events
+                        if let recent = await fetchRecentForLeague(league) {
+                            if !recent.isEmpty {
+                                let sorted = recent.sorted { ($0.eventDate ?? Date.distantPast) < ($1.eventDate ?? Date.distantPast) }
+                                group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .recent)
+                            }
+                        }
+                    } else {
+                        // Fetch UPCOMING events
+                        if let upcoming = await fetchUpcomingForLeague(league) {
+                            if !upcoming.isEmpty {
+                                let sorted = upcoming.sorted { ($0.eventDate ?? Date.distantFuture) < ($1.eventDate ?? Date.distantFuture) }
+                                group = LeagueEventsGroup(leagueId: league.idLeague, leagueName: league.strLeague, events: sorted, type: .upcoming)
+                            }
                         }
                     }
                 }
+                
+                if let result = group {
+                    collectedEvents.append(result)
+                }
             }
             
-            if let result = group {
-                collectedEvents.append(result)
+            // Only update state if fully completed without cancellation
+            self.leagueEvents = collectedEvents
+            self.currentlyFetchingLeague = nil
+            self.isFetching = false
+            self.isLoaded = true
+            
+        } catch {
+            if error is CancellationError {
+                print("LiveSportsService: Fetch cancelled")
+                return
             }
+            print("LiveSportsService: Fetch error - \(error)")
+            // Reset fetching state on error so UI doesn't hang? 
+            // If it's a non-cancellation error, we probably should reset `isFetching`.
+            // But main loop errors (like sleep interruption) are usually cancellation.
+            // If it's a "real" error, let's reset.
+            self.currentlyFetchingLeague = nil
+            self.isFetching = false
         }
-        
-        self.leagueEvents = collectedEvents
-        self.currentlyFetchingLeague = nil
-        self.isFetching = false
-        self.isLoaded = true
     }
     
     // MARK: - Internal Helpers

@@ -3,7 +3,7 @@ import SwiftUI
 struct LiveGamesEditorSheet: View {
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
-    @AppStorage("trackedLeagueIds") private var trackedLeagueIdsRaw: String = ""
+    @AppStorage("trackedLeagueIds") private var trackedLeagueIdsRaw: String = "4387,4328"
     @StateObject private var service = LiveSportsService.shared
     
     var onDismiss: () -> Void

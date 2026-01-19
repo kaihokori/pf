@@ -462,20 +462,27 @@ struct SportsTabView: View {
                                         .font(.title3)
                                         .fontWeight(.semibold)
                                         .foregroundStyle(.primary)
+                                    
                                     Spacer()
-                                    Button(action: { showWellnessEditor = true }) {
-                                        Label("Edit", systemImage: "pencil")
-                                            .font(.callout)
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .glassEffect(in: .rect(cornerRadius: 18.0))
-                                    }
-                                    .buttonStyle(.plain)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.horizontal, 18)
                                 .padding(.top, 48)
+
+                                Button {
+                                    showWellnessEditor = true
+                                } label: {
+                                    Label("Change Goal", systemImage: "pencil")
+                                      .font(.callout.weight(.semibold))
+                                      .padding(.vertical, 18)
+                                      .frame(maxWidth: .infinity, minHeight: 52)
+                                      .glassEffect(in: .rect(cornerRadius: 16.0))
+                                      .contentShape(Rectangle())
+                                }
+                                .nutritionTip(.editCalorieGoal)
+                                .padding(.top, 8)
+                                .padding(.horizontal, 18)
+                                .buttonStyle(.plain)
 
                                 if account.dailyWellnessMetrics.isEmpty {
                                     VStack(alignment: .leading, spacing: 8) {
@@ -537,7 +544,6 @@ struct SportsTabView: View {
                                 
                                 InjuryTrackingSection(
                                     injuries: $account.injuries,
-                                    theme: account.theme,
                                     selectedDate: selectedDate,
                                     onSave: {
                                         accountService.saveAccount(account) { _ in }
@@ -880,7 +886,7 @@ final class WeatherViewModel: ObservableObject {
     private let calendar = Calendar.current
     private let weatherService: WeatherService
     private let locationProvider: LocationProvider
-    private let geocoder = CLGeocoder()
+    private var localSearch: MKLocalSearch?
 
     init(weatherService: WeatherService? = nil, locationProvider: LocationProvider? = nil) {
         self.weatherService = weatherService ?? WeatherService()
@@ -930,21 +936,39 @@ final class WeatherViewModel: ObservableObject {
     }
 
     private func updateRegionDescription(for location: CLLocation) async {
-        geocoder.cancelGeocode()
+        localSearch?.cancel()
+        
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = "\(location.coordinate.latitude), \(location.coordinate.longitude)"
+        request.resultTypes = .address
+        
+        let search = MKLocalSearch(request: request)
+        localSearch = search
+        
         do {
-            let placemarks = try await geocoder.reverseGeocodeLocation(location)
-            if let placemark = placemarks.first {
+            let response = try await search.start()
+            if let item = response.mapItems.first {
+                let placemark = item.placemark
                 var components: [String] = []
+                
+                // Show "Locality, Region, Country" to protect privacy
                 if let locality = placemark.locality, !locality.isEmpty {
                     components.append(locality)
                 }
+
                 if let admin = placemark.administrativeArea, !admin.isEmpty {
                     components.append(admin)
-                } else if let country = placemark.country, !country.isEmpty {
+                }
+                
+                if let country = placemark.country, !country.isEmpty {
                     components.append(country)
                 }
-                let description = components.joined(separator: ", ")
-                regionDescription = description.isEmpty ? nil : description
+                
+                if !components.isEmpty {
+                    regionDescription = components.joined(separator: ", ")
+                } else {
+                    regionDescription = nil
+                }
             } else {
                 regionDescription = nil
             }

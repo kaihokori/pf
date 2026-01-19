@@ -59,7 +59,7 @@ enum SpaType: String, CaseIterable, Codable, Identifiable {
 
 enum SpaBodyPart: String, CaseIterable, Codable, Identifiable {
     case back = "Back"
-    case shoulder = "Shoulder"
+    case shoulder = "Shoulders"
     case legs = "Legs"
     case feet = "Feet"
     case head = "Head"

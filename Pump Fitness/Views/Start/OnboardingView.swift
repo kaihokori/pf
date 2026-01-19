@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import FirebaseAuth
 import SwiftData
+import HealthKit
 
 struct OnboardingView: View {
     var initialName: String? = nil
@@ -93,6 +94,8 @@ struct OnboardingView: View {
                                     ExpensesStepView(viewModel: viewModel)
                                 case .sports:
                                     SportsStepView(viewModel: viewModel)
+                                case .activityWellness:
+                                    ActivityWellnessStepView(viewModel: viewModel)
                                 case .itinerary:
                                     TravelStepView(viewModel: viewModel)
                                 }
@@ -334,6 +337,8 @@ struct OnboardingView: View {
         account.workoutSupplements = workoutSupplements
         account.nutritionSupplements = nutritionSupplements
         account.dailyTasks = dailyTasks
+        account.dailySummaryMetrics = viewModel.activityMetrics
+        account.dailyWellnessMetrics = viewModel.wellnessMetrics
         
         // New sections
         account.expenseCategories = viewModel.expenseCategories.map { category in
@@ -525,6 +530,8 @@ struct OnboardingView: View {
                 if !viewModel.newEventName.trimmingCharacters(in: .whitespaces).isEmpty {
                     viewModel.addItineraryEvent()
                 }
+            case .activityWellness:
+                 break
             default:
                 break
             }
@@ -533,6 +540,13 @@ struct OnboardingView: View {
         flushPendingForCurrentStep()
 
         if viewModel.canContinue {
+            if viewModel.currentStep == .activityWellness {
+                 let service = HealthKitService()
+                 let activityTypes = viewModel.activityMetrics.map { $0.type }
+                 let wellnessTypes = viewModel.wellnessMetrics.map { $0.type }
+                 service.requestAuthorization(activityMetrics: activityTypes, wellnessMetrics: wellnessTypes) { _ in }
+            }
+
             if viewModel.isLastStep {
                 if isRetake {
                     isSaving = true
@@ -629,6 +643,8 @@ struct OnboardingView: View {
             return "Please complete all fields."
         case .sports:
             return "Please complete all fields."
+        case .activityWellness:
+            return "Please select at least one metric or skip if optional."
         case .itinerary:
             return "Please complete all fields."
         }
@@ -1911,7 +1927,7 @@ private struct WorkoutTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
-    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes"]
+    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -2001,7 +2017,7 @@ private struct WorkoutTrackingStepView: View {
 private struct WeightsTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @State private var newBodyPart: String = ""
-    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes"]
+    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -2189,6 +2205,119 @@ private struct SportsStepView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ActivityWellnessStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var themeManager: ThemeManager
+
+    private let activityOptions = ActivityMetricType.allCases
+    private let wellnessOptions = WellnessMetricType.allCases
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 32) {
+            
+            // Activity Section
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Activity Metrics")
+                    .font(.headline)
+                
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                    ForEach(activityOptions) { type in
+                        let isSelected = viewModel.activityMetrics.contains(where: { $0.type == type })
+                        MetricSelectionPill(
+                            title: type.displayName,
+                            icon: type.systemImage,
+                            isSelected: isSelected
+                        ) {
+                            toggleActivity(type)
+                        }
+                    }
+                }
+            }
+            
+            // Wellness Section
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Wellness Metrics")
+                    .font(.headline)
+                
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                    ForEach(wellnessOptions) { type in
+                        let isSelected = viewModel.wellnessMetrics.contains(where: { $0.type == type })
+                        MetricSelectionPill(
+                            title: type.displayName,
+                            icon: type.systemImage,
+                            isSelected: isSelected
+                        ) {
+                            toggleWellness(type)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func toggleActivity(_ type: ActivityMetricType) {
+        if let idx = viewModel.activityMetrics.firstIndex(where: { $0.type == type }) {
+            viewModel.activityMetrics.remove(at: idx)
+        } else {
+            let metric = TrackedActivityMetric(
+                type: type,
+                goal: type.defaultGoal,
+                colorHex: "#007AFF"
+            )
+            viewModel.activityMetrics.append(metric)
+        }
+    }
+    
+    private func toggleWellness(_ type: WellnessMetricType) {
+        if let idx = viewModel.wellnessMetrics.firstIndex(where: { $0.type == type }) {
+            viewModel.wellnessMetrics.remove(at: idx)
+        } else {
+            let metric = TrackedWellnessMetric(
+                type: type,
+                goal: type.defaultGoal,
+                colorHex: "#34C759"
+            )
+            viewModel.wellnessMetrics.append(metric)
+        }
+    }
+}
+
+private struct MetricSelectionPill: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.subheadline)
+                Text(title)
+                    .font(.subheadline)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color(UIColor.secondarySystemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                    )
+            )
+            .foregroundStyle(isSelected ? Color.accentColor : .primary)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -2533,6 +2662,10 @@ final class OnboardingViewModel: ObservableObject {
     @Published var newEventName: String = ""
     @Published var newEventDate: Date = Date()
     @Published var newEventType: ItineraryCategory = .other
+
+    // Activity & Wellness
+    @Published var activityMetrics: [TrackedActivityMetric] = []
+    @Published var wellnessMetrics: [TrackedWellnessMetric] = []
     
     private var lastCalculatedTargets: MacroTargetsSnapshot?
     let isRetake: Bool
@@ -2563,6 +2696,7 @@ final class OnboardingViewModel: ObservableObject {
                 .habits,
                 .dailyTasks,
                 .expenses,
+                .activityWellness,
                 .workoutTracking,
                 .weightsTracking,
                 .workoutSupplements,
@@ -2577,6 +2711,7 @@ final class OnboardingViewModel: ObservableObject {
                 .habits,
                 .dailyTasks,
                 .expenses,
+                .activityWellness,
                 .workoutTracking,
                 .weightsTracking,
                 .workoutSupplements,
@@ -2631,6 +2766,8 @@ final class OnboardingViewModel: ObservableObject {
             sports = account.sports
             trackedBodyParts = Set(account.weightGroups.map { $0.name })
             workoutSchedule = account.workoutSchedule.isEmpty ? blankWorkoutSchedule() : account.workoutSchedule
+            activityMetrics = account.dailySummaryMetrics
+            wellnessMetrics = account.dailyWellnessMetrics
         }
     }
 
@@ -2708,6 +2845,9 @@ final class OnboardingViewModel: ObservableObject {
         case .expenses:
             return true
         case .sports:
+            return true
+        case .activityWellness:
+            // Allow continuing if user has selected at least one metric, or allow skipping
             return true
         case .itinerary:
             return true
@@ -3190,6 +3330,7 @@ enum OnboardingStep: CaseIterable, Equatable {
     case weightsTracking
     case expenses
     case sports
+    case activityWellness
     case itinerary
 
     var title: String {
@@ -3205,6 +3346,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .weightsTracking: return "Weights"
         case .expenses: return "Routine"
         case .sports: return "Sports"
+        case .activityWellness: return "Activity & Wellness"
         case .itinerary: return "Itinerary"
         }
     }
@@ -3215,6 +3357,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .goals: return "Goals"
         case .habits: return "Habits"
         case .expenses: return "Expenses"
+        case .activityWellness: return "Summary"
         default: return nil
         }
     }
@@ -3232,6 +3375,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .weightsTracking: return "dumbbell.fill"
         case .expenses: return "dollarsign.circle"
         case .sports: return "sportscourt"
+        case .activityWellness: return "figure.walk"
         case .itinerary: return "airplane"
         }
     }
@@ -3249,6 +3393,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .weightsTracking: return "Choose which body parts you want to track for weights."
         case .expenses: return "Yeah we know! We could help you manage your expenses!"
         case .sports: return "What sports do you want to track your performance in?"
+        case .activityWellness: return "Track your daily activity and wellness metrics."
         case .itinerary: return "Keep track of plans before you voyage around the world"
         }
     }

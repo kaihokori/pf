@@ -689,22 +689,25 @@ struct WorkoutTabView: View {
                             .foregroundStyle(.primary)
 
                         Spacer()
-
-                        Button {
-                            showDailySummaryEditor = true
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                                .font(.callout)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 18.0))
-                        }
-                        .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 18)
                     .padding(.top, 48)
+
+                    Button {
+                        showDailySummaryEditor = true
+                    } label: {
+                        Label("Change Goal", systemImage: "pencil")
+                          .font(.callout.weight(.semibold))
+                          .padding(.vertical, 18)
+                          .frame(maxWidth: .infinity, minHeight: 52)
+                          .glassEffect(in: .rect(cornerRadius: 16.0))
+                          .contentShape(Rectangle())
+                    }
+                    .nutritionTip(.editCalorieGoal)
+                    .padding(.top, 8)
+                    .padding(.horizontal, 18)
+                    .buttonStyle(.plain)
 
                     if account.dailySummaryMetrics.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -2700,7 +2703,7 @@ private struct WorkoutScheduleEditorSheet: View {
         [
             WorkoutSession(name: "Chest", colorHex: "#D84A4A"),
             WorkoutSession(name: "Back", colorHex: "#4A7BD0"),
-            WorkoutSession(name: "Shoulder", colorHex: "#E39A3B"),
+            WorkoutSession(name: "Shoulders", colorHex: "#E39A3B"),
             WorkoutSession(name: "Legs", colorHex: "#7A5FD1"),
             WorkoutSession(name: "Core", colorHex: "#4CAF6A"),
             WorkoutSession(name: "Yoga", colorHex: "#4FB6C6"),
@@ -3857,7 +3860,7 @@ private struct WeightsGroupEditorSheet: View {
     @State private var hasLoaded = false
     @State private var showProSubscription = false
 
-    private let presets: [String] = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Full Body"]
+    private let presets: [String] = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
     private let maxTracked = 6
 
     private var canAddMore: Bool {

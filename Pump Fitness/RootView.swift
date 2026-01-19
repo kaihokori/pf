@@ -1667,12 +1667,19 @@ private extension RootView {
     }
 
     private func updateExpenseEntriesState(forDay dayDate: Date, with entries: [ExpenseEntry]) {
-        let calendar = Calendar.current
-        let dayStart = calendar.startOfDay(for: dayDate)
-        let weekStarts = datesForWeek(containing: selectedDate).map { calendar.startOfDay(for: $0) }
-        guard weekStarts.contains(dayStart) else { return }
+        // dayDate comes from Day model which stores dates as UTC-normalized start-of-day.
+        // We must convert this back to the local date components it represents to match against the UI's local week dates.
+        var utcCal = Calendar(identifier: .gregorian)
+        utcCal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = utcCal.dateComponents([.year, .month, .day], from: dayDate)
+        
+        let localCal = Calendar.current
+        guard let localDayStart = localCal.date(from: components) else { return }
 
-        var filtered = expenseEntries.filter { calendar.startOfDay(for: $0.date) != dayStart }
+        let weekStarts = datesForWeek(containing: selectedDate).map { localCal.startOfDay(for: $0) }
+        guard weekStarts.contains(localDayStart) else { return }
+
+        var filtered = expenseEntries.filter { localCal.startOfDay(for: $0.date) != localDayStart }
         filtered.append(contentsOf: entries)
         filtered.sort { $0.date < $1.date }
         expenseEntries = filtered
@@ -1801,6 +1808,9 @@ private extension RootView {
     }
 
     func persistSportActivities(_ activities: [SportActivityRecord]) {
+        // Optimistic Update
+        self.sportActivities = activities
+
         Task {
             let day = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
             day.sportActivities = activities
@@ -1982,6 +1992,20 @@ private extension RootView {
     }
 
     func persistExpenseEntry(_ entry: ExpenseEntry) {
+        // Optimistic UI Update
+        let localCal = Calendar.current
+        let entryStart = localCal.startOfDay(for: entry.date)
+        
+        // Only update state if the entry falls within the currently displayed week
+        let weekStarts = datesForWeek(containing: selectedDate).map { localCal.startOfDay(for: $0) }
+        
+        if weekStarts.contains(entryStart) {
+             var currentEntries = expenseEntries.filter { $0.id != entry.id }
+             currentEntries.append(entry)
+             currentEntries.sort { $0.date < $1.date }
+             self.expenseEntries = currentEntries
+        }
+
         Task {
             let day = Day.fetchOrCreate(for: entry.date, in: modelContext, trackedMacros: trackedMacros)
             var updated = day.expenses.filter { $0.id != entry.id }
@@ -2008,6 +2032,9 @@ private extension RootView {
     func deleteExpenseEntry(_ id: UUID) {
         guard let existing = expenseEntries.first(where: { $0.id == id }) else { return }
         let targetDate = existing.date
+
+        // Optimistic Update
+        self.expenseEntries.removeAll { $0.id == id }
 
         Task {
             let day = Day.fetchOrCreate(for: targetDate, in: modelContext, trackedMacros: trackedMacros)
@@ -2422,10 +2449,9 @@ private extension RootView {
                 }
                 // Debug: show counts before applying fetched values
                 // Only overwrite the local image if we fetched a new one, or if the avatar setting changed (e.g. reverted to a color).
-                // If the fetch failed to download the image (nil) but the avatar string is still a URL, preserve the local cache.
                 if let newImage = fetched.profileImage {
                     local.profileImage = newImage
-                } else if let avatar = fetched.profileAvatar, !avatar.hasPrefix("http") {
+                } else if let avatar = fetched.profileAvatar, !avatar.hasPrefix("http") && !avatar.hasPrefix("gs://") {
                     // Avatar is not a URL (e.g. it's a color index), so clear the image data.
                     local.profileImage = nil
                 }
@@ -2478,8 +2504,15 @@ private extension RootView {
                 local.cravings = fetched.cravings
                 local.groceryItems = fetched.groceryItems
                 local.expenseCategories = fetched.expenseCategories
+                // Sync remote tracked leagues to UserDefaults for views using AppStorage
+                if !fetched.trackedLeagueIds.isEmpty {
+                    UserDefaults.standard.set(fetched.trackedLeagueIds.joined(separator: ","), forKey: "trackedLeagueIds")
+                    self.trackedLeagueIdsRaw = fetched.trackedLeagueIds.joined(separator: ",")
+                }
                 local.expenseCurrencySymbol = fetched.expenseCurrencySymbol
                 local.recoveryCategories = fetched.recoveryCategories
+                local.trackedLeagueIds = fetched.trackedLeagueIds
+                local.injuries = fetched.injuries
                 local.weeklyProgress = fetched.weeklyProgress
                     // Persist supplements from server into local Account
                     local.workoutSupplements = fetched.workoutSupplements
@@ -2562,7 +2595,17 @@ private extension RootView {
                     distanceGoal: fetched.distanceGoal,
                     weightGroups: fetched.weightGroups,
                     activityTimers: fetched.activityTimers,
-                    recoveryCategories: fetched.recoveryCategories
+                    trackedLeagueIds: fetched.trackedLeagueIds,
+                    recoveryCategories: fetched.recoveryCategories,
+                    injuries: fetched.injuries,
+                    trialPeriodEnd: fetched.trialPeriodEnd,
+                    proPeriodEnd: fetched.proPeriodEnd,
+                    manualPro: fetched.manualPro,
+                    overridePro: fetched.overridePro,
+                    subscriptionStatus: fetched.subscriptionStatus,
+                    subscriptionStatusUpdatedAt: fetched.subscriptionStatusUpdatedAt,
+                    didCompleteOnboarding: fetched.didCompleteOnboarding,
+                    googleRefreshToken: fetched.googleRefreshToken
                 )
                     weightGroups = newAccount.weightGroups
                 goals = newAccount.goals
@@ -2660,7 +2703,10 @@ private extension RootView {
                                         local.dailyTasks = newAccount.dailyTasks
                                         local.workoutSupplements = newAccount.workoutSupplements
                                         local.nutritionSupplements = newAccount.nutritionSupplements
+                                        local.trackedLeagueIds = newAccount.trackedLeagueIds
                                         local.sports = newAccount.sports
+                                        local.injuries = newAccount.injuries
+                                        local.recoveryCategories = newAccount.recoveryCategories
                                         local.dailySummaryMetrics = newAccount.dailySummaryMetrics
                                         local.dailyWellnessMetrics = newAccount.dailyWellnessMetrics
                                         local.soloMetrics = newAccount.soloMetrics
@@ -2835,6 +2881,13 @@ private extension RootView {
                             ) {
                                 TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate, isPro: isPro)
                                     .onAppear { handleTabAppear(.itinerary) }
+                            }
+                        }
+                        .onChange(of: trackedLeagueIdsRaw) { oldValue, newValue in
+                            if let local = fetchAccount() {
+                                local.trackedLeagueIds = newValue.split(separator: ",").map(String.init)
+                                try? modelContext.save()
+                                accountFirestoreService.saveAccount(local) { _ in }
                             }
                         }
                     }

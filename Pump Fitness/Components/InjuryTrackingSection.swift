@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct InjuryTrackingSection: View {
+    @EnvironmentObject private var themeManager: ThemeManager
     @Binding var injuries: [Injury]
-    let theme: String?
     var selectedDate: Date = Date()
     var onSave: (() -> Void)?
     
@@ -66,7 +66,7 @@ struct InjuryTrackingSection: View {
             } else {
                 // Body View & List
                 VStack(spacing: 0) {
-                    BodyDiagramView(injuries: injuries, theme: theme, selectedDate: selectedDate)
+                    BodyDiagramView(injuries: injuries, selectedDate: selectedDate)
                         .frame(height: 200)
                     
                     Divider()

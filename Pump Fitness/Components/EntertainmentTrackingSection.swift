@@ -1,5 +1,5 @@
 //
-//  EntertainmentTrackingSection.swift
+//  MusicTrackingSection.swift
 //  Pump Fitness
 //
 //  Created for Trackerio.
@@ -8,8 +8,10 @@
 import SwiftUI
 import MusicKit
 
-struct EntertainmentTrackingSection: View {
+struct MusicTrackingSection: View {
     @Environment(\.openURL) private var openURL
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var musicService = MusicService.shared
     @State private var isConnecting = false
     @State private var showHistorySheet = false
@@ -214,8 +216,8 @@ struct EntertainmentTrackingSection: View {
                 .padding(.top, 4)
             }
             .padding(.vertical, 24)
-            .background(.thinMaterial) // Cleaner glass look
-            .clipShape(RoundedRectangle(cornerRadius: 24))
+            .padding(.horizontal, 8)
+            .glassEffect(in: .rect(cornerRadius: 16.0))
             .shadow(color: Color.black.opacity(0.05), radius: 15, x: 0, y: 5)
             .task {
                 await musicService.fetchData()
@@ -223,6 +225,48 @@ struct EntertainmentTrackingSection: View {
             .sheet(isPresented: $showHistorySheet) {
                 MusicHistorySheet(songs: musicService.topSongs)
             }
+        } else if musicService.isDenied {
+            VStack(spacing: 12) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(themeManager.selectedTheme == .multiColour ? Color.orange : themeManager.selectedTheme.accent(for: colorScheme))
+                    .padding(.bottom, 4)
+                
+                Text("Access Denied")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                
+                Text("To view your music stats, please enable Media & Apple Music access in your iPhone Settings.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Open Settings", systemImage: "1.circle.fill")
+                    Label("Tap Trackerio", systemImage: "2.circle.fill")
+                    Label("Enable Media & Apple Music", systemImage: "3.circle.fill")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text("Open Settings")
+                        .fontWeight(.medium)
+                        .frame(minWidth: 140)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+            .glassEffect(in: .rect(cornerRadius: 16))
+            .transition(.opacity)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "music.note.house.fill")
@@ -252,16 +296,6 @@ struct EntertainmentTrackingSection: View {
                             .frame(minWidth: 140)
                     }
                     .buttonStyle(.borderedProminent)
-                    .padding(.top, 8)
-                    
-                    Button {
-                        // Placeholder for learn more
-                    } label: {
-                        Text("Learn more about integration")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
                     .padding(.top, 8)
                 }
             }
@@ -390,12 +424,27 @@ struct MusicHistorySheet: View {
 
 private struct GenrePieChart: View {
     let items: [(String, Double)]
-    // Modern, vibrant palette
-    private let palette: [Color] = [
-        .purple, .pink, .orange, .blue, 
-        .cyan, .green, .indigo, .mint
-    ]
-    
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var palette: [Color] {
+        if themeManager.selectedTheme == .multiColour {
+            return [.purple, .pink, .orange, .blue, .cyan, .green, .indigo, .mint]
+        } else {
+            let accent = themeManager.selectedTheme.accent(for: colorScheme)
+            return [
+                accent,
+                accent.opacity(0.85),
+                accent.opacity(0.7),
+                accent.opacity(0.55),
+                accent.opacity(0.4),
+                accent.opacity(0.25),
+                accent.opacity(0.12),
+                accent.opacity(0.08)
+            ]
+        }
+    }
+
     var body: some View {
         HStack(spacing: 24) {
             // Determines the displayed segments (Top 5 + 'Other' potentially, but effectively taking top 5)

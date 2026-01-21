@@ -35,6 +35,10 @@ struct SportsTabView: View {
     private let healthKitService = HealthKitService()
     @State private var healthKitAuthorized = false
 
+    // Sleep tracking state (moved from RoutineTabView)
+    @State private var nightSleepSeconds: TimeInterval = 0
+    @State private var napSleepSeconds: TimeInterval = 0
+
     // Keyboard Toolbar State
     @State private var isKeyboardBarVisible = false
     @State private var keyboardBarUnit = "°F"
@@ -480,7 +484,7 @@ struct SportsTabView: View {
                                       .contentShape(Rectangle())
                                 }
                                 .nutritionTip(.editCalorieGoal)
-                                .padding(.top, 8)
+                                .padding(.top, 16)
                                 .padding(.horizontal, 18)
                                 .buttonStyle(.plain)
 
@@ -644,7 +648,30 @@ struct SportsTabView: View {
                                     isSimpleKeyboardVisible: $isSimpleKeyboardBarVisible,
                                     onSimpleDismiss: $onSimpleKeyboardDismiss
                                 )
-                                
+
+                                HStack {
+                                    Text("Sleep Tracking")
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+
+                                    Spacer()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 38)
+                                .padding(.horizontal, 18)
+
+                                SleepTrackingSection(
+                                    accentColor: accentOverride,
+                                    nightStored: $nightSleepSeconds,
+                                    napStored: $napSleepSeconds,
+                                    onPersist: { night, nap in
+                                        onUpdateSleep(night, nap)
+                                    },
+                                    onLiveUpdate: { night, nap in
+                                        onLiveSleepUpdate(night, nap)
+                                    }
+                                )
                         }
                       }
                       .padding(.bottom, 24)
@@ -748,9 +775,44 @@ struct SportsTabView: View {
         }
         .onAppear {
             refreshWellnessValues()
+            refreshSleepValues()
         }
         .onChange(of: selectedDate) { _, _ in
             refreshWellnessValues()
+            refreshSleepValues()
+        }
+    }
+
+    private func refreshSleepValues() {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        nightSleepSeconds = day.nightSleepSeconds
+        napSleepSeconds = day.napSleepSeconds
+    }
+
+    private func onLiveSleepUpdate(_ night: TimeInterval, _ nap: TimeInterval) {
+        nightSleepSeconds = night
+        napSleepSeconds = nap
+    }
+
+    private func onUpdateSleep(_ night: TimeInterval, _ nap: TimeInterval) {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        day.nightSleepSeconds = night
+        day.napSleepSeconds = nap
+
+        do {
+            try modelContext.save()
+        } catch {
+            print("SportsTabView: failed to save sleep locally: \(error)")
+        }
+
+        var fields: [String: Any] = [:]
+        fields["nightSleepSeconds"] = night
+        fields["napSleepSeconds"] = nap
+
+        dayService.updateDayFields(fields, for: day) { success in
+            if !success {
+                print("SportsTabView: failed to sync sleep to Firestore for date=\(selectedDate)")
+            }
         }
     }
 

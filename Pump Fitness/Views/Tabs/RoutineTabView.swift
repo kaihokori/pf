@@ -613,49 +613,25 @@ struct RoutineTabView: View {
 
                             Spacer()
 
-                            Button {
-                                showMusicSourcesSheet = true
-                            } label: {
-                                Label("Manage", systemImage: "gear")
-                                    .font(.callout)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
-                            }
-                            .buttonStyle(.plain)
+                            // Button {
+                            //     showMusicSourcesSheet = true
+                            // } label: {
+                            //     Label("Manage", systemImage: "gear")
+                            //         .font(.callout)
+                            //         .fontWeight(.medium)
+                            //         .padding(.horizontal, 12)
+                            //         .padding(.vertical, 8)
+                            //         .glassEffect(in: .rect(cornerRadius: 18.0))
+                            // }
+                            // .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 38)
                         .padding(.horizontal, 18)
 
-                        EntertainmentTrackingSection()
+                        MusicTrackingSection()
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
-
-                        HStack {
-                            Text("Sleep Tracking")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 38)
-                        .padding(.horizontal, 18)
-
-                        SleepTrackingSection(
-                            accentColor: accentOverride,
-                            nightStored: $nightSleepSeconds,
-                            napStored: $napSleepSeconds,
-                            onPersist: { night, nap in
-                                onUpdateSleep(night, nap)
-                            },
-                            onLiveUpdate: { night, nap in
-                                onLiveSleepUpdate(night, nap)
-                            }
-                        )
 
                         VStack(alignment: .leading, spacing: 16) {
                             // New collapsible Sleep Summary section (Macro-style layout adapted for sleep)
@@ -711,6 +687,20 @@ struct RoutineTabView: View {
                         .glassEffect(in: .rect(cornerRadius: 16.0))
                         .padding(.horizontal, 18)
                         .padding(.top, 12)
+
+                        HStack {
+                            Text("Entertainment Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 38)
+                        .padding(.horizontal, 18)
+
+                        // Entertainment Tracking Section
 
                         HStack {
                             Text("Grocery List")

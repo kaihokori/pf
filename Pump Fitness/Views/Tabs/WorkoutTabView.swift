@@ -705,7 +705,7 @@ struct WorkoutTabView: View {
                           .contentShape(Rectangle())
                     }
                     .nutritionTip(.editCalorieGoal)
-                    .padding(.top, 8)
+                    .padding(.top, 16)
                     .padding(.horizontal, 18)
                     .buttonStyle(.plain)
 

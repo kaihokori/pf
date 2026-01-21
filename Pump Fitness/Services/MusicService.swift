@@ -42,6 +42,7 @@ class MusicService: ObservableObject {
     static let shared = MusicService()
     
     @Published var isAuthorized = false
+    @Published var isDenied = false
     @Published var topGenre: String = "-"
     @Published var topArtist: String = "-"
     @Published var totalMinutes: Int = 0
@@ -65,7 +66,10 @@ class MusicService: ObservableObject {
             let status = MusicAuthorization.currentStatus
             if status == .authorized {
                 self.isAuthorized = true
+            } else if status == .denied || status == .restricted {
+                self.isDenied = true
             }
+            
             // Check Spotify status too
             if SpotifyService.shared.isConnected {
                 self.isAuthorized = true
@@ -78,10 +82,14 @@ class MusicService: ObservableObject {
         let status = await MusicAuthorization.request()
         if status == .authorized {
             self.isAuthorized = true
+            self.isDenied = false
         } else {
             let mpStatus = await MPMediaLibrary.requestAuthorization()
             if mpStatus == .authorized {
                 self.isAuthorized = true
+                self.isDenied = false
+            } else if mpStatus == .denied || mpStatus == .restricted || status == .denied || status == .restricted {
+                self.isDenied = true
             }
         }
         await fetchData()

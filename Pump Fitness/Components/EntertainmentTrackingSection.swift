@@ -1,5 +1,5 @@
 //
-//  MusicTrackingSection.swift
+//  EntertainmentTrackingSection.swift
 //  Pump Fitness
 //
 //  Created for Trackerio.
@@ -7,6 +7,8 @@
 
 import SwiftUI
 import MusicKit
+
+// MARK: - Music Tracking Section
 
 struct MusicTrackingSection: View {
     @Environment(\.openURL) private var openURL
@@ -330,7 +332,7 @@ struct MusicTrackingSection: View {
     }
 }
 
-// MARK: - Subcomponents
+// MARK: - Music Subcomponents
 
 private struct MusicSectionHeader: View {
     let title: String
@@ -575,6 +577,672 @@ private struct SongRowView: View {
         .onTapGesture {
             onTap()
         }
+    }
+}
+
+// MARK: - Entertainment Tracking Section
+
+struct EntertainmentTrackingSection: View {
+    @Binding var watchedItems: [WatchedEntertainmentItem]
+    @State private var viewingType: EntertainmentType?
+    @State private var editingItem: WatchedEntertainmentItem?
+    
+    enum EntertainmentType: String, Identifiable {
+        case movie = "Movies"
+        case tv = "TV Shows"
+        var id: String { rawValue }
+    }
+    
+    private var movies: [WatchedEntertainmentItem] {
+        watchedItems.filter { $0.mediaType == "movie" }
+    }
+    
+    private var tvShows: [WatchedEntertainmentItem] {
+        watchedItems.filter { $0.mediaType == "tv" }
+    }
+    
+    private let movieGenres = [
+        28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+        99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+        27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance", 878: "Sci-Fi",
+        10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western"
+    ]
+    
+    private let tvGenres = [
+        10759: "Action & Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+        99: "Documentary", 18: "Drama", 10751: "Family", 10762: "Kids", 9648: "Mystery",
+        10763: "News", 10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap",
+        10767: "Talk", 10768: "War & Politics", 37: "Western"
+    ]
+    
+    private var genreDistribution: [(String, Double)] {
+        var counts: [String: Int] = [:]
+        var totalCount = 0
+        
+        for item in watchedItems {
+            let mapping = item.mediaType == "movie" ? movieGenres : tvGenres
+            for genreId in item.genreIds {
+                if let name = mapping[genreId] {
+                    counts[name, default: 0] += 1
+                    totalCount += 1
+                }
+            }
+        }
+        
+        guard totalCount > 0 else { return [] }
+        
+        return counts.map { ($0.key, Double($0.value) / Double(totalCount)) }
+            .sorted { $0.1 > $1.1 }
+    }
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            if watchedItems.isEmpty {
+                EmptyStateView()
+            } else {
+                if !movies.isEmpty {
+                    EntertainmentRow(
+                        title: "Movies",
+                        icon: "film",
+                        items: movies,
+                        onShowMore: { viewingType = .movie },
+                        onItemTap: { editingItem = $0 }
+                    )
+                }
+                
+                if !tvShows.isEmpty {
+                    EntertainmentRow(
+                        title: "TV Shows",
+                        icon: "tv",
+                        items: tvShows,
+                        onShowMore: { viewingType = .tv },
+                        onItemTap: { editingItem = $0 }
+                    )
+                }
+                
+                Divider()
+                    .padding(.horizontal, 18)
+                    .opacity(0.5)
+
+                // MARK: - Genre Breakdown
+                VStack(alignment: .leading, spacing: 12) {
+                    MusicSectionHeader(title: "Genre Breakdown", icon: "chart.pie.fill")
+                    
+                    if genreDistribution.isEmpty {
+                        Text("Not enough data")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                    } else {
+                        GenrePieChart(items: genreDistribution)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .sheet(item: $viewingType) { type in
+            AllEntertainmentSheet(
+                title: type.rawValue,
+                items: type == .movie ? movies : tvShows,
+                onItemTap: { item in
+                    editingItem = item
+                }
+            )
+        }
+        .sheet(item: $editingItem) { item in
+            LogWatchedSheet(
+                isPresented: Binding(
+                    get: { editingItem != nil },
+                    set: { if !$0 { editingItem = nil } }
+                ),
+                existingItem: item,
+                onAdd: { _ in },
+                onUpdate: { updatedItem in
+                    if let index = watchedItems.firstIndex(where: { $0.id == item.id }) {
+                        watchedItems[index] = updatedItem
+                    }
+                },
+                onDelete: {
+                    if let index = watchedItems.firstIndex(where: { $0.id == item.id }) {
+                        watchedItems.remove(at: index)
+                    }
+                }
+            )
+        }
+    }
+    
+    private struct EntertainmentRow: View {
+        let title: String
+        let icon: String
+        let items: [WatchedEntertainmentItem]
+        let onShowMore: () -> Void
+        let onItemTap: (WatchedEntertainmentItem) -> Void
+        
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .foregroundStyle(Color.accentColor)
+                        .font(.subheadline)
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                }
+                .padding(.horizontal, 18)
+                
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(items.sorted(by: { $0.dateWatched > $1.dateWatched }).prefix(5)) { item in
+                            WatchedItemCard(item: item)
+                                .onTapGesture {
+                                    onItemTap(item)
+                                }
+                        }
+                        
+                        if items.count > 5 {
+                            Button(action: onShowMore) {
+                                VStack(spacing: 8) {
+                                    Circle()
+                                        .fill(Color.secondary.opacity(0.1))
+                                        .frame(width: 48, height: 48)
+                                        .overlay(
+                                            Image(systemName: "arrow.right")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                        )
+                                    
+                                    Text("Show More")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.primary)
+                                }
+                                .frame(width: 140, height: 290)
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                }
+            }
+        }
+    }
+    
+    private struct EmptyStateView: View {
+        var body: some View {
+            VStack(spacing: 12) {
+                Image(systemName: "popcorn")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary)
+                
+                Text("No movies or shows logged yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 30)
+            .padding(.horizontal, 18)
+        }
+    }
+}
+
+private struct WatchedItemCard: View {
+    let item: WatchedEntertainmentItem
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Poster/Image area
+            AsyncImage(url: item.fullPosterUrl) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                case .failure:
+                    ZStack {
+                        Color.gray.opacity(0.3)
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(.secondary)
+                    }
+                case .empty:
+                    ZStack {
+                        Color.gray.opacity(0.3)
+                        ProgressView()
+                    }
+                @unknown default:
+                    Color.gray.opacity(0.3)
+                }
+            }
+            .frame(width: 140, height: 200)
+            .clipped()
+            
+            // Info area
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+                
+                HStack(spacing: 2) {
+                    ForEach(1...5, id: \.self) { star in
+                        Image(systemName: star <= item.rating ? "star.fill" : "star")
+                            .font(.caption2)
+                            .foregroundStyle(star <= item.rating ? .yellow : .secondary.opacity(0.3))
+                    }
+                }
+                
+                Text(item.dateWatched.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                
+                if !item.comment.isEmpty {
+                    Text(item.comment)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(12)
+            .frame(width: 140, height: 90, alignment: .topLeading)
+            .background(.regularMaterial)
+        }
+        .frame(width: 140, height: 290)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+}
+
+private struct AllEntertainmentSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let items: [WatchedEntertainmentItem]
+    let onItemTap: (WatchedEntertainmentItem) -> Void
+    
+    @State private var sortOption: SortOption = .rating
+    
+    enum SortOption: String, CaseIterable, Identifiable {
+        case rating = "Rating"
+        case date = "Date Watched"
+        case alpha = "Title"
+        var id: String { rawValue }
+    }
+    
+    var sortedItems: [WatchedEntertainmentItem] {
+        switch sortOption {
+        case .rating:
+            return items.sorted {
+                if $0.rating == $1.rating {
+                    return $0.dateWatched > $1.dateWatched
+                }
+                return $0.rating > $1.rating
+            }
+        case .date:
+            return items.sorted { $0.dateWatched > $1.dateWatched }
+        case .alpha:
+            return items.sorted { $0.title < $1.title }
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 20) {
+                    ForEach(sortedItems) { item in
+                        WatchedItemCard(item: item)
+                            .onTapGesture {
+                                onItemTap(item)
+                            }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        ForEach(SortOption.allCases) { option in
+                            Button {
+                                sortOption = option
+                            } label: {
+                                if sortOption == option {
+                                    Label(option.rawValue, systemImage: "checkmark")
+                                } else {
+                                    Text(option.rawValue)
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down.circle")
+                    }
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+struct LogWatchedSheet: View {
+    @Binding var isPresented: Bool
+    var existingItem: WatchedEntertainmentItem? = nil
+    var onAdd: (WatchedEntertainmentItem) -> Void
+    var onUpdate: ((WatchedEntertainmentItem) -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
+    
+    @State private var query = ""
+    @State private var searchResults: [TMDBItem] = []
+    @State private var isSearching = false
+    @State private var hasSearched = false
+    @State private var selectedItem: TMDBItem?
+    
+    // Form state
+    @State private var rating = 0
+    @State private var comment = ""
+    @State private var dateWatched = Date()
+    @State private var showDeleteConfirmation = false
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if selectedItem == nil && existingItem == nil {
+                    // Search Mode
+                    searchView
+                } else {
+                    // Entry Mode
+                    entryFormView
+                }
+            }
+            .navigationTitle(existingItem != nil ? "Edit Details" : (selectedItem == nil ? "Log Watched" : "Add Details"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isPresented = false }
+                }
+                
+                if selectedItem != nil || existingItem != nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            saveEntry()
+                        }
+                        .disabled(rating == 0)
+                    }
+                }
+            }
+            .onAppear {
+                if let existing = existingItem {
+                    // Pre-populate
+                    rating = existing.rating
+                    comment = existing.comment
+                    dateWatched = existing.dateWatched
+                    
+                    // Reconstruct TMDBItem for display
+                    selectedItem = TMDBItem(
+                        id: existing.tmdbId,
+                        title: existing.mediaType == "movie" ? existing.title : nil,
+                        name: existing.mediaType == "tv" ? existing.title : nil,
+                        overview: existing.overview,
+                        posterPath: existing.posterPath,
+                        backdropPath: nil,
+                        releaseDate: nil,
+                        firstAirDate: nil,
+                        mediaType: existing.mediaType,
+                        genreIds: existing.genreIds
+                    )
+                }
+            }
+            .alert("Delete Entry?", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    onDelete?()
+                    isPresented = false
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to delete this entry? This actions cannot be undone.")
+            }
+        }
+    }
+    
+    private var searchView: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search movies & TV shows...", text: $query)
+                    .submitLabel(.search)
+                    .onChange(of: query) { _, newValue in
+                        Task {
+                            guard !newValue.isEmpty else {
+                                searchResults = []
+                                hasSearched = false
+                                return
+                            }
+                            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s debounce
+                            if !Task.isCancelled && query == newValue {
+                                performSearch()
+                            }
+                        }
+                    }
+                
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                        searchResults = []
+                        hasSearched = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding()
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding()
+            
+            if isSearching {
+                ProgressView()
+                    .padding(.top, 40)
+                Spacer()
+            } else if hasSearched && searchResults.isEmpty && !query.isEmpty {
+                ContentUnavailableView.search(text: query)
+            } else {
+                List(searchResults) { item in
+                    Button {
+                        withAnimation {
+                            selectedItem = item
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            AsyncImage(url: item.fullPosterUrl) { phase in
+                                if let image = phase.image {
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                } else {
+                                    Color.gray.opacity(0.3)
+                                }
+                            }
+                            .frame(width: 48, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.displayTitle)
+                                    .font(.system(.body, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                
+                                HStack {
+                                    Text(item.mediaType == "movie" ? "Movie" : "TV Show")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.secondary.opacity(0.1), in: Capsule())
+                                    
+                                    if !item.displayDate.isEmpty {
+                                        Text(item.displayDate)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .listStyle(.plain)
+            }
+        }
+    }
+    
+    private var entryFormView: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // Header
+                HStack(spacing: 16) {
+                    AsyncImage(url: selectedItem?.fullPosterUrl) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        } else {
+                            Color.gray.opacity(0.3)
+                        }
+                    }
+                    .frame(width: 100, height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .shadow(radius: 5)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(selectedItem?.displayTitle ?? "")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Text(selectedItem?.overview ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(5)
+                    }
+                }
+                .padding()
+                
+                Divider()
+                
+                // Rating
+                VStack(spacing: 12) {
+                    Text("Your Rating")
+                        .font(.headline)
+                    
+                    HStack(spacing: 12) {
+                        ForEach(1...5, id: \.self) { star in
+                            Button {
+                                rating = star
+                            } label: {
+                                Image(systemName: star <= rating ? "star.fill" : "star")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(star <= rating ? .yellow : .secondary.opacity(0.3))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                
+                Divider()
+                
+                // Details
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Date Watched")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        DatePicker("", selection: $dateWatched, displayedComponents: [.date])
+                            .labelsHidden()
+                            .padding(12)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Comments")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        TextField("What did you think?", text: $comment, axis: .vertical)
+                            .lineLimit(3...6)
+                            .padding(12)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(.horizontal)
+                
+                if existingItem != nil {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Text("Delete Entry")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                            .foregroundStyle(.red)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 24)
+                }
+                
+                Color.clear.frame(height: 20)
+            }
+            .padding(.vertical)
+        }
+    }
+    
+    private func performSearch() {
+        guard !query.isEmpty else { return }
+        isSearching = true
+        // Keep hasSearched false until done
+        Task {
+            do {
+                let results = try await TMDBService.shared.search(query: query)
+                await MainActor.run {
+                    self.searchResults = results
+                    self.isSearching = false
+                    self.hasSearched = true
+                }
+            } catch {
+                print("Error searching: \(error)")
+                await MainActor.run {
+                    self.isSearching = false
+                    self.hasSearched = true
+                }
+            }
+        }
+    }
+    
+    private func saveEntry() {
+        guard let item = selectedItem else { return }
+        
+        // Preserve original ID if editing, else new UUID
+        let newEntry = WatchedEntertainmentItem(
+            id: existingItem?.id ?? UUID(),
+            tmdbId: item.id,
+            title: item.displayTitle,
+            overview: item.overview,
+            posterPath: item.posterPath,
+            rating: rating,
+            comment: comment,
+            dateWatched: dateWatched,
+            mediaType: item.mediaType ?? "movie",
+            genreIds: item.genreIds ?? []
+        )
+        
+        if existingItem != nil {
+            onUpdate?(newEntry)
+        } else {
+            onAdd(newEntry)
+        }
+        isPresented = false
     }
 }
 

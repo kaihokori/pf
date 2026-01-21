@@ -38,6 +38,9 @@ struct SportsTabView: View {
     // Sleep tracking state (moved from RoutineTabView)
     @State private var nightSleepSeconds: TimeInterval = 0
     @State private var napSleepSeconds: TimeInterval = 0
+    @State private var showWeeklySleep: Bool = false
+    @State private var weekStartsOnMonday: Bool = true
+    @Binding var weeklySleepEntries: [SleepDayEntry]
 
     // Keyboard Toolbar State
     @State private var isKeyboardBarVisible = false
@@ -51,6 +54,13 @@ struct SportsTabView: View {
     var accentOverride: Color? {
         guard themeManager.selectedTheme != .multiColour else { return nil }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    var workoutTimelineAccent: Color {
+        if themeManager.selectedTheme == .multiColour {
+            return Color.yellow
+        }
+        return accentOverride ?? .accentColor
     }
 
 
@@ -672,12 +682,68 @@ struct SportsTabView: View {
                                         onLiveSleepUpdate(night, nap)
                                     }
                                 )
+
+                                VStack(alignment: .leading, spacing: 16) {
+                                    // New collapsible Sleep Summary section (Macro-style layout adapted for sleep)
+                                    HStack {
+                                        Spacer()
+                                        Label("Sleep Summary", systemImage: "bed.double.fill")
+                                            .font(.callout.weight(.semibold))
+                                        Image(systemName: showWeeklySleep ? "chevron.up" : "chevron.down")
+                                            .font(.caption.weight(.semibold))
+                                        Spacer()
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            showWeeklySleep.toggle()
+                                        }
+                                    }
+
+                                    if showWeeklySleep {
+                                        VStack(alignment: .leading, spacing: 10) {
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                HStack(spacing: 12) {
+                                                    let cal = Calendar.current
+                                                    let today = selectedDate
+                                                    let weekday = cal.component(.weekday, from: today) // 1 = Sunday
+                                                    let startIndex = weekStartsOnMonday ? 2 : 1
+                                                    let offsetToStart = (weekday - startIndex + 7) % 7
+                                                    let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
+
+                                                    let weekDates: [Date] = (0..<7).compactMap { i in
+                                                        cal.date(byAdding: .day, value: i, to: startOfWeek)
+                                                    }
+
+                                                    ForEach(weekDates, id: \.self) { day in
+                                                        if let entry = weeklySleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
+                                                            // Use existing entry values
+                                                            SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: entry.nightSeconds, napSeconds: entry.napSeconds)
+                                                        } else {
+                                                            // No recorded data for this day yet
+                                                            SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: 0, napSeconds: 0)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                        .padding(.top, 6)
+                                    }
+                                }
+                                .padding(20)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                .padding(.horizontal, 18)
+                                .padding(.top, 12)
+                                }
+                            }
+                            .padding(.bottom, 24)
                         }
-                      }
-                      .padding(.bottom, 24)
                     }
-                  }
-                  Spacer()
+
+                    Spacer()
                 }
                 if showCalendar {
                     Color.black.opacity(0.2)
@@ -1397,5 +1463,89 @@ private struct KeyboardDismissBar: View {
                     .frame(height: 0)
             }
         }
+    }
+}
+
+private struct SleepDayColumn: View {
+    let date: Date
+    let tint: Color
+    let nightSeconds: TimeInterval
+    let napSeconds: TimeInterval
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(formattedDate(from: date))
+                .font(.caption)
+                .fontWeight(.semibold)
+
+            VStack(spacing: 8) {
+                // Night sleep (hours)
+                SleepIndicatorRow(label: "Night", color: .indigo, seconds: nightSeconds)
+
+                // Nap sleep (minutes)
+                SleepIndicatorRow(label: "Nap", color: .cyan, seconds: napSeconds)
+
+                // Total
+                SleepIndicatorRow(label: "Total", color: tint, seconds: nightSeconds + napSeconds)
+            }
+            Spacer()
+        }
+        .padding(EdgeInsets(top: 16, leading: 12, bottom: 12, trailing: 12))
+        .frame(width: 180, height: 140)
+        .liquidGlass(cornerRadius: 14)
+    }
+
+    private struct SleepIndicatorRow: View {
+        var label: String
+        var color: Color
+        var seconds: TimeInterval
+        private var displayText: String {
+            let total = Int(seconds)
+            let h = total / 3600
+            let m = (total % 3600) / 60
+            if h > 0 { return String(format: "%dh %02dm", h, m) }
+            return String(format: "%dm", m)
+        }
+
+        var body: some View {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 8, height: 8)
+
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(displayText)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func shortWeekday(from date: Date) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "E"
+        return df.string(from: date)
+    }
+
+    private func formattedDate(from date: Date) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "E, d MMM"
+        return df.string(from: date)
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        if h > 0 { return String(format: "%dh %02dm", h, m) }
+        return String(format: "%dm", m)
     }
 }

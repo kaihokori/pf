@@ -2770,7 +2770,6 @@ private extension RootView {
                                     expenseEntries: $expenseEntries,
                                     nightSleepSeconds: $nightSleepSecondsToday,
                                     napSleepSeconds: $napSleepSecondsToday,
-                                    weeklySleepEntries: $weeklySleepEntries,
                                     isPro: isPro,
                                     onUpdateActivityTimers: { timers in
                                         persistActivityTimers(timers)
@@ -2870,7 +2869,8 @@ private extension RootView {
                                     account: accountBinding,
                                     selectedDate: $selectedDate,
                                     isPro: isPro,
-                                    weatherModel: weatherModel
+                                    weatherModel: weatherModel,
+                                    weeklySleepEntries: $weeklySleepEntries
                                 )
                                 .onAppear { handleTabAppear(.sports) }
                             }

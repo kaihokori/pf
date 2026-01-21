@@ -75,7 +75,7 @@ class HealthKitService {
     private func hkUnit(for type: ActivityMetricType) -> HKUnit {
         switch type {
         case .calories: return .kilocalorie()
-        case .steps, .flightsClimbed, .swimStroke: return .count()
+        case .steps, .flightsClimbed, .swimStroke, .pushCount: return .count()
         case .distanceWalking, .swimDistance, .distanceCycling, .distanceDownhillSnowSports, .runStrideLength: return .meter()
         case .exerciseTime, .standTime: return .minute()
         case .runSpeed: return HKUnit(from: "km/h")
@@ -88,7 +88,7 @@ class HealthKitService {
         case .uvIndex: return .count()
         case .bloodAlcohol: return .percent()
         case .bodyTemperature: return .degreeCelsius()
-        case .heartRate: return .count().unitDivided(by: .minute())
+        case .heartRate, .respiratoryRate: return .count().unitDivided(by: .minute())
         case .oxygenSaturation: return .percent()
         case .audioExposure: return HKUnit(from: "dBASPL")
         case .vo2Max: return HKUnit(from: "ml/kg/min")

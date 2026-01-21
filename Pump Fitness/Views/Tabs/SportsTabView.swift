@@ -472,7 +472,7 @@ struct SportsTabView: View {
                                 Button {
                                     showWellnessEditor = true
                                 } label: {
-                                    Label("Change Goal", systemImage: "pencil")
+                                    Label("Change Goals", systemImage: "pencil")
                                       .font(.callout.weight(.semibold))
                                       .padding(.vertical, 18)
                                       .frame(maxWidth: .infinity, minHeight: 52)
@@ -534,7 +534,7 @@ struct SportsTabView: View {
                                         }
                                         .padding(.vertical, 18)
                                         .frame(maxWidth: .infinity, minHeight: 52)
-                                        .background(Color.blue, in: RoundedRectangle(cornerRadius: 18))
+                                        .background(Color.pink, in: RoundedRectangle(cornerRadius: 18))
                                     }
                                     .padding(.horizontal, 18)
                                     .buttonStyle(.plain)
@@ -725,8 +725,7 @@ struct SportsTabView: View {
                         
                         if let index = currentAdjustments.firstIndex(where: { $0.metricId == type.id }) {
                             // Update existing
-                            let newAdjustment = currentAdjustments[index].value + change
-                            currentAdjustments[index].value = newAdjustment
+                            currentAdjustments[index].manualValue += change
                         } else {
                             // Create new adjustment
                             let adj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: change)
@@ -757,7 +756,7 @@ struct SportsTabView: View {
 
     private func wellnessManualAdjustment(for type: WellnessMetricType) -> Double {
         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
-        return day.wellnessMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+        return day.wellnessMetricAdjustments.first(where: { $0.metricId == type.id })?.manualValue ?? 0
     }
 
     private func refreshWellnessValues() {
@@ -779,7 +778,35 @@ struct SportsTabView: View {
         group.notify(queue: .main) {
             self.wellnessHKValues = newValues
             self.syncWellnessMetricsToAccount()
+            self.syncWellnessHKToDay(newValues)
         }
+    }
+    
+    private func syncWellnessHKToDay(_ values: [WellnessMetricType: Double]) {
+         let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+         var changed = false
+         var adjustments = day.wellnessMetricAdjustments
+         
+         for (type, val) in values {
+             if let idx = adjustments.firstIndex(where: { $0.metricId == type.id }) {
+                 if adjustments[idx].healthKitValue != val {
+                     adjustments[idx].healthKitValue = val
+                     changed = true
+                 }
+             } else {
+                 // Create new entry
+                 var newEntry = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: 0)
+                 newEntry.healthKitValue = val
+                 adjustments.append(newEntry)
+                 changed = true
+             }
+         }
+         
+         if changed {
+             day.wellnessMetricAdjustments = adjustments
+             try? modelContext.save()
+             dayService.updateDayFields(["wellnessMetricAdjustments": day.wellnessMetricAdjustments], for: day) { _ in }
+         }
     }
     
     private func syncWellnessMetricsToAccount() {
@@ -788,9 +815,12 @@ struct SportsTabView: View {
         
         for i in metrics.indices {
             let type = metrics[i].type
-            let total = (wellnessHKValues[type] ?? 0) + wellnessManualAdjustment(for: type)
-            if metrics[i].value != total {
-                metrics[i].value = total
+            let manual = wellnessManualAdjustment(for: type)
+            let hk = wellnessHKValues[type] ?? 0
+            
+            if metrics[i].manualValue != manual || metrics[i].healthKitValue != hk {
+                metrics[i].manualValue = manual
+                metrics[i].healthKitValue = hk
                 changed = true
             }
         }

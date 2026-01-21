@@ -316,7 +316,7 @@ struct SportConfig: Codable, Hashable, Identifiable {
                 metrics: [
                     SportMetricConfig(key: "distanceKm", label: "Distance", unit: "km", colorHex: "#0A84FF"),
                     SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
-                    SportMetricConfig(key: "speedKmhComputed", label: "Speed (calc)", unit: "km/h", colorHex: "#FF9500")
+                    SportMetricConfig(key: "speedKmhComputed", label: "Speed", unit: "km/h", colorHex: "#FF9500")
                 ]
             ),
             SportConfig(
@@ -325,7 +325,7 @@ struct SportConfig: Codable, Hashable, Identifiable {
                 metrics: [
                     SportMetricConfig(key: "distanceKm", label: "Distance", unit: "km", colorHex: "#0A84FF"),
                     SportMetricConfig(key: "durationMin", label: "Duration", unit: "min", colorHex: "#34C759"),
-                    SportMetricConfig(key: "speedKmhComputed", label: "Speed (calc)", unit: "km/h", colorHex: "#FF9500")
+                    SportMetricConfig(key: "speedKmhComputed", label: "Speed", unit: "km/h", colorHex: "#FF9500")
                 ]
             ),
             SportConfig(

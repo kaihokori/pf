@@ -504,7 +504,7 @@ struct WorkoutTabView: View {
         .init(key: "distanceKm", label: "Distance", unit: "km", color: .blue),
         .init(key: "durationMin", label: "Duration", unit: "min", color: .green),
         .init(key: "speedKmh", label: "Speed", unit: "km/h", color: .orange),
-        .init(key: "speedKmhComputed", label: "Speed (calc)", unit: "km/h", color: .orange, valueTransform: { $0.speedKmhComputed ?? 0 }),
+        .init(key: "speedKmhComputed", label: "Speed", unit: "km/h", color: .orange, valueTransform: { $0.speedKmhComputed ?? 0 }),
         .init(key: "laps", label: "Laps", unit: "laps", color: .purple),
         .init(key: "attemptsMade", label: "Attempts Made", unit: "count", color: .teal),
         .init(key: "attemptsMissed", label: "Attempts Missed", unit: "count", color: .red),
@@ -697,7 +697,7 @@ struct WorkoutTabView: View {
                     Button {
                         showDailySummaryEditor = true
                     } label: {
-                        Label("Change Goal", systemImage: "pencil")
+                        Label("Change Goals", systemImage: "pencil")
                           .font(.callout.weight(.semibold))
                           .padding(.vertical, 18)
                           .frame(maxWidth: .infinity, minHeight: 52)
@@ -2231,13 +2231,13 @@ private extension WorkoutTabView {
                 default:
                     // Generic handling
                     let day = currentDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext)
-                    var currentVal = day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
-                    currentVal += change
+                    var currentManual = day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.manualValue ?? 0
+                    currentManual += change
                     
                     if let idx = day.activityMetricAdjustments.firstIndex(where: { $0.metricId == type.id }) {
-                        day.activityMetricAdjustments[idx].value = currentVal
+                        day.activityMetricAdjustments[idx].manualValue = currentManual
                     } else {
-                        let newAdj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: currentVal)
+                        let newAdj = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: currentManual)
                         day.activityMetricAdjustments.append(newAdj)
                     }
                     
@@ -2413,8 +2413,38 @@ private extension WorkoutTabView {
                 }
                 
                 self.syncMetricsToAccount()
+                self.syncActivityHKToDay(newValues)
             }
         }
+    }
+    
+    private func syncActivityHKToDay(_ values: [ActivityMetricType: Double]) {
+         let day = currentDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext)
+         var changed = false
+         var adjustments = day.activityMetricAdjustments
+         
+         for (type, val) in values {
+             if let idx = adjustments.firstIndex(where: { $0.metricId == type.id }) {
+                 if adjustments[idx].healthKitValue != val {
+                     adjustments[idx].healthKitValue = val
+                     changed = true
+                 }
+             } else {
+                 var newEntry = SoloMetricValue(metricId: type.id, metricName: type.displayName, value: 0)
+                 newEntry.healthKitValue = val
+                 adjustments.append(newEntry)
+                 changed = true
+             }
+         }
+         
+         if changed {
+             day.activityMetricAdjustments = adjustments
+             try? modelContext.save()
+             // persistActivityToDay handles core metrics, but we might want to trigger full day save if possible.
+             // But persistActivityToDay is specific to cal/steps/dist.
+             // If we had dayFirestoreService here we would use it.
+             // Since we modify 'day' (SwiftData), RootView should pick it up if observing.
+         }
     }
     
     // Syncs the current calculated values (HK + manual) into the Account's dailySummaryMetrics list
@@ -2425,10 +2455,12 @@ private extension WorkoutTabView {
         
         for i in metrics.indices {
             let type = metrics[i].type
-            let total = (hkValues[type] ?? 0) + manualAdjustment(for: type)
-            // Use a small epsilon for float comparison or just check equality
-            if metrics[i].value != total {
-                metrics[i].value = total
+            let manual = manualAdjustment(for: type)
+            let hk = hkValues[type] ?? 0
+            
+            if metrics[i].manualValue != manual || metrics[i].healthKitValue != hk {
+                metrics[i].manualValue = manual
+                metrics[i].healthKitValue = hk
                 changed = true
             }
         }
@@ -2450,12 +2482,12 @@ private extension WorkoutTabView {
             return caloriesBurnedToday - (hkCaloriesValue ?? 0)
         default:
             if let d = currentDay, Calendar.current.isDate(d.date, inSameDayAs: selectedDate) {
-                return d.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+                return d.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.manualValue ?? 0
             }
             
             // Fetch
             let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
-            return day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.value ?? 0
+            return day.activityMetricAdjustments.first(where: { $0.metricId == type.id })?.manualValue ?? 0
         }
     }
     

@@ -16,6 +16,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
     case runPower
     case distanceCycling
     case distanceDownhillSnowSports
+    case pushCount
 
     var id: String { rawValue }
 
@@ -34,6 +35,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .runPower: return "Run Power"
         case .distanceCycling: return "Distance Cycling"
         case .distanceDownhillSnowSports: return "Distance Downhill"
+        case .pushCount: return "Wheelchair Pushes"
         }
     }
     
@@ -52,6 +54,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .runPower: return "bolt.fill"
         case .distanceCycling: return "bicycle"
         case .distanceDownhillSnowSports: return "figure.skiing.downhill"
+        case .pushCount: return "figure.roll"
         }
     }
     
@@ -70,6 +73,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .runPower: return "W"
         case .distanceCycling: return "km"
         case .distanceDownhillSnowSports: return "km"
+        case .pushCount: return "pushes"
         }
     }
     
@@ -88,6 +92,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .runPower: return .runningPower
         case .distanceCycling: return .distanceCycling
         case .distanceDownhillSnowSports: return .distanceDownhillSnowSports
+        case .pushCount: return .pushCount
         }
     }
     
@@ -98,7 +103,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
     
     var aggregationStyle: AggregationStyle {
         switch self {
-        case .calories, .steps, .distanceWalking, .exerciseTime, .standTime, .flightsClimbed, .swimDistance, .swimStroke, .distanceCycling, .distanceDownhillSnowSports:
+        case .calories, .steps, .distanceWalking, .exerciseTime, .standTime, .flightsClimbed, .swimDistance, .swimStroke, .distanceCycling, .distanceDownhillSnowSports, .pushCount:
             return .sum
         case .runSpeed, .runStrideLength, .runPower:
             return .average
@@ -120,6 +125,7 @@ enum ActivityMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .runPower: return 200
         case .distanceCycling: return 20
         case .distanceDownhillSnowSports: return 10
+        case .pushCount: return 500
         }
     }
 }
@@ -130,19 +136,31 @@ struct TrackedActivityMetric: Codable, Hashable, Identifiable {
     var goal: Double
     var unit: String
     var colorHex: String
-    var value: Double?
+    private var _value: Double?
+    
+    var manualValue: Double?
+    var healthKitValue: Double?
+    
+    var value: Double? {
+        if let m = manualValue, let h = healthKitValue { return m + h }
+        if let m = manualValue { return m }
+        if let h = healthKitValue { return h }
+        return _value
+    }
     
     // Manual additions
     // Logic: HK value + manual adjustment = displayed value.
     // The metric tracks the goal. The actual value logic resides in HealthKit integration + persistency of adjustments.
     
-    init(id: UUID = UUID(), type: ActivityMetricType, goal: Double, unit: String? = nil, colorHex: String, value: Double? = nil) {
+    init(id: UUID = UUID(), type: ActivityMetricType, goal: Double, unit: String? = nil, colorHex: String, value: Double? = nil, manualValue: Double? = nil, healthKitValue: Double? = nil) {
         self.id = id
         self.type = type
         self.goal = goal
         self.unit = unit ?? type.unit
         self.colorHex = colorHex
-        self.value = value
+        self._value = value
+        self.manualValue = manualValue
+        self.healthKitValue = healthKitValue
     }
     
     var color: Color {
@@ -159,7 +177,10 @@ struct TrackedActivityMetric: Codable, Hashable, Identifiable {
         self.goal = (dictionary["goal"] as? NSNumber)?.doubleValue ?? 0
         self.unit = dictionary["unit"] as? String ?? type.unit
         self.colorHex = dictionary["colorHex"] as? String ?? "#FF3B30"
-        self.value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double
+        self._value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double
+        
+        self.manualValue = (dictionary["manualValue"] as? NSNumber)?.doubleValue ?? dictionary["manualValue"] as? Double
+        self.healthKitValue = (dictionary["healthKitValue"] as? NSNumber)?.doubleValue ?? dictionary["healthKitValue"] as? Double
     }
 
     var asDictionary: [String: Any] {
@@ -172,6 +193,12 @@ struct TrackedActivityMetric: Codable, Hashable, Identifiable {
         ]
         if let value = value {
             dict["value"] = value
+        }
+        if let manualValue = manualValue {
+            dict["manualValue"] = manualValue
+        }
+        if let healthKitValue = healthKitValue {
+            dict["healthKitValue"] = healthKitValue
         }
         return dict
     }

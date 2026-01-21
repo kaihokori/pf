@@ -860,13 +860,15 @@ class DayFirestoreService {
 
         for remoteValue in remote {
             if var existing = mergedByMetricId[remoteValue.metricId] {
-                existing.value = max(existing.value, remoteValue.value)
+                existing.manualValue = max(existing.manualValue, remoteValue.manualValue)
+                existing.healthKitValue = max(existing.healthKitValue, remoteValue.healthKitValue)
                 existing.metricName = remoteValue.metricName
                 mergedByMetricId[remoteValue.metricId] = existing
             } else if var existingByName = localByName[remoteValue.metricName.lowercased()] {
                 existingByName.metricId = remoteValue.metricId
                 existingByName.metricName = remoteValue.metricName
-                existingByName.value = max(existingByName.value, remoteValue.value)
+                existingByName.manualValue = max(existingByName.manualValue, remoteValue.manualValue)
+                existingByName.healthKitValue = max(existingByName.healthKitValue, remoteValue.healthKitValue)
                 mergedByMetricId[remoteValue.metricId] = existingByName
             } else {
                 mergedByMetricId[remoteValue.metricId] = remoteValue

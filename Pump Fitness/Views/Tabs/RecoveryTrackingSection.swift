@@ -13,6 +13,7 @@ struct RecoveryTrackingSection: View {
     
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var account: Account
+    @EnvironmentObject private var themeManager: ThemeManager
     
     @Query private var days: [Day]
     private var day: Day? { days.first }
@@ -100,11 +101,12 @@ struct RecoveryTrackingSection: View {
             } else {
                 ForEach(RecoveryCategory.allCases.filter { visibleCategories.contains($0) }) { category in
                     let catSessions = (day?.recoverySessions ?? []).filter { $0.category == category }
+                    let sectionTint: Color = (themeManager.selectedTheme == .multiColour) ? colorFor(category) : tint
 
                     VStack(spacing: 12) {
                         RecoveryCategoryCard(
                             category: category,
-                            tint: tint,
+                            tint: sectionTint,
                             isKeyboardVisible: $isKeyboardVisible,
                             keyboardUnit: $keyboardUnit,
                             onUnitChange: $onUnitChange,
@@ -118,7 +120,7 @@ struct RecoveryTrackingSection: View {
                             RecoverySummarySection(
                                 category: category,
                                 sessions: catSessions,
-                                tint: tint,
+                                tint: sectionTint,
                                 onDelete: deleteSession
                             )
                         }
@@ -172,6 +174,20 @@ struct RecoveryTrackingSection: View {
         if let index = targetDay.recoverySessions.firstIndex(where: { $0.id == id }) {
             targetDay.recoverySessions.remove(at: index)
             DayFirestoreService().saveDay(targetDay) { _ in }
+        }
+    }
+
+    private func colorFor(_ category: RecoveryCategory) -> Color {
+        switch category {
+        case .sauna:
+            // Warm red-orange
+            return Color(red: 1.0, green: 0.35, blue: 0.20)
+        case .coldPlunge:
+            // Ice blue
+            return Color(red: 0.0, green: 0.72, blue: 0.92)
+        case .spa:
+            // Orange-yellow
+            return Color(red: 1.0, green: 0.80, blue: 0.20)
         }
     }
 }

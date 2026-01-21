@@ -76,7 +76,7 @@ struct BodyDiagramView: View {
             if isMultiColor {
                 // Gradually shift from red (intensity 1.0 -> hue 0.0) to green (intensity 0.0 -> hue 0.33)
                 let hue = 0.33 * (1.0 - intensity)
-                return Color(hue: hue, saturation: 0.8, brightness: 0.9).opacity(max(0.2, intensity))
+                return Color(hue: hue, saturation: 0.8, brightness: 0.9).opacity(max(0.6, intensity))
             } else {
                 // Opacity is simple percentage of days left / 60
                 // We keep a small minimum opacity so it doesn't vanish entirely if it's technically day 0 of healing

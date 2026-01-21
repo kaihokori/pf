@@ -62,7 +62,7 @@ struct TravelTabView: View {
                                 .travelTip(.itineraryTracking, isEnabled: isPro)
                                 
                                 Spacer()
-                                    .frame(height: 24)
+                                    .frame(height: 48)
 
                                 recordingsSection
                                     .padding(.bottom, 24)

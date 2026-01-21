@@ -12,6 +12,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
     case audioExposure
     case vo2Max
     case hrv
+    case respiratoryRate
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .audioExposure: return "Audio Exposure"
         case .vo2Max: return "VO₂ Max"
         case .hrv: return "Heart Rate Variability"
+        case .respiratoryRate: return "Respiratory Rate"
         }
     }
     
@@ -40,6 +42,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .audioExposure: return "ear.fill"
         case .vo2Max: return "figure.run"
         case .hrv: return "waveform.path.ecg"
+        case .respiratoryRate: return "lungs"
         }
     }
     
@@ -54,6 +57,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .audioExposure: return "dBASPL"
         case .vo2Max: return "ml/kg/min"
         case .hrv: return "ms"
+        case .respiratoryRate: return "brpm"
         }
     }
     
@@ -68,6 +72,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .audioExposure: return .environmentalAudioExposure // or headphoneAudioExposure? Environmental usually makes more sense for "exposure".
         case .vo2Max: return .vo2Max
         case .hrv: return .heartRateVariabilitySDNN
+        case .respiratoryRate: return .respiratoryRate
         case .sexualActivity: return nil
         }
     }
@@ -97,6 +102,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .audioExposure: return .average
         case .vo2Max: return .mostRecent
         case .hrv: return .average
+        case .respiratoryRate: return .average
         case .sexualActivity: return .max // Not applicable really, count of events
         }
     }
@@ -112,6 +118,7 @@ enum WellnessMetricType: String, CaseIterable, Codable, Identifiable, Sendable {
         case .audioExposure: return 80 // Limit
         case .vo2Max: return 45
         case .hrv: return 50
+        case .respiratoryRate: return 16
         }
     }
 }
@@ -122,15 +129,27 @@ struct TrackedWellnessMetric: Codable, Hashable, Identifiable {
     var goal: Double
     var unit: String
     var colorHex: String
-    var value: Double?
+    private var _value: Double?
     
-    init(id: UUID = UUID(), type: WellnessMetricType, goal: Double, unit: String? = nil, colorHex: String, value: Double? = nil) {
+    var manualValue: Double?
+    var healthKitValue: Double?
+    
+    var value: Double? {
+        if let m = manualValue, let h = healthKitValue { return m + h }
+        if let m = manualValue { return m }
+        if let h = healthKitValue { return h }
+        return _value
+    }
+    
+    init(id: UUID = UUID(), type: WellnessMetricType, goal: Double, unit: String? = nil, colorHex: String, value: Double? = nil, manualValue: Double? = nil, healthKitValue: Double? = nil) {
         self.id = id
         self.type = type
         self.goal = goal
         self.unit = unit ?? type.unit
         self.colorHex = colorHex
-        self.value = value
+        self._value = value
+        self.manualValue = manualValue
+        self.healthKitValue = healthKitValue
     }
     
     var color: Color {
@@ -147,7 +166,10 @@ struct TrackedWellnessMetric: Codable, Hashable, Identifiable {
         self.goal = (dictionary["goal"] as? NSNumber)?.doubleValue ?? 0
         self.unit = dictionary["unit"] as? String ?? type.unit
         self.colorHex = dictionary["colorHex"] as? String ?? "#FF3B30"
-        self.value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double
+        self._value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double
+        
+        self.manualValue = (dictionary["manualValue"] as? NSNumber)?.doubleValue ?? dictionary["manualValue"] as? Double
+        self.healthKitValue = (dictionary["healthKitValue"] as? NSNumber)?.doubleValue ?? dictionary["healthKitValue"] as? Double
     }
 
     var asDictionary: [String: Any] {
@@ -160,6 +182,12 @@ struct TrackedWellnessMetric: Codable, Hashable, Identifiable {
         ]
         if let value = value {
             dict["value"] = value
+        }
+        if let manualValue = manualValue {
+            dict["manualValue"] = manualValue
+        }
+        if let healthKitValue = healthKitValue {
+            dict["healthKitValue"] = healthKitValue
         }
         return dict
     }

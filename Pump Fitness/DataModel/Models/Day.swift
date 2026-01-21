@@ -220,21 +220,52 @@ struct SoloMetricValue: Codable, Hashable, Identifiable {
     var id: String
     var metricId: String
     var metricName: String
-    var value: Double
+    var manualValue: Double
+    var healthKitValue: Double
+    
+    var value: Double {
+        manualValue + healthKitValue
+    }
 
+    init(id: String = UUID().uuidString, metricId: String, metricName: String, manualValue: Double = 0, healthKitValue: Double = 0) {
+        self.id = id
+        self.metricId = metricId
+        self.metricName = metricName
+        self.manualValue = manualValue
+        self.healthKitValue = healthKitValue
+    }
+    
+    // Legacy support init - assumes manual entry
     init(id: String = UUID().uuidString, metricId: String, metricName: String, value: Double) {
         self.id = id
         self.metricId = metricId
         self.metricName = metricName
-        self.value = value
+        self.manualValue = value
+        self.healthKitValue = 0
     }
 
     init?(dictionary: [String: Any]) {
         guard let metricId = dictionary["metricId"] as? String,
               let metricName = dictionary["metricName"] as? String else { return nil }
         let id = dictionary["id"] as? String ?? UUID().uuidString
-        let value = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double ?? 0
-        self.init(id: id, metricId: metricId, metricName: metricName, value: value)
+        
+        let manual = (dictionary["manualValue"] as? NSNumber)?.doubleValue ??  dictionary["manualValue"] as? Double ?? 0
+        let hk = (dictionary["healthKitValue"] as? NSNumber)?.doubleValue ?? dictionary["healthKitValue"] as? Double ?? 0
+        
+        // Legacy: if "value" exists but no new fields, map it to manualValue.
+        let legacyValue = (dictionary["value"] as? NSNumber)?.doubleValue ?? dictionary["value"] as? Double ?? 0
+        
+        if dictionary["manualValue"] == nil && dictionary["healthKitValue"] == nil {
+            self.manualValue = legacyValue
+            self.healthKitValue = 0
+        } else {
+            self.manualValue = manual
+            self.healthKitValue = hk
+        }
+        
+        self.id = id
+        self.metricId = metricId
+        self.metricName = metricName
     }
 
     var asDictionary: [String: Any] {
@@ -242,7 +273,9 @@ struct SoloMetricValue: Codable, Hashable, Identifiable {
             "id": id,
             "metricId": metricId,
             "metricName": metricName,
-            "value": value
+            "value": value,
+            "manualValue": manualValue,
+            "healthKitValue": healthKitValue
         ]
     }
 }

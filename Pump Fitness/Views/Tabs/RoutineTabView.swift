@@ -432,6 +432,7 @@ struct RoutineTabView: View {
     @State private var showHabitsEditor: Bool = false
     @State private var showGroceryListEditor: Bool = false
     @State private var showExpenseCategoriesEditor: Bool = false
+    @State private var showMusicSourcesSheet: Bool = false
     @State private var showRoutineShareSheet: Bool = false
     @AppStorage("alerts.dailyTasksEnabled") private var dailyTasksAlertsEnabled: Bool = true
     @AppStorage("alerts.habitsEnabled") private var habitsAlertsEnabled: Bool = true
@@ -613,7 +614,7 @@ struct RoutineTabView: View {
                             Spacer()
 
                             Button {
-                                // 
+                                showMusicSourcesSheet = true
                             } label: {
                                 Label("Manage", systemImage: "gear")
                                     .font(.callout)
@@ -950,6 +951,9 @@ struct RoutineTabView: View {
             }
             .sheet(isPresented: $showExpenseCategoriesEditor) {
                 ExpenseCategoriesEditorView(categories: $expenseCategories, currencySymbol: $expenseCurrencySymbol, onSave: applyExpenseCategoryChanges)
+            }
+            .sheet(isPresented: $showMusicSourcesSheet) {
+                MusicSourcesSheet()
             }
             .sheet(isPresented: $showRoutineShareSheet) {
                 RoutineShareSheet(

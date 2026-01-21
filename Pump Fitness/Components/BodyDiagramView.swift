@@ -80,7 +80,7 @@ struct BodyDiagramView: View {
             } else {
                 // Opacity is simple percentage of days left / 60
                 // We keep a small minimum opacity so it doesn't vanish entirely if it's technically day 0 of healing
-                return themeManager.selectedTheme.accent(for: colorScheme).opacity(max(0.1, intensity))
+                return themeManager.selectedTheme.accent(for: colorScheme).opacity(max(0.6, intensity))
             }
         }
         return uninjuredColor

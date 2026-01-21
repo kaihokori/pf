@@ -114,15 +114,6 @@ class SubscriptionManager: ObservableObject {
             //     storefrontCurrencyCode = firstProduct.priceFormatStyle.currencyCode
             // }
             
-            // Debug: log loaded products
-            if !self.products.isEmpty {
-                print("Loaded products from StoreKit:")
-                for p in self.products {
-                    print("- id:\(p.id) name:\(p.displayName) price:\(p.displayPrice) currency:\(p.priceFormatStyle.currencyCode)")
-                }
-            } else {
-                print("No products returned from StoreKit for ids: \(productIDs)")
-            }
         } catch {
             errorMessage = "Failed to load products: \(error.localizedDescription)"
             print("StoreKit Load Error: \(error)")
@@ -177,7 +168,6 @@ class SubscriptionManager: ObservableObject {
         }
 
         if needsUpdate {
-            print("SubscriptionManager: Syncing local trial state to server end date: \(trialEnd)")
             trialStartDate = expectedStart
             UserDefaults.standard.set(expectedStart.timeIntervalSince1970, forKey: Self.trialStartDateKey)
             UserDefaults.standard.set(true, forKey: Self.trialActivatedKey)
@@ -205,7 +195,6 @@ class SubscriptionManager: ObservableObject {
     }
 
     private func updatePurchasedProducts() async {
-        print("SubscriptionManager: Updating purchased products...")
         var purchased: Set<String> = []
         var latestExpiration: Date? = nil
 
@@ -219,7 +208,6 @@ class SubscriptionManager: ObservableObject {
                 // demoting users due to clock skew or grace periods that Apple considers valid.
 
                 purchased.insert(transaction.productID)
-                print("SubscriptionManager: Active entitlement found: \(transaction.productID)")
 
                 if let exp = transaction.expirationDate {
                     if let current = latestExpiration {
@@ -229,13 +217,12 @@ class SubscriptionManager: ObservableObject {
                     }
                 }
             } else {
-                print("SubscriptionManager: Transaction for \(transaction.productID) was revoked at \(transaction.revocationDate!)")
+                // 
             }
         }
 
         self.purchasedProductIDs = purchased
         self.latestSubscriptionExpiration = latestExpiration
-        print("SubscriptionManager: Update complete. HasPro: \(hasProAccess), Expiry: \(String(describing: latestExpiration))")
     }
 
     private func newTransactionListenerTask() -> Task<Void, Never> {

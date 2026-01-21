@@ -603,6 +603,34 @@ struct RoutineTabView: View {
                                 }
                             }
                         })
+                        
+                        HStack {
+                            Text("Music Tracking")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Button {
+                                // 
+                            } label: {
+                                Label("Manage", systemImage: "gear")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 38)
+                        .padding(.horizontal, 18)
+
+                        EntertainmentTrackingSection()
+                            .padding(.horizontal, 18)
+                            .padding(.top, 12)
 
                         HStack {
                             Text("Sleep Tracking")

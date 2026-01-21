@@ -9,26 +9,22 @@ class AccountFirestoreService {
 
     func fetchAccount(withId id: String, completion: @escaping (Account?) -> Void) {
         db.collection(collection).document(id).getDocument { snapshot, error in
-            if let error {
-                print("AccountFirestoreService.fetchAccount error for id=\(id): \(error.localizedDescription)")
+            if error != nil {
                 completion(nil)
                 return
             }
 
             guard let snapshot = snapshot else {
-                print("AccountFirestoreService.fetchAccount: no snapshot returned for id=\(id)")
                 completion(nil)
                 return
             }
 
             if !snapshot.exists {
-                print("AccountFirestoreService.fetchAccount: document does not exist for id=\(id)")
                 completion(nil)
                 return
             }
 
             guard let data = snapshot.data() else {
-                print("AccountFirestoreService.fetchAccount: snapshot exists but no data for id=\(id)")
                 completion(nil)
                 return
             }
@@ -36,12 +32,6 @@ class AccountFirestoreService {
             let profileAvatar = (data["profileAvatar"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             
             func finish(with imageData: Data?) {
-                if let data = imageData {
-                    print("AccountFirestoreService: Finishing fetchAccount with image data attached. Size: \(data.count)")
-                } else {
-                    print("AccountFirestoreService: Finishing fetchAccount with NIL image data.")
-                }
-                
                 DispatchQueue.main.async {
                     let soloMetricDefs = (data["soloMetrics"] as? [[String: Any]] ?? []).compactMap { SoloMetric(dictionary: $0) }
                 let teamMetricDefs = (data["teamMetrics"] as? [[String: Any]] ?? []).compactMap { TeamMetric(dictionary: $0) }
@@ -137,19 +127,15 @@ class AccountFirestoreService {
             }
 
             if let avatarString = profileAvatar, !avatarString.isEmpty {
-                print("AccountFirestoreService: Found avatar string: \(avatarString)")
                 // If it's a Firebase Storage URL (gs:// or firebasestorage domain), use the Storage SDK
                 // so it handles auth if the rules invoke it, though usually public URLs work with URLSession too.
                 if avatarString.hasPrefix("gs://") || (avatarString.hasPrefix("http") && avatarString.contains("firebasestorage.googleapis.com")) {
-                    print("AccountFirestoreService: Attempting Firebase Storage download")
                     let storageRef = Storage.storage().reference(forURL: avatarString)
                     // Max size 5MB
                     storageRef.getData(maxSize: 5 * 1024 * 1024) { data, error in
-                        if let error = error {
-                            print("AccountFirestoreService: Error downloading profile image: \(error)")
+                        if error != nil {
                             // Fallback to simpler URL download if it was http, or just fail
                             if avatarString.hasPrefix("http"), let url = URL(string: avatarString) {
-                                print("AccountFirestoreService: Falling back to standard URL download")
                                 URLSession.shared.dataTask(with: url) { data, _, _ in
                                     finish(with: data)
                                 }.resume()
@@ -157,29 +143,23 @@ class AccountFirestoreService {
                                 finish(with: nil)
                             }
                         } else {
-                            print("AccountFirestoreService: Successfully downloaded image via Storage SDK. Size: \(data?.count ?? 0) bytes")
                             finish(with: data)
                         }
                     }
                 } else if avatarString.hasPrefix("http"), let url = URL(string: avatarString) {
                     // External URL (e.g. Google auth image, unrelated host)
-                    print("AccountFirestoreService: Attempting external URL download: \(url)")
                     URLSession.shared.dataTask(with: url) { data, response, error in
                         if let data = data, error == nil {
-                            print("AccountFirestoreService: Successfully downloaded external image. Size: \(data.count) bytes")
                             finish(with: data)
                         } else {
-                            print("AccountFirestoreService: Error downloading external profile image: \(error?.localizedDescription ?? "unknown")")
                             finish(with: nil)
                         }
                     }.resume()
                 } else {
                     // Not a URL string (e.g. "0", "1" for local colors), so no image data to fetch.
-                    print("AccountFirestoreService: Avatar string is not a URL (likely a color index). No image to fetch.")
                     finish(with: nil)
                 }
             } else {
-                print("AccountFirestoreService: profileAvatar is nil or empty")
                 finish(with: nil)
             }
         }
@@ -188,8 +168,7 @@ class AccountFirestoreService {
     /// Fetch only the `cravings` array for an account document.
     func fetchCravings(withId id: String, completion: @escaping ([CravingItem]?) -> Void) {
         db.collection(collection).document(id).getDocument { snapshot, error in
-            if let error {
-                print("AccountFirestoreService.fetchCravings error for id=\(id): \(error.localizedDescription)")
+            if error != nil {
                 completion(nil)
                 return
             }
@@ -210,9 +189,6 @@ class AccountFirestoreService {
     func updateCravings(withId id: String, cravings: [CravingItem], completion: @escaping (Bool) -> Void) {
         let payload = cravings.map { $0.asDictionary }
         self.db.collection(self.collection).document(id).setData(["cravings": payload], merge: true) { error in
-            if let error {
-                print("AccountFirestoreService.updateCravings error: \(error.localizedDescription)")
-            }
             completion(error == nil)
         }
     }
@@ -221,9 +197,6 @@ class AccountFirestoreService {
     func updateWeeklyProgress(withId id: String, progress: [WeeklyProgressRecord], completion: @escaping (Bool) -> Void) {
         let payload = progress.map { $0.asFirestoreDictionary() }
         self.db.collection(self.collection).document(id).setData(["weeklyProgress": payload], merge: true) { error in
-            if let error {
-                print("AccountFirestoreService.updateWeeklyProgress error: \(error.localizedDescription)")
-            }
             completion(error == nil)
         }
     }
@@ -239,9 +212,6 @@ class AccountFirestoreService {
         }
         
         db.collection(collection).document(id).setData(data, merge: true) { error in
-            if let error {
-                print("AccountFirestoreService.updateTrialPeriodEnd error: \(error.localizedDescription)")
-            }
             completion?(error == nil)
         }
     }
@@ -258,9 +228,6 @@ class AccountFirestoreService {
         }
         
         db.collection(collection).document(id).setData(data, merge: true) { error in
-            if let error {
-                print("AccountFirestoreService.updateProPeriodEnd error: \(error.localizedDescription)")
-            }
             completion?(error == nil)
         }
     }
@@ -274,8 +241,7 @@ class AccountFirestoreService {
 
         await withCheckedContinuation { continuation in
             db.collection(collection).document(id).setData(payload, merge: true) { error in
-                if let error {
-                    print("AccountFirestoreService.updateSubscriptionStatus error: \(error.localizedDescription)")
+                if error != nil {
                     completion?(false)
                 } else {
                     completion?(true)
@@ -289,11 +255,10 @@ class AccountFirestoreService {
     /// This ensures the field is visible in the console for manual editing.
     func ensureProPeriodFieldExists(for id: String) {
         let docRef = db.collection(collection).document(id)
-        docRef.getDocument { snapshot, error in
+        docRef.getDocument { snapshot, _ in
             if let data = snapshot?.data() {
                 // If key is missing entirely, set it to NSNull() to make it "present" but empty.
                 if data["proPeriodEnd"] == nil {
-                     print("AccountFirestoreService: proPeriodEnd missing, initializing to null.")
                      docRef.setData(["proPeriodEnd": NSNull()], merge: true)
                 }
             }
@@ -314,7 +279,6 @@ class AccountFirestoreService {
         // Prefer the authenticated user's UID for the document id when signed in.
         let currentUID = Auth.auth().currentUser?.uid
         guard let id = (currentUID ?? account.id), !id.isEmpty else {
-            print("AccountFirestoreService.saveAccount: missing account id and no authenticated user")
             completion(false, nil)
             return
         }
@@ -483,7 +447,7 @@ class AccountFirestoreService {
                     data["activityLevel"] = activity
                 } else if activity == ActivityLevelOption.sedentary.rawValue {
                     // Check remote doc to see if activityLevel already exists.
-                    self.db.collection(self.collection).document(id).getDocument { snapshot, error in
+                    self.db.collection(self.collection).document(id).getDocument { snapshot, _ in
                         var shouldIncludeActivity = false
                         if let dataRemote = snapshot?.data(), let _ = dataRemote["activityLevel"] as? String {
                             // remote already has a value; include ours to update
@@ -509,9 +473,6 @@ class AccountFirestoreService {
                         }
 
                         self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
-                            if let error {
-                                print("AccountFirestoreService.saveAccount error: \(error.localizedDescription)")
-                            }
                             completion(error == nil, avatarURL)
                         }
                     }
@@ -531,9 +492,6 @@ class AccountFirestoreService {
             }
 
             self.db.collection(self.collection).document(id).setData(data, merge: true) { error in
-                if let error {
-                    print("AccountFirestoreService.saveAccount error: \(error.localizedDescription)")
-                }
                 completion(error == nil, avatarURL)
             }
         }
@@ -552,13 +510,12 @@ class AccountFirestoreService {
             metadata.contentType = "image/jpeg"
 
             storageRef.putData(imageData, metadata: metadata) { metadata, error in
-                if let error = error {
-                    print("AccountFirestoreService: Error uploading profile image: \(error)")
+                if error != nil {
                     // Proceed without URL update (will save color string or whatever was there)
                     proceedWithSave(avatarURL: nil)
                     return
                 }
-                storageRef.downloadURL { url, error in
+                storageRef.downloadURL { url, _ in
                     if let urlString = url?.absoluteString {
                         // Update the local account object so subsequent saves don't re-upload
                         // account.profileAvatar = urlString // REMOVED: Thread unsafe

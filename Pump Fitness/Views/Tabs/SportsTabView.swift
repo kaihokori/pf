@@ -534,7 +534,7 @@ struct SportsTabView: View {
                                         }
                                         .padding(.vertical, 18)
                                         .frame(maxWidth: .infinity, minHeight: 52)
-                                        .background(Color.pink, in: RoundedRectangle(cornerRadius: 18))
+                                        .background(accentOverride ?? Color.blue, in: RoundedRectangle(cornerRadius: 18))
                                     }
                                     .padding(.horizontal, 18)
                                     .buttonStyle(.plain)

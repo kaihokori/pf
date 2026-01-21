@@ -58,6 +58,9 @@ struct WorkoutShareSheet: View {
     var weightGroups: [WeightGroupDefinition]
     var weightEntries: [WeightExerciseValue]
     var measurements: BodyMeasurements
+    var trackedMetrics: [TrackedActivityMetric] = []
+    var hkValues: [ActivityMetricType: Double] = [:]
+    var manualValues: [ActivityMetricType: Double] = [:]
 
     @Environment(\.dismiss) private var dismiss
 
@@ -66,6 +69,7 @@ struct WorkoutShareSheet: View {
     @State private var showWeights = true
     @State private var showMeasurements = true
     @State private var showDailySummary = true
+    @State private var showActivityMetrics = true
 
     @State private var selectedWeightGroupId: UUID? = nil
     @State private var sharePayload: WorkoutSharePayload?
@@ -90,6 +94,10 @@ struct WorkoutShareSheet: View {
                         VStack(spacing: 0) {
                             ToggleRow(title: "Daily Summary", isOn: $showDailySummary, icon: "chart.bar.fill", color: .purple)
                             Divider().padding(.leading, 44)
+                            if !trackedMetrics.isEmpty {
+                                ToggleRow(title: "Activity Metrics", isOn: $showActivityMetrics, icon: "chart.xyaxis.line", color: .indigo)
+                                Divider().padding(.leading, 44)
+                            }
                             ToggleRow(title: "Today's Schedule", isOn: $showSchedule, icon: "calendar", color: .blue)
                             Divider().padding(.leading, 44)
                             if !supplements.isEmpty {
@@ -138,11 +146,15 @@ struct WorkoutShareSheet: View {
                                 weightEntries: weightEntries,
                                 selectedWeightGroupId: $selectedWeightGroupId,
                                 measurements: measurements,
+                                trackedMetrics: trackedMetrics,
+                                hkValues: hkValues,
+                                manualValues: manualValues,
                                 showDailySummary: showDailySummary,
                                 showSchedule: showSchedule,
                                 showSupplements: showSupplements,
                                 showWeights: showWeights,
                                 showMeasurements: showMeasurements,
+                                showActivityMetrics: showActivityMetrics,
                                 isExporting: false
                             )
                         }
@@ -224,11 +236,15 @@ struct WorkoutShareSheet: View {
                 weightEntries: weightEntries,
                 selectedWeightGroupId: .constant(selectedWeightGroupId),
                 measurements: measurements,
+                trackedMetrics: trackedMetrics,
+                hkValues: hkValues,
+                manualValues: manualValues,
                 showDailySummary: showDailySummary,
                 showSchedule: showSchedule,
                 showSupplements: showSupplements,
                 showWeights: showWeights,
                 showMeasurements: showMeasurements,
+                showActivityMetrics: showActivityMetrics,
                 isExporting: true
             )
         }
@@ -262,12 +278,16 @@ private struct WorkoutShareCard: View {
     var weightEntries: [WeightExerciseValue]
     var selectedWeightGroupId: Binding<UUID?>
     var measurements: BodyMeasurements
+    var trackedMetrics: [TrackedActivityMetric]
+    var hkValues: [ActivityMetricType: Double]
+    var manualValues: [ActivityMetricType: Double]
 
     var showDailySummary: Bool
     var showSchedule: Bool
     var showSupplements: Bool
     var showWeights: Bool
     var showMeasurements: Bool
+    var showActivityMetrics: Bool
 
     var isExporting: Bool
 
@@ -295,6 +315,15 @@ private struct WorkoutShareCard: View {
             VStack(spacing: 18) {
                 if showDailySummary {
                     WorkoutDailySummarySection(summary: dailySummary, color: .purple)
+                }
+
+                if showActivityMetrics && !trackedMetrics.isEmpty {
+                    WorkoutActivityMetricsSection(
+                        metrics: trackedMetrics,
+                        hkValues: hkValues,
+                        manualValues: manualValues,
+                        color: .indigo
+                    )
                 }
 
                 if showSchedule && !schedule.isEmpty {
@@ -640,4 +669,28 @@ private struct WorkoutDailySummarySection: View {
 private struct WorkoutSharePayload: Identifiable {
     let id = UUID()
     let items: [Any]
+}
+
+private struct WorkoutActivityMetricsSection: View {
+    var metrics: [TrackedActivityMetric]
+    var hkValues: [ActivityMetricType: Double]
+    var manualValues: [ActivityMetricType: Double]
+    var color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "ACTIVITY METRICS", icon: "chart.xyaxis.line", color: color)
+            
+            DailyMetricsGrid(
+                metrics: metrics,
+                hkValues: hkValues,
+                manualAdjustmentProvider: { manualValues[$0] ?? 0 },
+                accentColor: color
+            )
+            .padding(10)
+            .background(Color(UIColor.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .padding(0)
+    }
 }

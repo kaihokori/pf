@@ -1933,7 +1933,6 @@ private struct HabitsStepView: View {
 
 private struct WorkoutTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @State private var newSessionName: String = ""
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
@@ -1976,6 +1975,28 @@ private struct WorkoutTrackingStepView: View {
                             Text(day.day)
                                 .fontWeight(.semibold)
                             Spacer()
+                            
+                            Menu {
+                                ForEach(quickAddSessions) { session in
+                                    Button(session.name) {
+                                        if let index = viewModel.workoutSchedule.firstIndex(where: { $0.id == day.id }) {
+                                            addSession(session, to: index)
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button("Custom") {
+                                    if let index = viewModel.workoutSchedule.firstIndex(where: { $0.id == day.id }) {
+                                        let session = WorkoutSession(name: "", colorHex: "#4A7BD0")
+                                        addSession(session, to: index)
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .symbolRenderingMode(.hierarchical)
+                                    .font(.title2)
+                                    .foregroundColor(.accentColor)
+                            }
                         }
 
                         if let weekday = Weekday.from(label: day.day), viewModel.selectedWorkoutDays.contains(weekday) {
@@ -2023,62 +2044,8 @@ private struct WorkoutTrackingStepView: View {
                     .surfaceCard(14)
                 }
             }
-
-            SectionTitle("Quick Add")
-            VStack(spacing: 8) {
-                ForEach(quickAddSessions) { session in
-                    HStack {
-                        Text(session.name)
-                        Spacer()
-                        
-                        Menu {
-                            ForEach(0..<7) { index in
-                                Button(fullDayName(for: index)) {
-                                    addSession(session, to: index)
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .symbolRenderingMode(.hierarchical)
-                                .font(.title2)
-                                .foregroundColor(.accentColor)
-                        }
-                    }
-                    .padding()
-                    .surfaceCard(12)
-                }
-            }
-
-            // Custom Session
-            SectionTitle("Custom Session")
-            HStack(spacing: 12) {
-                TextField("Add a session...", text: $newSessionName)
-                Spacer(minLength: 0)
-                
-                Menu {
-                    ForEach(0..<7) { index in
-                        Button(fullDayName(for: index)) {
-                            addCustomSession(to: index)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.title2)
-                        .foregroundColor(.accentColor)
-                }
-                .disabled(newSessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding()
-            .surfaceCard(12)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func fullDayName(for index: Int) -> String {
-        let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        guard index >= 0 && index < days.count else { return "" }
-        return days[index]
     }
 
     private func addSession(_ session: WorkoutSession, to index: Int) {
@@ -2096,15 +2063,6 @@ private struct WorkoutTrackingStepView: View {
         var newSession = session
         newSession.id = UUID()
         viewModel.workoutSchedule[index].sessions.append(newSession)
-    }
-
-    private func addCustomSession(to index: Int) {
-        let trimmed = newSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        
-        let session = WorkoutSession(name: trimmed, colorHex: "#4A7BD0")
-        addSession(session, to: index)
-        newSessionName = ""
     }
 }
 
@@ -2461,7 +2419,7 @@ private struct MusicStepView: View {
                 .padding(.top, -14)
 
             VStack(alignment: .center, spacing: 8) {
-                Text("See your listening habits at a glance")
+                Text("Understand your listening habits")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
                 Text("Connect to Apple Music later")
@@ -2492,7 +2450,7 @@ private struct EntertainmentStepView: View {
                 .padding(.top, -14)
 
             VStack(alignment: .center, spacing: 8) {
-                Text("Know what you've watched with ease")
+                Text("Know what you've watched")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
                 Text("Track your TV shows and movies later")
@@ -2524,7 +2482,7 @@ private struct TravelStepView: View {
                 .padding(.top, -14)
 
             VStack(alignment: .center, spacing: 8) {
-                Text("Plan Your adventures with ease")
+                Text("Plan Your adventures")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
                 Text("You can add itineraries later from the Travel tab.")

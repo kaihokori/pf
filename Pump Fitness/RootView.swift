@@ -57,7 +57,7 @@ struct RootView: View {
 
     //     return false
     // }
-    private var isPro: Bool = false
+    private var isPro: Bool = true
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0

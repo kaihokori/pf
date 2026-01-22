@@ -519,72 +519,244 @@ struct RoutineTabView: View {
                                 }
                             }
                         })
-                        
-                        HStack {
-                            Text("Music Tracking")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
 
-                            Spacer()
+                        VStack {
+                            HStack {
+                                Text("Music Tracking")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
 
-                            // Button {
-                            //     showMusicSourcesSheet = true
-                            // } label: {
-                            //     Label("Manage", systemImage: "gear")
-                            //         .font(.callout)
-                            //         .fontWeight(.medium)
-                            //         .padding(.horizontal, 12)
-                            //         .padding(.vertical, 8)
-                            //         .glassEffect(in: .rect(cornerRadius: 18.0))
-                            // }
-                            // .buttonStyle(.plain)
+                                Spacer()
+
+                                // Button {
+                                //     showMusicSourcesSheet = true
+                                // } label: {
+                                //     Label("Manage", systemImage: "gear")
+                                //         .font(.callout)
+                                //         .fontWeight(.medium)
+                                //         .padding(.horizontal, 12)
+                                //         .padding(.vertical, 8)
+                                //         .glassEffect(in: .rect(cornerRadius: 18.0))
+                                // }
+                                // .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 38)
+                            .padding(.horizontal, 18)
+
+                            MusicTrackingSection()
+                                .padding(.horizontal, 18)
+                                .padding(.top, 12)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 38)
-                        .padding(.horizontal, 18)
+                        .opacity(isPro ? 1 : 0.5)
+                        .blur(radius: isPro ? 0 : 4)
+                        .disabled(!isPro)
+                        .overlay {
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001) // Capture taps
+                                        .onTapGesture {
+                                            // Optional: Trigger upgrade flow
+                                        }
+                                    
+                                    Button {
+                                        showProSheet = true
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
 
-                        MusicTrackingSection()
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                            
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Music Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .sheet(isPresented: $showProSheet) {
+                                        ProSubscriptionView()
+                                    }
+                                }
+                            }
+                        }
+
+                        VStack {
+                            HStack {
+                                Text("Entertainment Tracking")
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 38)
+                            .padding(.horizontal, 18)
+
+                            Button {
+                                showEntertainmentLog = true
+                            } label: {
+                                Label("Log Watched", systemImage: "plus")
+                                  .font(.callout.weight(.semibold))
+                                  .padding(.vertical, 18)
+                                  .frame(maxWidth: .infinity, minHeight: 52)
+                                  .glassEffect(in: .rect(cornerRadius: 16.0))
+                                  .contentShape(Rectangle())
+                            }
+                            .padding(.top, 16)
+                            .padding(.horizontal, 18)
+                            .buttonStyle(.plain)
+
+                            EntertainmentTrackingSection(watchedItems: $watchedEntertainment)
+                            .padding(.vertical, 18)
+                            .padding(.horizontal, 8)
+                            .glassEffect(in: .rect(cornerRadius: 16.0))
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
-
-                        HStack {
-                            Text("Entertainment Tracking")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
+                            .sheet(isPresented: $showEntertainmentLog) {
+                                LogWatchedSheet(isPresented: $showEntertainmentLog) { newItem in
+                                    var updated = watchedEntertainment
+                                    updated.append(newItem)
+                                    onUpdateWatchedEntertainment(updated)
+                                }
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 38)
-                        .padding(.horizontal, 18)
+                        .opacity(isPro ? 1 : 0.5)
+                        .blur(radius: isPro ? 0 : 4)
+                        .disabled(!isPro)
+                        .overlay {
+                            if !isPro {
+                                ZStack {
+                                    Color.black.opacity(0.001) // Capture taps
+                                        .onTapGesture {
+                                            // Optional: Trigger upgrade flow
+                                        }
+                                    
+                                    Button {
+                                        showProSheet = true
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            HStack {
+                                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
 
-                        Button {
-                            showEntertainmentLog = true
-                        } label: {
-                            Label("Log Watched", systemImage: "plus")
-                              .font(.callout.weight(.semibold))
-                              .padding(.vertical, 18)
-                              .frame(maxWidth: .infinity, minHeight: 52)
-                              .glassEffect(in: .rect(cornerRadius: 16.0))
-                              .contentShape(Rectangle())
-                        }
-                        .padding(.top, 16)
-                        .padding(.horizontal, 18)
-                        .buttonStyle(.plain)
-
-                        EntertainmentTrackingSection(watchedItems: $watchedEntertainment)
-                        .padding(.vertical, 18)
-                        .padding(.horizontal, 8)
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
-                        .padding(.horizontal, 18)
-                        .padding(.top, 12)
-                        .sheet(isPresented: $showEntertainmentLog) {
-                            LogWatchedSheet(isPresented: $showEntertainmentLog) { newItem in
-                                var updated = watchedEntertainment
-                                updated.append(newItem)
-                                onUpdateWatchedEntertainment(updated)
+                                                if let accent {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.template)
+                                                        .foregroundStyle(accent)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                } else {
+                                                    Image("logo")
+                                                        .resizable()
+                                                        .renderingMode(.original)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(height: 40)
+                                                        .padding(.leading, 4)
+                                                        .offset(y: 6)
+                                                }
+                                                
+                                                Text("PRO")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(Color.white)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                            .fill(
+                                                                accent.map {
+                                                                    LinearGradient(
+                                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                        startPoint: .topLeading,
+                                                                        endPoint: .bottomTrailing
+                                                                    )
+                                                                } ?? LinearGradient(
+                                                                    gradient: Gradient(colors: [
+                                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                    ]),
+                                                                    startPoint: .topLeading,
+                                                                    endPoint: .bottomTrailing
+                                                                )
+                                                            )
+                                                    )
+                                                    .offset(y: 6)
+                                            }
+                                            .padding(.bottom, 5)
+                                            
+                                            Text("Trackerio Pro")
+                                                .font(.headline)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text("Upgrade to unlock Entertainment Tracking + More")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding()
+                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .sheet(isPresented: $showProSheet) {
+                                        ProSubscriptionView()
+                                    }
+                                }
                             }
                         }
 

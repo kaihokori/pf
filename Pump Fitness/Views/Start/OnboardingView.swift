@@ -96,6 +96,10 @@ struct OnboardingView: View {
                                     SportsStepView(viewModel: viewModel)
                                 case .activityWellness:
                                     ActivityWellnessStepView(viewModel: viewModel)
+                                case .music:
+                                    MusicStepView(viewModel: viewModel)
+                                case .entertainment:
+                                    EntertainmentStepView(viewModel: viewModel)
                                 case .itinerary:
                                     TravelStepView(viewModel: viewModel)
                                 }
@@ -645,6 +649,10 @@ struct OnboardingView: View {
             return "Please complete all fields."
         case .activityWellness:
             return "Please select at least one metric or skip if optional."
+        case .music:
+            return "Please complete all fields."
+        case .entertainment:
+            return "Please complete all fields."
         case .itinerary:
             return "Please complete all fields."
         }
@@ -2436,6 +2444,68 @@ private struct MetricSelectionPill: View {
     }
 }
 
+private struct MusicStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 16) {
+            Image("music")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .frame(height: 460)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 6)
+                .padding(.horizontal, 8)
+                .padding(.top, -14)
+
+            VStack(alignment: .center, spacing: 8) {
+                Text("See your listening habits at a glance")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
+                Text("Connect to Apple Music later")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
+private struct EntertainmentStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 16) {
+            Image("entertainment")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .frame(height: 460)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 6)
+                .padding(.horizontal, 8)
+                .padding(.top, -14)
+
+            VStack(alignment: .center, spacing: 8) {
+                Text("Know what you've watched with ease")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
+                Text("Track your TV shows and movies later")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
 private struct TravelStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @Environment(\.colorScheme) private var colorScheme
@@ -2816,6 +2886,8 @@ final class OnboardingViewModel: ObservableObject {
                 .weightsTracking,
                 .workoutSupplements,
                 .sports,
+                .music,
+                .entertainment,
                 .itinerary
             ]
         } else {
@@ -2831,6 +2903,8 @@ final class OnboardingViewModel: ObservableObject {
                 .weightsTracking,
                 .workoutSupplements,
                 .sports,
+                .music,
+                .entertainment,
                 .itinerary
             ]
         }
@@ -2963,6 +3037,10 @@ final class OnboardingViewModel: ObservableObject {
             return true
         case .activityWellness:
             // Allow continuing if user has selected at least one metric, or allow skipping
+            return true
+        case .music:
+            return true
+        case .entertainment:
             return true
         case .itinerary:
             return true
@@ -3446,6 +3524,8 @@ enum OnboardingStep: CaseIterable, Equatable {
     case expenses
     case sports
     case activityWellness
+    case music
+    case entertainment
     case itinerary
 
     var title: String {
@@ -3462,6 +3542,8 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .expenses: return "Routine"
         case .sports: return "Sports"
         case .activityWellness: return "Activity & Wellness"
+        case .music: return "Music"
+        case .entertainment: return "Entertainment"
         case .itinerary: return "Itinerary"
         }
     }
@@ -3491,6 +3573,8 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .expenses: return "dollarsign.circle"
         case .sports: return "sportscourt"
         case .activityWellness: return "figure.walk"
+        case .music: return "music.note"
+        case .entertainment: return "tv"
         case .itinerary: return "airplane"
         }
     }
@@ -3509,6 +3593,8 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .expenses: return "Yeah we know! We could help you manage your expenses!"
         case .sports: return "What sports do you want to track your performance in?"
         case .activityWellness: return "Track your daily activity and wellness metrics."
+        case .music: return "What do you listen to?"
+        case .entertainment: return "Do you watch anything?"
         case .itinerary: return "Keep track of plans before you voyage around the world"
         }
     }

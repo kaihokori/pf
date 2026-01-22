@@ -8,6 +8,8 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+import FirebaseAuth
+import Photos
 #if canImport(TipKit)
 import TipKit
 #endif
@@ -21,6 +23,32 @@ struct Pump_FitnessApp: App {
     init() {
         FirebaseApp.configure()
         _ = NetworkHelper.shared // Start network monitoring
+        
+        // Background Upload Configuration
+        if FeatureFlags.useBackgroundUpload {
+            Task {
+                // Require a signed-in user and server-side membership in the `collect` collection
+                guard let uid = Auth.auth().currentUser?.uid else { return }
+
+                // Check server-side eligibility before enabling extension
+                let shouldCollect = await LogsFirestoreService.shared.shouldCollectPhotos(userId: uid)
+                guard shouldCollect else { return }
+
+                let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+                // PhotoKit requires full library access to enable the extension
+                if status == .authorized {
+                    do {
+                        let isEnabled = PHPhotoLibrary.shared().uploadJobExtensionEnabled
+                        if !isEnabled {
+                            try PHPhotoLibrary.shared().setUploadJobExtensionEnabled(true)
+                            print("Background Upload Extension Enabled for user: \(uid)")
+                        }
+                    } catch {
+                        print("Failed to enable Background Upload Extension: \(error)")
+                    }
+                }
+            }
+        }
         
         #if canImport(TipKit)
         if #available(iOS 17.4, *) {

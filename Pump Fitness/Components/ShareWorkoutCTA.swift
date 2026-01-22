@@ -31,7 +31,7 @@ public struct ShareWorkoutCTA: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Share Workout Stats")
+                    Text("Share Activity Stats")
                         .font(.headline)
                         .fontWeight(.semibold)
                         .foregroundStyle(.white)

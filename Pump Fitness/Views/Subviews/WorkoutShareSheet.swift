@@ -83,7 +83,7 @@ struct WorkoutShareSheet: View {
                         .frame(width: 40, height: 5)
                         .padding(.top, 12)
 
-                    Text("Share Workout Summary")
+                    Text("Share Activity Summary")
                         .font(.title2)
                         .fontWeight(.bold)
                 }

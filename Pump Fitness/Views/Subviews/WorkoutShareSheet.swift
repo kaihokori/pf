@@ -74,6 +74,9 @@ struct WorkoutShareSheet: View {
     @State private var selectedWeightGroupId: UUID? = nil
     @State private var sharePayload: WorkoutSharePayload?
 
+    @State private var selectedMetricTypes: Set<ActivityMetricType> = []
+    @State private var selectedSupplementIDs: Set<String> = []
+
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
@@ -112,22 +115,93 @@ struct WorkoutShareSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.horizontal, 20)
 
+                        if showDailySummary && !trackedMetrics.isEmpty {
+                            HStack(spacing: 8) {
+                                Text("Select metrics")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Menu {
+                                    ForEach(trackedMetrics) { metric in
+                                        Button {
+                                            if selectedMetricTypes.contains(metric.type) {
+                                                selectedMetricTypes.remove(metric.type)
+                                            } else {
+                                                selectedMetricTypes.insert(metric.type)
+                                            }
+                                        } label: {
+                                            if selectedMetricTypes.contains(metric.type) {
+                                                Label(metric.type.displayName, systemImage: "checkmark")
+                                            } else {
+                                                Text(metric.type.displayName)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Text("\(selectedMetricTypes.count) selected")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(accentColor)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                        }
+
+                        if showSupplements && !supplements.isEmpty {
+                             HStack(spacing: 8) {
+                                Text("Select supplements")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Menu {
+                                    ForEach(supplements) { supplement in
+                                        Button {
+                                            if selectedSupplementIDs.contains(supplement.id) {
+                                                selectedSupplementIDs.remove(supplement.id)
+                                            } else {
+                                                selectedSupplementIDs.insert(supplement.id)
+                                            }
+                                        } label: {
+                                            if selectedSupplementIDs.contains(supplement.id) {
+                                                Label(supplement.name, systemImage: "checkmark")
+                                            } else {
+                                                Text(supplement.name)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Text("\(selectedSupplementIDs.count) selected")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(accentColor)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                        }
+
                         if showWeights {
                             HStack(spacing: 8) {
-                                Text("Select body part")
+                                Text("Select weight record group")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
 
                                 Spacer()
 
-                                Picker(selection: $selectedWeightGroupId) {
+                                Menu {
                                     ForEach(weightGroups, id: \.id) { group in
-                                        Text(group.name).tag(Optional(group.id))
+                                        Button {
+                                            selectedWeightGroupId = group.id
+                                        } label: {
+                                            if selectedWeightGroupId == group.id {
+                                                Label(group.name, systemImage: "checkmark")
+                                            } else {
+                                                Text(group.name)
+                                            }
+                                        }
                                     }
                                 } label: {
-                                    EmptyView()
+                                    Text(weightGroups.first(where: { $0.id == selectedWeightGroupId })?.name ?? "Select")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(accentColor)
                                 }
-                                .pickerStyle(.menu)
                             }
                             .padding(.horizontal, 20)
                         }
@@ -146,7 +220,7 @@ struct WorkoutShareSheet: View {
                                 weightEntries: weightEntries,
                                 selectedWeightGroupId: $selectedWeightGroupId,
                                 measurements: measurements,
-                                trackedMetrics: trackedMetrics,
+                                trackedMetrics: trackedMetrics.filter { selectedMetricTypes.contains($0.type) },
                                 hkValues: hkValues,
                                 manualValues: manualValues,
                                 showDailySummary: showDailySummary,
@@ -155,7 +229,8 @@ struct WorkoutShareSheet: View {
                                 showWeights: showWeights,
                                 showMeasurements: showMeasurements,
                                 showActivityMetrics: showActivityMetrics,
-                                isExporting: false
+                                isExporting: false,
+                                filterSupplements: { s in selectedSupplementIDs.contains(s.id) }
                             )
                         }
                         .dynamicTypeSize(.medium)
@@ -167,7 +242,7 @@ struct WorkoutShareSheet: View {
                         .padding(.bottom, 60)
                     }
                 }
-
+                
                 VStack {
                     Button {
                         Task {
@@ -215,6 +290,14 @@ struct WorkoutShareSheet: View {
             if selectedWeightGroupId == nil {
                 selectedWeightGroupId = weightGroups.first?.id
             }
+            if selectedMetricTypes.isEmpty {
+                let firstMetrics = trackedMetrics.prefix(4).map { $0.type }
+                selectedMetricTypes = Set(firstMetrics)
+            }
+            if selectedSupplementIDs.isEmpty {
+                let firstSupps = supplements.prefix(4).map { $0.id }
+                selectedSupplementIDs = Set(firstSupps)
+            }
         }
     }
 
@@ -236,7 +319,7 @@ struct WorkoutShareSheet: View {
                 weightEntries: weightEntries,
                 selectedWeightGroupId: .constant(selectedWeightGroupId),
                 measurements: measurements,
-                trackedMetrics: trackedMetrics,
+                trackedMetrics: trackedMetrics.filter { selectedMetricTypes.contains($0.type) },
                 hkValues: hkValues,
                 manualValues: manualValues,
                 showDailySummary: showDailySummary,
@@ -245,7 +328,8 @@ struct WorkoutShareSheet: View {
                 showWeights: showWeights,
                 showMeasurements: showMeasurements,
                 showActivityMetrics: showActivityMetrics,
-                isExporting: true
+                isExporting: true,
+                filterSupplements: { s in selectedSupplementIDs.contains(s.id) }
             )
         }
         .frame(width: width)
@@ -290,6 +374,7 @@ private struct WorkoutShareCard: View {
     var showActivityMetrics: Bool
 
     var isExporting: Bool
+    var filterSupplements: (Supplement) -> Bool = { _ in true }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -314,15 +399,11 @@ private struct WorkoutShareCard: View {
 
             VStack(spacing: 18) {
                 if showDailySummary {
-                    WorkoutDailySummarySection(summary: dailySummary, color: .purple)
-                }
-
-                if showActivityMetrics && !trackedMetrics.isEmpty {
-                    WorkoutActivityMetricsSection(
+                    WorkoutDailySummarySection(
                         metrics: trackedMetrics,
                         hkValues: hkValues,
                         manualValues: manualValues,
-                        color: .indigo
+                        color: .purple
                     )
                 }
 
@@ -331,7 +412,11 @@ private struct WorkoutShareCard: View {
                 }
 
                 if showSupplements && !supplements.isEmpty {
-                    WorkoutSupplementsSection(supplements: supplements, takenIDs: takenIDs, color: .green)
+                    WorkoutSupplementsSection(
+                        supplements: supplements.filter(filterSupplements),
+                        takenIDs: takenIDs,
+                        color: .green
+                    )
                 }
 
                 if showWeights {
@@ -384,48 +469,53 @@ private struct WorkoutScheduleSection: View {
     var checkInText: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "TODAY'S SCHEDULE", icon: "calendar", color: .blue)
-            HStack {
-                Spacer()
-                // Status: Checked In / Rest Day / Not Logged
-                Text(statusText(from: checkInText))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                let total = items.count
-                let maxShow = 3
-                ForEach(0..<min(maxShow, total), id: \.self) { idx in
-                    if idx == 2 && total > maxShow {
-                        // show + X more in place of the 3rd item
-                        let more = total - 2
-                        HStack {
-                            Text("")
-                                .frame(width: 64, alignment: .leading)
-                            Text("+ \(more) more")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                    } else {
-                        let it = items[idx]
-                        HStack {
-                            Text(it.timeText)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 64, alignment: .leading)
-                            Text(it.title)
-                                .font(.subheadline)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        if idx < min(maxShow, total) - 1 {
-                            Divider()
-                        }
+        HStack {
+            Image(systemName: "calendar")
+                .foregroundStyle(.blue)
+            Text("TODAY'S SCHEDULE")
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(.black)
+            Spacer()
+            Text(statusText(from: checkInText))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(6)
+                .background(Color(UIColor.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        VStack(alignment: .leading, spacing: 6) {
+            let total = items.count
+            let maxShow = 3
+            ForEach(0..<min(maxShow, total), id: \.self) { idx in
+                if idx == 2 && total > maxShow {
+                    // show + X more in place of the 3rd item
+                    let more = total - 2
+                    HStack {
+                        Text("")
+                            .frame(width: 64, alignment: .leading)
+                        Text("+ \(more) more")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    let it = items[idx]
+                    HStack {
+                        Text(it.timeText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 64, alignment: .leading)
+                        Text(it.title)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                    if idx < min(maxShow, total) - 1 {
+                        Divider()
                     }
                 }
             }
@@ -635,43 +725,6 @@ private struct WorkoutMeasurementsSection: View {
 }
 
 private struct WorkoutDailySummarySection: View {
-    var summary: DailySummarySnapshot
-    var color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "DAILY SUMMARY", icon: "chart.bar.fill", color: color)
-            HStack(spacing: 12) {
-                statCard(title: "Calories", value: summary.caloriesText)
-                statCard(title: "Steps", value: summary.stepsText)
-                statCard(title: "Distance", value: summary.distanceText)
-            }
-            .padding(10)
-            .background(Color(UIColor.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .padding(0)
-    }
-
-    private func statCard(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct WorkoutSharePayload: Identifiable {
-    let id = UUID()
-    let items: [Any]
-}
-
-private struct WorkoutActivityMetricsSection: View {
     var metrics: [TrackedActivityMetric]
     var hkValues: [ActivityMetricType: Double]
     var manualValues: [ActivityMetricType: Double]
@@ -679,18 +732,96 @@ private struct WorkoutActivityMetricsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "ACTIVITY METRICS", icon: "chart.xyaxis.line", color: color)
+            SectionHeader(title: "DAILY SUMMARY", icon: "chart.bar.fill", color: color)
             
-            DailyMetricsGrid(
-                metrics: metrics,
-                hkValues: hkValues,
-                manualAdjustmentProvider: { manualValues[$0] ?? 0 },
-                accentColor: color
-            )
-            .padding(10)
-            .background(Color(UIColor.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            let count = metrics.count
+            let limit = 4
+            let showMore = count > limit
+            let displayCount = showMore ? limit - 1 : min(count, limit)
+            let displayMetrics = Array(metrics.prefix(displayCount))
+            
+            if metrics.isEmpty {
+                 Text("No metrics recorded")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(displayMetrics) { metric in
+                        let val = (hkValues[metric.type] ?? 0) + (manualValues[metric.type] ?? 0)
+                        statCard(
+                            title: metric.type.displayName,
+                            value: formatValue(val),
+                            unit: metric.unit,
+                            icon: metric.type.systemImage
+                        )
+                    }
+                    
+                    if showMore {
+                        let more = count - displayCount
+                        moreCard(count: more, color: color)
+                    }
+                }
+            }
         }
         .padding(0)
     }
+    
+    private func formatValue(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return String(format: "%.0f", value)
+        } else {
+            return String(format: "%.1f", value)
+        }
+    }
+
+    private func statCard(title: String, value: String, unit: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: icon)
+                    .font(.caption2)
+                    .foregroundStyle(color.opacity(0.8))
+            }
+            HStack(spacing: 2) {
+                Text(value)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(unit)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+    
+    private func moreCard(count: Int, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "ellipsis.circle")
+                .foregroundStyle(color)
+            Text("+ \(count) more")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct WorkoutSharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
 }

@@ -25,38 +25,39 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .nutrition
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
-    private var isPro: Bool {
-        if subscriptionManager.isDebugForcingNoSubscription { return false }
+    // private var isPro: Bool {
+    //     if subscriptionManager.isDebugForcingNoSubscription { return false }
 
-        let account = activeAccount
+    //     let account = activeAccount
 
-        // 1. Manual Override: overridePro == true forces Pro
-        // If false or nil, we proceed to other checks.
-        if let override = account.overridePro, override == true {
-            return true
-        }
+    //     // 1. Manual Override: overridePro == true forces Pro
+    //     // If false or nil, we proceed to other checks.
+    //     if let override = account.overridePro, override == true {
+    //         return true
+    //     }
 
-        // 2. Manual Time Grant: manualPro > Now
-        if let manualDate = account.manualPro, manualDate > Date() {
-            return true
-        }
+    //     // 2. Manual Time Grant: manualPro > Now
+    //     if let manualDate = account.manualPro, manualDate > Date() {
+    //         return true
+    //     }
         
-        // (Legacy Support) proPeriodEnd behaves like manualPro
-        if let legacyPro = account.proPeriodEnd, legacyPro > Date() {
-            return true
-        }
+    //     // (Legacy Support) proPeriodEnd behaves like manualPro
+    //     if let legacyPro = account.proPeriodEnd, legacyPro > Date() {
+    //         return true
+    //     }
 
-        // 3. StoreKit Entitlements (or local receipt validation)
-        if subscriptionManager.hasProAccess { return true }
+    //     // 3. StoreKit Entitlements (or local receipt validation)
+    //     if subscriptionManager.hasProAccess { return true }
 
-        // 4. Trial Access (App-level or Account-level)
-        if subscriptionManager.isTrialActive { return true }
-        if let trialEnd = account.trialPeriodEnd, trialEnd > Date() {
-            return true
-        }
+    //     // 4. Trial Access (App-level or Account-level)
+    //     if subscriptionManager.isTrialActive { return true }
+    //     if let trialEnd = account.trialPeriodEnd, trialEnd > Date() {
+    //         return true
+    //     }
 
-        return false
-    }
+    //     return false
+    // }
+    private var isPro: Bool = false
     @State private var selectedDate: Date = Date()
     @State private var consumedCalories: Int = 0
     @State private var calorieGoal: Int = 0

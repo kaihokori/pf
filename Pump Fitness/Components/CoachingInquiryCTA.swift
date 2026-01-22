@@ -128,7 +128,3 @@ public struct CoachingInquiryCTA: View {
         }
     }
 }
-
-#Preview {
-    CoachingInquiryCTA()
-}

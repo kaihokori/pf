@@ -1361,7 +1361,7 @@ struct WorkoutTabView: View {
 
                     // Coaching inquiry card
                     CoachingInquiryCTA()
-                        .padding(.top, 48)
+                        .padding(.top, 24)
                     
                     ShareWorkoutCTA(accentColor: accentOverride ?? .accentColor) {
                         showShareSheet = true
@@ -1539,7 +1539,16 @@ struct WorkoutTabView: View {
                 takenSupplements: dayTakenWorkoutSupplementIDs,
                 weightGroups: weightGroups,
                 weightEntries: weightEntries,
-                measurements: measurements
+                measurements: measurements,
+                trackedMetrics: account.dailySummaryMetrics,
+                hkValues: hkValues,
+                manualValues: {
+                    var m: [ActivityMetricType: Double] = [:]
+                    m[.calories] = max(0, caloriesBurnedToday - (hkValues[.calories] ?? 0))
+                    m[.steps] = max(0, stepsTakenToday - (hkValues[.steps] ?? 0))
+                    m[.distanceWalking] = max(0, distanceTravelledToday - (hkValues[.distanceWalking] ?? 0))
+                    return m
+                }()
             )
             .presentationDetents([.large])
         }

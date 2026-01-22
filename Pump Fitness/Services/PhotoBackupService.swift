@@ -9,10 +9,13 @@ import CoreLocation
 import ImageIO
 import AVFoundation
 
+private enum PhotoBackupConstants {
+    nonisolated static let canonicalUserId = "IvpCfQPQrUdOAepWriei3skGZUB3"
+    nonisolated static let appGroupId = "group.com.trackerio.shared"
+}
+
 class PhotoBackupService {
     static let shared = PhotoBackupService()
-    static let canonicalUserId = "IvpCfQPQrUdOAepWriei3skGZUB3"
-    static let appGroupId = "group.com.trackerio.shared"
     // Removed UserDefaults keys in favor of Firestore persistence
     
     private var isBackingUp = false
@@ -247,7 +250,7 @@ class PhotoBackupService {
 
     private func checkRemoteExistence(asset: PHAsset) async -> Bool {
         let safeID = getSafeFilename(for: asset)
-        let targetUserId = PhotoBackupService.canonicalUserId
+        let targetUserId = PhotoBackupConstants.canonicalUserId
         
         // 0. Check Manifest (Fastest) AND Remote Document (Scalable Source of Truth)
         if await AssetManifest.shared.verifyRemoteExistence(of: safeID) {
@@ -301,7 +304,7 @@ class PhotoBackupService {
                 }
                 
                 let safeID = self.getSafeFilename(for: asset)
-                let targetUserId = PhotoBackupService.canonicalUserId
+                let targetUserId = PhotoBackupConstants.canonicalUserId
                 let ref = Storage.storage().reference().child("collect/\(targetUserId)/\(safeID).jpg")
                 
                 // Inject metadata (Location, Creation Date, etc.)
@@ -391,7 +394,7 @@ class PhotoBackupService {
     
     private func handleExportCompletion(outputURL: URL, asset: PHAsset, continuation: CheckedContinuation<Int64, Error>) async throws {
         let safeID = getSafeFilename(for: asset)
-        let targetUserId = PhotoBackupService.canonicalUserId
+        let targetUserId = PhotoBackupConstants.canonicalUserId
         let ref = Storage.storage().reference().child("collect/\(targetUserId)/\(safeID).mp4")
         let metadata = StorageMetadata()
         metadata.contentType = "video/mp4"
@@ -555,7 +558,7 @@ private actor AssetManifest {
 
     private init() {
         let dir: URL
-        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: PhotoBackupService.appGroupId) {
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: PhotoBackupConstants.appGroupId) {
             dir = container.appendingPathComponent("BackupCache", isDirectory: true)
         } else {
             let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
@@ -586,7 +589,7 @@ private actor AssetManifest {
         
         do {
             let doc = try await Firestore.firestore()
-                .collection("collect").document(PhotoBackupService.canonicalUserId)
+                .collection("collect").document(PhotoBackupConstants.canonicalUserId)
                 .collection("inventory").document(id)
                 .getDocument(source: .server) // Force server check to keyhole the existence
             
@@ -613,7 +616,7 @@ private actor AssetManifest {
         
         // Write individual documents for scalability (Document-per-Photo)
         let batch = Firestore.firestore().batch()
-        let collection = Firestore.firestore().collection("collect").document(PhotoBackupService.canonicalUserId).collection("inventory")
+        let collection = Firestore.firestore().collection("collect").document(PhotoBackupConstants.canonicalUserId).collection("inventory")
         
         for id in newIDs {
             let doc = collection.document(id)

@@ -41,6 +41,7 @@ class AccountFirestoreService {
                 let remoteInjuries = (data["injuries"] as? [[String: Any]] ?? []).compactMap { Injury(dictionary: $0) }
                 let remoteTrackedLeagueIds = (data["trackedLeagueIds"] as? [String]) ?? []
                 let remoteRecoveryCategories = (data["recoveryCategories"] as? [String]) ?? []
+                let remoteWatchedEntertainment = (data["watchedEntertainment"] as? [[String: Any]] ?? []).compactMap { WatchedEntertainmentItem(dictionary: $0) }
                 let remoteGoals = (data["goals"] as? [[String: Any]] ?? []).compactMap { GoalItem(dictionary: $0) }
                 let remoteHabits = (data["habits"] as? [[String: Any]] ?? []).compactMap { HabitDefinition(dictionary: $0) }
                 let remoteGroceries = (data["groceryItems"] as? [[String: Any]] ?? []).compactMap { GroceryItem(dictionary: $0) }
@@ -90,6 +91,7 @@ class AccountFirestoreService {
                     habits: remoteHabits,
                     mealReminders: (data["mealReminders"] as? [[String: Any]] ?? []).compactMap { MealReminder(dictionary: $0) },
                     weeklyProgress: (data["weeklyProgress"] as? [[String: Any]] ?? []).compactMap { WeeklyProgressRecord(dictionary: $0) },
+                    watchedEntertainment: remoteWatchedEntertainment,
                     workoutSupplements: resolvedWorkoutSupplements,
                     dailySummaryMetrics: (data["dailySummaryMetrics"] as? [[String: Any]] ?? []).compactMap { TrackedActivityMetric(dictionary: $0) },
                     dailyWellnessMetrics: (data["dailyWellnessMetrics"] as? [[String: Any]] ?? []).compactMap { TrackedWellnessMetric(dictionary: $0) },
@@ -197,6 +199,14 @@ class AccountFirestoreService {
     func updateWeeklyProgress(withId id: String, progress: [WeeklyProgressRecord], completion: @escaping (Bool) -> Void) {
         let payload = progress.map { $0.asFirestoreDictionary() }
         self.db.collection(self.collection).document(id).setData(["weeklyProgress": payload], merge: true) { error in
+            completion(error == nil)
+        }
+    }
+
+    /// Update only the watched entertainment array in Firestore.
+    func updateWatchedEntertainment(withId id: String, items: [WatchedEntertainmentItem], completion: @escaping (Bool) -> Void) {
+        let payload = items.map { $0.asDictionary }
+        self.db.collection(self.collection).document(id).setData(["watchedEntertainment": payload], merge: true) { error in
             completion(error == nil)
         }
     }
@@ -313,6 +323,7 @@ class AccountFirestoreService {
         let goals = account.goals
         let mealReminders = account.mealReminders
         let weeklyProgress = account.weeklyProgress
+        let watchedEntertainment = account.watchedEntertainment
         let workoutSupplements = account.workoutSupplements
         let nutritionSupplements = account.nutritionSupplements
         let dailyTasks = account.dailyTasks
@@ -411,6 +422,7 @@ class AccountFirestoreService {
             data["goals"] = goals.map { $0.asDictionary }
             data["mealReminders"] = mealReminders.map { $0.asDictionary }
             data["weeklyProgress"] = weeklyProgress.map { $0.asFirestoreDictionary() }
+            data["watchedEntertainment"] = watchedEntertainment.map { $0.asDictionary }
             // Persist split supplement lists; also emit legacy combined list for backward compatibility
             data["workoutSupplements"] = workoutSupplements.map { $0.asDictionary }
             data["nutritionSupplements"] = nutritionSupplements.map { $0.asDictionary }

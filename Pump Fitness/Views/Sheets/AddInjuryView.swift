@@ -31,7 +31,7 @@ struct AddInjuryView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            ZStack {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
                         
@@ -465,7 +465,9 @@ private struct SimpleKeyboardDismissBar: View {
     var onDismiss: () -> Void
 
     var body: some View {
-        Group {
+        VStack {
+            Spacer()
+            
             if isVisible {
                 HStack {
                     Spacer()
@@ -481,8 +483,7 @@ private struct SimpleKeyboardDismissBar: View {
                     }
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 6)
-                .padding(.bottom, 6)
+                .padding(.bottom, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

@@ -832,7 +832,7 @@ struct AccountsView: View {
 
                                 Toggle(isOn: $activityTimersAlertsEnabled) {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Activity Timers")
+                                        Text("Timers")
                                             .font(.subheadline.weight(.semibold))
                                         Text("Receive a notification when an activity timer finishes.")
                                             .font(.caption)

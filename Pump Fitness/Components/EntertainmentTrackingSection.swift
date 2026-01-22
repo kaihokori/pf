@@ -719,6 +719,10 @@ struct EntertainmentTrackingSection: View {
         let onItemTap: (WatchedEntertainmentItem) -> Void
         
         var body: some View {
+            let rowItems = Array(items.sorted(by: { $0.dateWatched > $1.dateWatched }).prefix(5))
+            let hasAnyDescription = rowItems.contains { !$0.comment.isEmpty }
+            let cardHeight: CGFloat = 200 + (hasAnyDescription ? 120 : 85)
+            
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Image(systemName: icon)
@@ -732,8 +736,8 @@ struct EntertainmentTrackingSection: View {
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
-                        ForEach(items.sorted(by: { $0.dateWatched > $1.dateWatched }).prefix(5)) { item in
-                            WatchedItemCard(item: item)
+                        ForEach(rowItems) { item in
+                            WatchedItemCard(item: item, hasAnyDescription: hasAnyDescription)
                                 .onTapGesture {
                                     onItemTap(item)
                                 }
@@ -756,7 +760,7 @@ struct EntertainmentTrackingSection: View {
                                         .fontWeight(.medium)
                                         .foregroundStyle(.primary)
                                 }
-                                .frame(width: 140, height: 290)
+                                .frame(width: 140, height: cardHeight)
                                 .background(.regularMaterial)
                                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
@@ -789,6 +793,11 @@ struct EntertainmentTrackingSection: View {
 
 private struct WatchedItemCard: View {
     let item: WatchedEntertainmentItem
+    let hasAnyDescription: Bool
+    
+    private var infoHeight: CGFloat {
+        hasAnyDescription ? 120 : 85
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -826,10 +835,21 @@ private struct WatchedItemCard: View {
                     .foregroundStyle(.primary)
                 
                 HStack(spacing: 2) {
-                    ForEach(1...5, id: \.self) { star in
-                        Image(systemName: star <= item.rating ? "star.fill" : "star")
-                            .font(.caption2)
-                            .foregroundStyle(star <= item.rating ? .yellow : .secondary.opacity(0.3))
+                    ForEach(1...5, id: \.self) { index in
+                        let starValue = Double(index)
+                        if starValue <= item.rating {
+                            Image(systemName: "star.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.yellow)
+                        } else if starValue - 0.5 <= item.rating {
+                            Image(systemName: "star.leadinghalf.filled")
+                                .font(.caption2)
+                                .foregroundStyle(.yellow)
+                        } else {
+                            Image(systemName: "star")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary.opacity(0.3))
+                        }
                     }
                 }
                 
@@ -842,15 +862,20 @@ private struct WatchedItemCard: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
-                } else {
-                    Spacer(minLength: 0)
+                } else if hasAnyDescription {
+                    // Hidden spacer-like text to ensure consistent height if property is true
+                    Text(" ")
+                        .font(.caption2)
+                        .lineLimit(2)
                 }
+                
+                Spacer(minLength: 0)
             }
             .padding(12)
-            .frame(width: 140, height: 90, alignment: .topLeading)
+            .frame(width: 140, height: infoHeight, alignment: .topLeading)
             .background(.regularMaterial)
         }
-        .frame(width: 140, height: 290)
+        .frame(width: 140, height: 200 + infoHeight)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
     }
@@ -888,11 +913,13 @@ private struct AllEntertainmentSheet: View {
     }
     
     var body: some View {
+        let hasAnyDescription = sortedItems.contains { !$0.comment.isEmpty }
+        
         NavigationStack {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 20) {
                     ForEach(sortedItems) { item in
-                        WatchedItemCard(item: item)
+                        WatchedItemCard(item: item, hasAnyDescription: hasAnyDescription)
                             .onTapGesture {
                                 onItemTap(item)
                             }
@@ -942,21 +969,45 @@ struct LogWatchedSheet: View {
     @State private var selectedItem: TMDBItem?
     
     // Form state
-    @State private var rating = 0
+    @State private var rating: Double = 0
     @State private var comment = ""
     @State private var dateWatched = Date()
+    @State private var showCalendar = false
     @State private var showDeleteConfirmation = false
+    @FocusState private var isCommentFocused: Bool
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if selectedItem == nil && existingItem == nil {
-                    // Search Mode
-                    searchView
-                } else {
-                    // Entry Mode
-                    entryFormView
+            ZStack {
+                VStack(spacing: 0) {
+                    if selectedItem == nil && existingItem == nil {
+                        // Search Mode
+                        searchView
+                    } else {
+                        // Entry Mode
+                        entryFormView
+                    }
                 }
+                
+                if showCalendar {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation {
+                                showCalendar = false
+                            }
+                        }
+                    
+                    CalendarComponent(selectedDate: $dateWatched, showCalendar: $showCalendar)
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
+                
+                SimpleKeyboardDismissBar(
+                    isVisible: isCommentFocused,
+                    tint: Color.accentColor,
+                    onDismiss: { isCommentFocused = false }
+                )
             }
             .navigationTitle(existingItem != nil ? "Edit Details" : (selectedItem == nil ? "Log Watched" : "Add Details"))
             .navigationBarTitleDisplayMode(.inline)
@@ -1137,13 +1188,22 @@ struct LogWatchedSheet: View {
                         .font(.headline)
                     
                     HStack(spacing: 12) {
-                        ForEach(1...5, id: \.self) { star in
+                        ForEach(1...5, id: \.self) { index in
+                            let starValue = Double(index)
                             Button {
-                                rating = star
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                    if rating == starValue - 0.5 {
+                                        rating = starValue
+                                    } else if rating == starValue {
+                                        rating = starValue - 0.5
+                                    } else {
+                                        rating = starValue - 0.5
+                                    }
+                                }
                             } label: {
-                                Image(systemName: star <= rating ? "star.fill" : "star")
+                                Image(systemName: starValue <= rating ? "star.fill" : (starValue - 0.5 <= rating ? "star.leadinghalf.filled" : "star"))
                                     .font(.system(size: 32))
-                                    .foregroundStyle(star <= rating ? .yellow : .secondary.opacity(0.3))
+                                    .foregroundStyle(starValue - 0.5 <= rating ? Color.yellow : Color.secondary.opacity(0.3))
                             }
                             .buttonStyle(.plain)
                         }
@@ -1159,10 +1219,24 @@ struct LogWatchedSheet: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                         
-                        DatePicker("", selection: $dateWatched, displayedComponents: [.date])
-                            .labelsHidden()
+                        Button {
+                            withAnimation {
+                                showCalendar = true
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "calendar")
+                                    .foregroundStyle(Color.accentColor)
+                                Text(dateWatched.formatted(date: .long, time: .omitted))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             .padding(12)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
@@ -1171,6 +1245,7 @@ struct LogWatchedSheet: View {
                             .fontWeight(.medium)
                         
                         TextField("What did you think?", text: $comment, axis: .vertical)
+                            .focused($isCommentFocused)
                             .lineLimit(3...6)
                             .padding(12)
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -1189,7 +1264,7 @@ struct LogWatchedSheet: View {
                             .foregroundStyle(.red)
                     }
                     .padding(.horizontal)
-                    .padding(.top, 24)
+                    .padding(.top, 16)
                 }
                 
                 Color.clear.frame(height: 20)
@@ -1243,6 +1318,36 @@ struct LogWatchedSheet: View {
             onAdd(newEntry)
         }
         isPresented = false
+    }
+}
+
+private struct SimpleKeyboardDismissBar: View {
+    var isVisible: Bool
+    var tint: Color
+    var onDismiss: () -> Void
+
+    var body: some View {
+        VStack {
+            Spacer()
+            if isVisible {
+                HStack {
+                    Spacer()
+
+                    Button(action: onDismiss) {
+                        Label("Dismiss", systemImage: "keyboard.chevron.compact.down")
+                            .font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+                            .foregroundStyle(tint)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
     }
 }
 

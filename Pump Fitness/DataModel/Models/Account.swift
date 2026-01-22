@@ -1136,6 +1136,102 @@ struct Injury: Codable, Hashable, Identifiable {
     }
 }
 
+struct WatchedEntertainmentItem: Codable, Hashable, Identifiable {
+    var id: UUID
+    let tmdbId: Int
+    let title: String
+    let overview: String?
+    let posterPath: String?
+    let rating: Double // 1-5
+    let comment: String
+    let dateWatched: Date
+    let mediaType: String // "movie" or "tv"
+    let genreIds: [Int]
+
+    init(
+        id: UUID = UUID(),
+        tmdbId: Int,
+        title: String,
+        overview: String?,
+        posterPath: String?,
+        rating: Double,
+        comment: String,
+        dateWatched: Date,
+        mediaType: String,
+        genreIds: [Int]
+    ) {
+        self.id = id
+        self.tmdbId = tmdbId
+        self.title = title
+        self.overview = overview
+        self.posterPath = posterPath
+        self.rating = rating
+        self.comment = comment
+        self.dateWatched = dateWatched
+        self.mediaType = mediaType
+        self.genreIds = genreIds
+    }
+    
+    var fullPosterUrl: URL? {
+        guard let path = posterPath else { return nil }
+        return URL(string: "https://image.tmdb.org/t/p/w500\(path)")
+    }
+    
+    init?(dictionary: [String: Any]) {
+        let tmdbId = dictionary["tmdbId"] as? Int ?? 0
+        let title = dictionary["title"] as? String ?? "Unknown"
+        let overview = dictionary["overview"] as? String
+        let posterPath = dictionary["posterPath"] as? String
+        let rating = (dictionary["rating"] as? NSNumber)?.doubleValue ?? 0
+        let comment = dictionary["comment"] as? String ?? ""
+        
+        let dateWatched: Date
+        if let timestamp = dictionary["dateWatched"] as? Timestamp {
+            dateWatched = timestamp.dateValue()
+        } else if let date = dictionary["dateWatched"] as? Date {
+            dateWatched = date
+        } else {
+            dateWatched = Date()
+        }
+        
+        let mediaType = dictionary["mediaType"] as? String ?? "movie"
+        let genreIds = dictionary["genreIds"] as? [Int] ?? []
+        
+        // Handle ID
+        let idRaw = dictionary["id"] as? String
+        let id = idRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        
+        self.init(
+            id: id,
+            tmdbId: tmdbId,
+            title: title,
+            overview: overview,
+            posterPath: posterPath,
+            rating: rating,
+            comment: comment,
+            dateWatched: dateWatched,
+            mediaType: mediaType,
+            genreIds: genreIds
+        )
+    }
+    
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id.uuidString,
+            "tmdbId": tmdbId,
+            "title": title,
+            "rating": rating,
+            "comment": comment,
+            "dateWatched": Timestamp(date: dateWatched),
+            "mediaType": mediaType,
+            "genreIds": genreIds
+        ]
+        if let overview { dict["overview"] = overview }
+        if let posterPath { dict["posterPath"] = posterPath }
+        return dict
+    }
+}
+
 @Model
 class Account: ObservableObject {
     static var deviceCurrencySymbol: String {
@@ -1209,6 +1305,7 @@ class Account: ObservableObject {
     var habits: [HabitDefinition] = HabitDefinition.defaults
     var mealReminders: [MealReminder] = MealReminder.defaults
     var weeklyProgress: [WeeklyProgressRecord] = []
+    var watchedEntertainment: [WatchedEntertainmentItem] = []
     var itineraryEvents: [ItineraryEvent] = []
     var itineraryTrips: [ItineraryTrip] = []
     var sports: [SportConfig] = []
@@ -1259,6 +1356,7 @@ class Account: ObservableObject {
         habits: [HabitDefinition] = HabitDefinition.defaults,
         mealReminders: [MealReminder] = MealReminder.defaults,
         weeklyProgress: [WeeklyProgressRecord] = [],
+        watchedEntertainment: [WatchedEntertainmentItem] = [],
         workoutSupplements: [Supplement] = [],
         dailySummaryMetrics: [TrackedActivityMetric] = [],
         dailyWellnessMetrics: [TrackedWellnessMetric] = [],
@@ -1321,6 +1419,7 @@ class Account: ObservableObject {
         self.habits = habits
         self.mealReminders = mealReminders
         self.weeklyProgress = weeklyProgress
+        self.watchedEntertainment = watchedEntertainment
         self.workoutSupplements = workoutSupplements
         self.nutritionSupplements = nutritionSupplements
         self.dailyTasks = dailyTasks

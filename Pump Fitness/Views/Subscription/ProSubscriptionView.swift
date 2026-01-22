@@ -165,7 +165,7 @@ struct ProSubscriptionView: View {
                                 ]),
                                 ProBenefitCategory(name: "Routine Management", image: "checklist.checked", color: .blue, benefits: [
                                     ProBenefit(icon: "list.bullet", title: "Daily Tasks", description: "Create unlimited daily tasks to stay organised."),
-                                    ProBenefit(icon: "timer", title: "Activity Timers", description: "Create unlimited activity timers for your routines."),
+                                    ProBenefit(icon: "timer", title: "Timers", description: "Create unlimited activity timers for your routines."),
                                     ProBenefit(icon: "target", title: "Goals", description: "Set and track unlimited goals."),
                                     ProBenefit(icon: "repeat", title: "Habits", description: "Add unlimited habits to improve your lifestyle."),
                                     ProBenefit(icon: "dollarsign.circle.fill", title: "Expense Tracker", description: "Manage your expenses with unlimited entries.")

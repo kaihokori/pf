@@ -67,6 +67,7 @@ struct RootView: View {
     @State private var macroConsumptions: [MacroConsumption] = []
     @State private var cravings: [CravingItem] = []
     @State private var itineraryEvents: [ItineraryEvent] = []
+    @State private var watchedEntertainment: [WatchedEntertainmentItem] = []
     @State private var sportsConfigs: [SportConfig] = []
     @State private var sportActivities: [SportActivityRecord] = []
     @State private var checkedMeals: Set<String> = []
@@ -150,6 +151,7 @@ struct RootView: View {
             .onChange(of: trackedMacros) { _, newValue in handleTrackedMacrosChange(newValue) }
             .onChange(of: macroConsumptions) { _, newValue in handleMacroConsumptionsChange(newValue) }
             .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
+            .onChange(of: watchedEntertainment) { _, newValue in persistWatchedEntertainment(newValue) }
             // If the user purchases a subscription, clear any stuck proPeriodEnd overrides
             .onChange(of: subscriptionManager.purchasedProductIDs) { _, ids in
                 // Only clear any manual `proPeriodEnd` overrides once entitlements
@@ -330,6 +332,7 @@ struct RootView: View {
         initializeHabitsFromLocal()
         initializeTrackedMacrosFromLocal()
         initializeItineraryEventsFromLocal()
+        initializeWatchedEntertainmentFromLocal()
         initializeMealRemindersFromLocal()
         scheduleAllNotifications()
         printSignedInUserDetails()
@@ -833,6 +836,13 @@ struct RootView: View {
                     }
                     fetched.itineraryTrips = resolvedItineraryTrips
 
+                    var resolvedWatchedEntertainment = fetched.watchedEntertainment
+                    if resolvedWatchedEntertainment.isEmpty, let localAccount = fetchAccount(), !localAccount.watchedEntertainment.isEmpty {
+                        resolvedWatchedEntertainment = localAccount.watchedEntertainment
+                    }
+                    fetched.watchedEntertainment = resolvedWatchedEntertainment
+                    watchedEntertainment = resolvedWatchedEntertainment
+
                     var resolvedDailyTasks = fetched.dailyTasks
                     if resolvedDailyTasks.isEmpty, let localAccount = fetchAccount(), !localAccount.dailyTasks.isEmpty {
                         resolvedDailyTasks = localAccount.dailyTasks
@@ -1185,6 +1195,7 @@ private extension RootView {
         initializeExpenseCategoriesFromLocal()
         initializeWeightTrackingFromLocal()
         initializeItineraryEventsFromLocal()
+        initializeWatchedEntertainmentFromLocal()
         initializeMealRemindersFromLocal()
         scheduleAllNotifications()
 
@@ -1206,6 +1217,32 @@ private extension RootView {
         }
 
         itineraryEvents = account.itineraryEvents
+    }
+
+    func initializeWatchedEntertainmentFromLocal() {
+        guard let account = fetchAccount() else {
+            watchedEntertainment = []
+            return
+        }
+        watchedEntertainment = account.watchedEntertainment
+    }
+
+    func persistWatchedEntertainment(_ items: [WatchedEntertainmentItem]) {
+        guard let account = fetchAccount() else { return }
+        watchedEntertainment = items
+        account.watchedEntertainment = items
+        do {
+            try modelContext.save()
+        } catch {
+            print("RootView: failed to save watched entertainment to Account: \(error)")
+        }
+        
+        // Use the dedicated update method if possible, or full save
+        accountFirestoreService.updateWatchedEntertainment(withId: account.id ?? "", items: items) { success in
+            if !success {
+                print("RootView: failed to sync watched entertainment to Firestore")
+            }
+        }
     }
 
     func initializeDailyGoalsFromLocal() {
@@ -2514,6 +2551,7 @@ private extension RootView {
                 local.trackedLeagueIds = fetched.trackedLeagueIds
                 local.injuries = fetched.injuries
                 local.weeklyProgress = fetched.weeklyProgress
+                local.watchedEntertainment = fetched.watchedEntertainment
                     // Persist supplements from server into local Account
                     local.workoutSupplements = fetched.workoutSupplements
                     local.nutritionSupplements = fetched.nutritionSupplements
@@ -2771,6 +2809,10 @@ private extension RootView {
                                     nightSleepSeconds: $nightSleepSecondsToday,
                                     napSleepSeconds: $napSleepSecondsToday,
                                     isPro: isPro,
+                                    watchedEntertainment: $watchedEntertainment,
+                                    onUpdateWatchedEntertainment: { items in
+                                        persistWatchedEntertainment(items)
+                                    },
                                     onUpdateActivityTimers: { timers in
                                         persistActivityTimers(timers)
                                     },

@@ -23,7 +23,7 @@ struct LiveGamesTrackingView: View {
             // Header
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Live Games Tracking")
+                    Text("Match Tracking")
                         .font(.title3)
                         .fontWeight(.semibold)
                         .foregroundStyle(.primary)

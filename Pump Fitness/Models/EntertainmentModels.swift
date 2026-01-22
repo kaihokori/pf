@@ -50,20 +50,7 @@ struct TMDBResponse: Codable {
     let results: [TMDBItem]
 }
 
-struct WatchedEntertainmentItem: Identifiable, Codable, Hashable {
-    var id: UUID = UUID()
-    let tmdbId: Int
-    let title: String
-    let overview: String?
-    let posterPath: String?
-    let rating: Int // 1-5
-    let comment: String
-    let dateWatched: Date
-    let mediaType: String // "movie" or "tv"
-    let genreIds: [Int]
-    
-    var fullPosterUrl: URL? {
-        guard let path = posterPath else { return nil }
-        return URL(string: "https://image.tmdb.org/t/p/w500\(path)")
-    }
-}
+
+// Moved to Account.swift for persistence
+// struct WatchedEntertainmentItem: Identifiable, Codable, Hashable { ... }
+

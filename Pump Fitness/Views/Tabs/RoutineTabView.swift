@@ -321,6 +321,8 @@ struct RoutineTabView: View {
     @Binding var nightSleepSeconds: TimeInterval
     @Binding var napSleepSeconds: TimeInterval
     var isPro: Bool
+    @Binding var watchedEntertainment: [WatchedEntertainmentItem]
+    var onUpdateWatchedEntertainment: ([WatchedEntertainmentItem]) -> Void
     var onUpdateActivityTimers: ([ActivityTimerItem]) -> Void
     var onUpdateHabits: ([HabitDefinition]) -> Void
     var onUpdateGoals: ([GoalItem]) -> Void
@@ -336,7 +338,6 @@ struct RoutineTabView: View {
     @State private var currentDay: Day?
 
     @State private var habitItems: [HabitItem] = []
-    @State private var watchedEntertainmentItems: [WatchedEntertainmentItem] = []
     @State private var showEntertainmentLog = false
 
     @State private var weekStartsOnMonday: Bool = true
@@ -414,7 +415,7 @@ struct RoutineTabView: View {
                         .padding(.bottom, -10)
                         
                         HStack {
-                            Text("Activity Timers")
+                            Text("Timers")
                                 .font(.title3)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(.primary)
@@ -573,7 +574,7 @@ struct RoutineTabView: View {
                         .padding(.horizontal, 18)
                         .buttonStyle(.plain)
 
-                        EntertainmentTrackingSection(watchedItems: $watchedEntertainmentItems)
+                        EntertainmentTrackingSection(watchedItems: $watchedEntertainment)
                         .padding(.vertical, 18)
                         .padding(.horizontal, 8)
                         .glassEffect(in: .rect(cornerRadius: 16.0))
@@ -581,7 +582,9 @@ struct RoutineTabView: View {
                         .padding(.top, 12)
                         .sheet(isPresented: $showEntertainmentLog) {
                             LogWatchedSheet(isPresented: $showEntertainmentLog) { newItem in
-                                watchedEntertainmentItems.append(newItem)
+                                var updated = watchedEntertainment
+                                updated.append(newItem)
+                                onUpdateWatchedEntertainment(updated)
                             }
                         }
 

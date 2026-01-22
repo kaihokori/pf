@@ -840,12 +840,18 @@ struct SportsTabView: View {
             }
         }
         .onAppear {
-            refreshWellnessValues()
+            let metrics = account.dailyWellnessMetrics
+            healthKitService.requestAuthorization(wellnessMetrics: metrics.map { $0.type }) { _ in
+                refreshWellnessValues()
+            }
             refreshSleepValues()
         }
         .onChange(of: selectedDate) { _, _ in
             refreshWellnessValues()
             refreshSleepValues()
+        }
+        .onChange(of: account.dailyWellnessMetrics) { _, _ in
+            refreshWellnessValues()
         }
     }
 

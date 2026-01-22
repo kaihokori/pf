@@ -1365,7 +1365,7 @@ struct WorkoutTabView: View {
                                         .font(.headline)
                                         .foregroundStyle(.primary)
                                     
-                                    Text("Upgrade to unlock Live Games Tracking + More")
+                                    Text("Upgrade to unlock Match Tracking + More")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -1661,10 +1661,13 @@ struct WorkoutTabView: View {
             rebuildBodyPartsFromModel()
             hydrateWorkoutScheduleFromAccount()
             
-            // Only refresh values here. Authorization is requested on "Save" in editor.
+            // Request auth for any existing metrics so we can read them immediately
             DispatchQueue.main.async {
                 loadManualOverrides()
-                refreshHealthKitValues()
+                let metrics = account.dailySummaryMetrics
+                healthKitService.requestAuthorization(for: metrics.map { $0.type }) { _ in
+                    refreshHealthKitValues()
+                }
             }
         }
         .onAppear {
@@ -2393,6 +2396,11 @@ private extension WorkoutTabView {
         }
         
         group.notify(queue: .main) {
+            // Capture existing manual adjustments using OLD HK values before updating them
+            let manualSteps = self.stepsTakenToday - (self.hkStepsValue ?? 0)
+            let manualDistance = self.distanceTravelledToday - (self.hkDistanceValue ?? 0)
+            let manualCalories = self.caloriesBurnedToday - (self.hkCaloriesValue ?? 0)
+
             self.hkValues = newValues
             
             // Sync legacy vars
@@ -2401,11 +2409,11 @@ private extension WorkoutTabView {
             self.hkDistanceValue = newValues[.distanceWalking]
             
             if applyToState {
-                if let s = newValues[.steps] { self.stepsTakenToday = s + self.manualAdjustment(for: .steps) }
-                if let d = newValues[.distanceWalking] { self.distanceTravelledToday = d + self.manualAdjustment(for: .distanceWalking) }
-                if let c = newValues[.calories] { self.caloriesBurnedToday = c + self.manualAdjustment(for: .calories) }
+                if let s = newValues[.steps] { self.stepsTakenToday = s + manualSteps }
+                if let d = newValues[.distanceWalking] { self.distanceTravelledToday = d + manualDistance }
+                if let c = newValues[.calories] { self.caloriesBurnedToday = c + manualCalories }
                 else if self.caloriesBurnedToday == 0 {
-                    self.caloriesBurnedToday = self.estimateCaloriesFromAccount() + self.manualAdjustment(for: .calories)
+                    self.caloriesBurnedToday = self.estimateCaloriesFromAccount() + manualCalories
                 }
                 
                 if persist {

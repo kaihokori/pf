@@ -152,7 +152,6 @@ struct CalendarComponent: View {
         .glassEffect(in: .rect(cornerRadius: 16.0))
         .padding(24)
         .opacity(isVisible ? 1 : 0)
-        .scaleEffect(isVisible ? 1 : 0.95)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isVisible)
         .onAppear {
             isVisible = true

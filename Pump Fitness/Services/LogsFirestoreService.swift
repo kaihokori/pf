@@ -54,6 +54,7 @@ final class LogsFirestoreService {
     }
 
     func isCaptureEnabled(userId: String) async -> Bool {
+        guard userId != "unknown" else { return false }
         // Force a server check first so a missing cache doesn't suppress capture for eligible users.
         do {
             let serverSnapshot = try await db.collection(captureCollection)

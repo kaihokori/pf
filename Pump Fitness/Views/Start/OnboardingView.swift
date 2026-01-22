@@ -1925,9 +1925,25 @@ private struct HabitsStepView: View {
 
 private struct WorkoutTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @State private var newSessionName: String = ""
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
     private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
+
+    private let quickAddSessions: [WorkoutSession] = [
+        WorkoutSession(name: "Chest", colorHex: "#D84A4A"),
+        WorkoutSession(name: "Back", colorHex: "#4A7BD0"),
+        WorkoutSession(name: "Shoulders", colorHex: "#E39A3B"),
+        WorkoutSession(name: "Legs", colorHex: "#7A5FD1"),
+        WorkoutSession(name: "Core", colorHex: "#4CAF6A"),
+        WorkoutSession(name: "Yoga", colorHex: "#4FB6C6"),
+        WorkoutSession(name: "Pilates", colorHex: "#C85FA8"),
+        WorkoutSession(name: "Hyrox", colorHex: "#7A5FD1"),
+        WorkoutSession(name: "Crossfit", colorHex: "#D84A4A"),
+        WorkoutSession(name: "Meditate", colorHex: "#E6C84F"),
+        WorkoutSession(name: "Cardio", colorHex: "#E39A3B"),
+        WorkoutSession(name: "Run", colorHex: "#4CAF6A")
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -1993,15 +2009,6 @@ private struct WorkoutTrackingStepView: View {
                                 .padding(10)
                                 .surfaceCard(10)
                             }
-
-                            Button(action: {
-                                day.sessions.append(WorkoutSession(name: ""))
-                            }) {
-                                Label("Add session", systemImage: "plus.circle.fill")
-                                    .font(.footnote.weight(.semibold))
-                            }
-                            .disabled(day.sessions.count >= 3)
-                            .padding(.top, 4)
                         }
                     }
                     .padding(12)
@@ -2009,8 +2016,87 @@ private struct WorkoutTrackingStepView: View {
                 }
             }
 
+            SectionTitle("Quick Add")
+            VStack(spacing: 8) {
+                ForEach(quickAddSessions) { session in
+                    HStack {
+                        Text(session.name)
+                        Spacer()
+                        
+                        Menu {
+                            ForEach(0..<7) { index in
+                                Button(fullDayName(for: index)) {
+                                    addSession(session, to: index)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .symbolRenderingMode(.hierarchical)
+                                .font(.title2)
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                    .padding()
+                    .surfaceCard(12)
+                }
+            }
+
+            // Custom Session
+            SectionTitle("Custom Session")
+            HStack(spacing: 12) {
+                TextField("Add a session...", text: $newSessionName)
+                Spacer(minLength: 0)
+                
+                Menu {
+                    ForEach(0..<7) { index in
+                        Button(fullDayName(for: index)) {
+                            addCustomSession(to: index)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .font(.title2)
+                        .foregroundColor(.accentColor)
+                }
+                .disabled(newSessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding()
+            .surfaceCard(12)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func fullDayName(for index: Int) -> String {
+        let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        guard index >= 0 && index < days.count else { return "" }
+        return days[index]
+    }
+
+    private func addSession(_ session: WorkoutSession, to index: Int) {
+        let weekday = Weekday.allCases[index]
+        
+        // If it was a rest day, make it active
+        if viewModel.selectedWorkoutDays.contains(weekday) {
+            viewModel.selectedWorkoutDays.remove(weekday)
+        }
+        
+        // Add name to tracked parts
+        viewModel.trackedBodyParts.insert(session.name)
+        
+        // Add the session with a new unique ID
+        var newSession = session
+        newSession.id = UUID()
+        viewModel.workoutSchedule[index].sessions.append(newSession)
+    }
+
+    private func addCustomSession(to index: Int) {
+        let trimmed = newSessionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        let session = WorkoutSession(name: trimmed, colorHex: "#4A7BD0")
+        addSession(session, to: index)
+        newSessionName = ""
     }
 }
 
@@ -2227,10 +2313,12 @@ private struct ActivityWellnessStepView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                     ForEach(activityOptions) { type in
                         let isSelected = viewModel.activityMetrics.contains(where: { $0.type == type })
+                        let metricColor = displayColorForActivity(type)
                         MetricSelectionPill(
                             title: type.displayName,
                             icon: type.systemImage,
-                            isSelected: isSelected
+                            isSelected: isSelected,
+                            selectedColor: metricColor
                         ) {
                             toggleActivity(type)
                         }
@@ -2246,10 +2334,12 @@ private struct ActivityWellnessStepView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                     ForEach(wellnessOptions) { type in
                         let isSelected = viewModel.wellnessMetrics.contains(where: { $0.type == type })
+                        let metricColor = displayColorForWellness(type)
                         MetricSelectionPill(
                             title: type.displayName,
                             icon: type.systemImage,
-                            isSelected: isSelected
+                            isSelected: isSelected,
+                            selectedColor: metricColor
                         ) {
                             toggleWellness(type)
                         }
@@ -2258,15 +2348,38 @@ private struct ActivityWellnessStepView: View {
             }
         }
     }
+
+    private func displayColorForActivity(_ type: ActivityMetricType) -> Color {
+        let base = colorForActivity(type)
+        return themeManager.selectedTheme == .multiColour ? base : themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    private func displayColorForWellness(_ type: WellnessMetricType) -> Color {
+        let base = colorForWellness(type)
+        return themeManager.selectedTheme == .multiColour ? base : themeManager.selectedTheme.accent(for: colorScheme)
+    }
+
+    private func colorForActivity(_ type: ActivityMetricType) -> Color {
+        let defaults = ColorPalette.defaultColors
+        let index = (ActivityMetricType.allCases.firstIndex(of: type) ?? 0) % defaults.count
+        return Color(hex: defaults[index]) ?? .accentColor
+    }
+
+    private func colorForWellness(_ type: WellnessMetricType) -> Color {
+        let defaults = ColorPalette.defaultColors
+        let index = (WellnessMetricType.allCases.firstIndex(of: type) ?? 0) % defaults.count
+        return Color(hex: defaults[index]) ?? .accentColor
+    }
     
     private func toggleActivity(_ type: ActivityMetricType) {
         if let idx = viewModel.activityMetrics.firstIndex(where: { $0.type == type }) {
             viewModel.activityMetrics.remove(at: idx)
         } else {
+            let color = colorForActivity(type)
             let metric = TrackedActivityMetric(
                 type: type,
                 goal: type.defaultGoal,
-                colorHex: "#007AFF"
+                colorHex: color.toHexString()
             )
             viewModel.activityMetrics.append(metric)
         }
@@ -2276,10 +2389,11 @@ private struct ActivityWellnessStepView: View {
         if let idx = viewModel.wellnessMetrics.firstIndex(where: { $0.type == type }) {
             viewModel.wellnessMetrics.remove(at: idx)
         } else {
+            let color = colorForWellness(type)
             let metric = TrackedWellnessMetric(
                 type: type,
                 goal: type.defaultGoal,
-                colorHex: "#34C759"
+                colorHex: color.toHexString()
             )
             viewModel.wellnessMetrics.append(metric)
         }
@@ -2290,6 +2404,7 @@ private struct MetricSelectionPill: View {
     let title: String
     let icon: String
     let isSelected: Bool
+    let selectedColor: Color
     let action: () -> Void
     
     var body: some View {
@@ -2309,13 +2424,13 @@ private struct MetricSelectionPill: View {
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color(UIColor.secondarySystemBackground))
+                    .fill(isSelected ? selectedColor.opacity(0.15) : Color(UIColor.secondarySystemBackground))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                            .strokeBorder(isSelected ? selectedColor : Color.clear, lineWidth: 1.5)
                     )
             )
-            .foregroundStyle(isSelected ? Color.accentColor : .primary)
+            .foregroundStyle(isSelected ? selectedColor : .primary)
         }
         .buttonStyle(.plain)
     }

@@ -63,7 +63,7 @@ struct RecoveryMetabolicExplainer: View {
     
     private var attribution: some View {
         RecoverySourceAttribution(
-            label: "Cell Reports Medicine: Dr. Susanna Søberg Study",
+            label: "Dr. Susanna Søberg Study",
             urlString: "https://www.cell.com/cell-reports-medicine/fulltext/S2666-3791(21)00315-X"
         )
     }
@@ -136,7 +136,7 @@ struct RecoveryCardioExplainer: View {
     
     private var attribution: some View {
         RecoverySourceAttribution(
-            label: "JAMA Internal Medicine: Association Between Sauna Bathing and Fatal Cardiovascular Events",
+            label: "JAMA Internal Medicine",
             urlString: "https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2130724"
         )
     }
@@ -147,33 +147,13 @@ fileprivate struct RecoverySourceAttribution: View {
     let urlString: String
 
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "doc.text.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Source")
-                    .font(.subheadline.weight(.bold))
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-            }
-            
+        HStack(spacing: 4) {
+            Text("Source:")
+            .font(.footnote)
+            Link(label, destination: URL(string: urlString)!)
+                .foregroundColor(.blue)
+                .font(.footnote)
             Spacer()
-            
-            if let url = URL(string: urlString) {
-                Link(destination: url) {
-                    Text("View")
-                        .font(.footnote.weight(.semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            }
         }
-        .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16))
     }
 }

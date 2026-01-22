@@ -124,30 +124,14 @@ private struct SourceAttribution: View {
     let urlString: String
 
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "doc.text.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Source")
-                    .font(.subheadline.weight(.bold))
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
+        HStack(spacing: 4) {
+            Text("Source:")
+            .font(.footnote)
+            Link(label, destination: URL(string: urlString)!)
+                .foregroundColor(.blue)
+                .font(.footnote)
             Spacer()
-            
-            Link(destination: URL(string: urlString)!) {
-                Text("View")
-                    .font(.footnote.weight(.semibold))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
-        .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16))
     }
 }
 

@@ -86,30 +86,14 @@ struct MaintenanceCaloriesExplainer: View {
     }
 
     private var attribution: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "doc.text.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Source")
-                    .font(.subheadline.weight(.bold))
-                Text("NCBI Metabolic research")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
+        HStack(spacing: 4) {
+            Text("Source:")
+            .font(.footnote)
+            Link("NCBI Metabolic research", destination: URL(string: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8017325/")!)
+                .foregroundColor(.blue)
+                .font(.footnote)
             Spacer()
-            
-            Link(destination: URL(string: "https://pmc.ncbi.nlm.nih.gov/articles/PMC8017325/")!) {
-                Text("View")
-                    .font(.footnote.weight(.semibold))
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
-        .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16))
     }
 
     private func bullet(_ text: String) -> some View {

@@ -1095,6 +1095,19 @@ struct LogWatchedSheet: View {
             .padding()
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             .padding()
+
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Link(destination: URL(string: "https://www.themoviedb.org/")!) {
+                    Text("Data sourced from The Movie Database (TMDB)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 18)
             
             if isSearching {
                 ProgressView()

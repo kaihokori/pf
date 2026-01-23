@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 struct SobrietyEditorSheet: View {
     @Binding var account: Account
@@ -239,16 +238,6 @@ struct SobrietyEditorSheet: View {
     
     private func save() {
         account.sobrietyMetrics = workingMetrics
-        
-        // Save locally to SwiftData
-        if let context = account.modelContext {
-            do {
-                try context.save()
-            } catch {
-                print("Failed to save account context: \(error)")
-            }
-        }
-        
         accountService.saveAccount(account) { _ in }
         dismiss()
     }

@@ -56,6 +56,13 @@ struct SobrietyEntrySheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    // Date Header
+                    Text("Log for \(formattedDate)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .padding(.top)
+
                     // Metric Selection
                     if !metrics.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -141,7 +148,7 @@ struct SobrietyEntrySheet: View {
                                 .textCase(.uppercase)
                             
                             HStack(spacing: 0) {
-                                ForEach(Array(SobrietyStatus.allCases.reversed())) { status in
+                                ForEach(SobrietyStatus.allCases) { status in
                                     let isSober = (status == .sober)
                                     let isSelected = selections[selected.id] == isSober
                                     let label = isSober ? labels.success : labels.failure
@@ -178,12 +185,6 @@ struct SobrietyEntrySheet: View {
                             .foregroundStyle(.secondary)
                             .padding()
                     }
-
-                    Text("Log for \(formattedDate)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                        .padding(.top)
                     
                     Spacer()
                 }
@@ -225,8 +226,7 @@ struct SobrietyEntrySheet: View {
     
     private func save() {
         let entries = selections.compactMap { (metricID, isSober) -> SobrietyEntry? in
-            let existingID = initialEntries.first(where: { $0.metricID == metricID })?.id ?? UUID()
-            return SobrietyEntry(id: existingID, metricID: metricID, isSober: isSober, date: date)
+            return SobrietyEntry(metricID: metricID, isSober: isSober, date: date)
         }
         onSave(entries)
         dismiss()

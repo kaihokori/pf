@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BF0000010000000000000001 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = DD0000010000000000000001 /* FirebaseAuth */; };
+		BF0000020000000000000002 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = DD0000020000000000000002 /* FirebaseFirestore */; };
+		BF0000030000000000000003 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = DD0000030000000000000003 /* FirebaseStorage */; };
 		DC2D658F2F23A91700804C29 /* BackgroundUploadExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = DC2D65882F23A91700804C29 /* BackgroundUploadExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DCB003E32EE80CAC003D6BF9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E22EE80CAC003D6BF9 /* FirebaseAuth */; };
 		DCB003E52EE80CAC003D6BF9 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E42EE80CAC003D6BF9 /* FirebaseFirestore */; };
@@ -64,6 +67,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF0000010000000000000001 /* FirebaseAuth in Frameworks */,
+				BF0000020000000000000002 /* FirebaseFirestore in Frameworks */,
+				BF0000030000000000000003 /* FirebaseStorage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -130,6 +136,9 @@
 			);
 			name = BackgroundUploadExtension;
 			packageProductDependencies = (
+				DD0000010000000000000001 /* FirebaseAuth */,
+				DD0000020000000000000002 /* FirebaseFirestore */,
+				DD0000030000000000000003 /* FirebaseStorage */,
 			);
 			productName = BackgroundUploadExtension;
 			productReference = DC2D65882F23A91700804C29 /* BackgroundUploadExtension.appex */;
@@ -254,10 +263,10 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
+				INFOPLIST_FILE = "BackgroundUploadExtension-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = BackgroundUploadExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
@@ -266,16 +275,20 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio.BackgroundUploadExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -284,10 +297,10 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
+				INFOPLIST_FILE = "BackgroundUploadExtension-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = BackgroundUploadExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
@@ -296,16 +309,20 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio.BackgroundUploadExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -440,7 +457,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -492,7 +509,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -612,6 +629,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = DCB003F02EE813B0003D6BF9 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		DD0000010000000000000001 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DCB003E12EE80CAC003D6BF9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		DD0000020000000000000002 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DCB003E12EE80CAC003D6BF9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		DD0000030000000000000003 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DCB003E12EE80CAC003D6BF9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

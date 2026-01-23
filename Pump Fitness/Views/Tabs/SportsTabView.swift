@@ -425,6 +425,90 @@ struct SportsTabView: View {
                                     account: $account,
                                     selectedDate: $selectedDate
                                 )
+                                .opacity(isPro ? 1 : 0.5)
+                                .blur(radius: isPro ? 0 : 4)
+                                .disabled(!isPro)
+                                .overlay {
+                                    if !isPro {
+                                        ZStack {
+                                            Color.black.opacity(0.001) // Capture taps
+                                                .onTapGesture {
+                                                    // no-op capture
+                                                }
+
+                                            Button {
+                                                showProSheet = true
+                                            } label: {
+                                                VStack(spacing: 8) {
+                                                    HStack {
+                                                        let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                                        if let accent {
+                                                            Image("logo")
+                                                                .resizable()
+                                                                .renderingMode(.template)
+                                                                .foregroundStyle(accent)
+                                                                .aspectRatio(contentMode: .fit)
+                                                                .frame(height: 40)
+                                                                .padding(.leading, 4)
+                                                                .offset(y: 6)
+                                                        } else {
+                                                            Image("logo")
+                                                                .resizable()
+                                                                .renderingMode(.original)
+                                                                .aspectRatio(contentMode: .fit)
+                                                                .frame(height: 40)
+                                                                .padding(.leading, 4)
+                                                                .offset(y: 6)
+                                                        }
+                                                        
+                                                        Text("PRO")
+                                                            .font(.subheadline)
+                                                            .fontWeight(.semibold)
+                                                            .foregroundStyle(Color.white)
+                                                            .padding(.horizontal, 8)
+                                                            .padding(.vertical, 4)
+                                                            .background(
+                                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                                    .fill(
+                                                                        accent.map {
+                                                                            LinearGradient(
+                                                                                gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                                                startPoint: .topLeading,
+                                                                                endPoint: .bottomTrailing
+                                                                            )
+                                                                        } ?? LinearGradient(
+                                                                            gradient: Gradient(colors: [
+                                                                                Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                                                Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                                            ]),
+                                                                            startPoint: .topLeading,
+                                                                            endPoint: .bottomTrailing
+                                                                        )
+                                                                    )
+                                                            )
+                                                            .offset(y: 6)
+                                                    }
+                                                    .padding(.bottom, 5)
+                                                    
+                                                    Text("Trackerio Pro")
+                                                        .font(.headline)
+                                                        .foregroundStyle(.primary)
+                                                    
+                                                    Text("Upgrade to unlock Sobriety Tracking + More")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                .padding()
+                                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .sheet(isPresented: $showProSheet) {
+                                                ProSubscriptionView()
+                                            }
+                                        }
+                                    }
+                                }
                                 
                                 SportsInjurySection(
                                     injuries: $account.injuries,
@@ -471,6 +555,61 @@ struct SportsTabView: View {
                                             onLiveSleepUpdate(night, nap)
                                         }
                                     )
+
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        // New collapsible Sleep Summary section (Macro-style layout adapted for sleep)
+                                        HStack {
+                                            Spacer()
+                                            Label("Sleep Summary", systemImage: "bed.double.fill")
+                                                .font(.callout.weight(.semibold))
+                                            Image(systemName: showWeeklySleep ? "chevron.up" : "chevron.down")
+                                                .font(.caption.weight(.semibold))
+                                            Spacer()
+                                        }
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                showWeeklySleep.toggle()
+                                            }
+                                        }
+
+                                        if showWeeklySleep {
+                                            VStack(alignment: .leading, spacing: 10) {
+                                                ScrollView(.horizontal, showsIndicators: false) {
+                                                    HStack(spacing: 12) {
+                                                        let cal = Calendar.current
+                                                        let today = selectedDate
+                                                        let weekday = cal.component(.weekday, from: today) // 1 = Sunday
+                                                        let startIndex = weekStartsOnMonday ? 2 : 1
+                                                        let offsetToStart = (weekday - startIndex + 7) % 7
+                                                        let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
+
+                                                        let weekDates: [Date] = (0..<7).compactMap { i in
+                                                            cal.date(byAdding: .day, value: i, to: startOfWeek)
+                                                        }
+
+                                                        ForEach(weekDates, id: \.self) { day in
+                                                            if let entry = weeklySleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
+                                                                // Use existing entry values
+                                                                SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: entry.nightSeconds, napSeconds: entry.napSeconds)
+                                                            } else {
+                                                                // No recorded data for this day yet
+                                                                SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: 0, napSeconds: 0)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            .transition(.opacity.combined(with: .move(edge: .top)))
+                                            .padding(.top, 6)
+                                        }
+                                    }
+                                    .padding(20)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    .padding(.horizontal, 18)
+                                    .padding(.top, 12)
                                 }
                                 .opacity(isPro ? 1 : 0.5)
                                 .blur(radius: isPro ? 0 : 4)
@@ -548,61 +687,6 @@ struct SportsTabView: View {
                                         }
                                     }
                                 }
-
-                                VStack(alignment: .leading, spacing: 16) {
-                                    // New collapsible Sleep Summary section (Macro-style layout adapted for sleep)
-                                    HStack {
-                                        Spacer()
-                                        Label("Sleep Summary", systemImage: "bed.double.fill")
-                                            .font(.callout.weight(.semibold))
-                                        Image(systemName: showWeeklySleep ? "chevron.up" : "chevron.down")
-                                            .font(.caption.weight(.semibold))
-                                        Spacer()
-                                    }
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            showWeeklySleep.toggle()
-                                        }
-                                    }
-
-                                    if showWeeklySleep {
-                                        VStack(alignment: .leading, spacing: 10) {
-                                            ScrollView(.horizontal, showsIndicators: false) {
-                                                HStack(spacing: 12) {
-                                                    let cal = Calendar.current
-                                                    let today = selectedDate
-                                                    let weekday = cal.component(.weekday, from: today) // 1 = Sunday
-                                                    let startIndex = weekStartsOnMonday ? 2 : 1
-                                                    let offsetToStart = (weekday - startIndex + 7) % 7
-                                                    let startOfWeek = cal.date(byAdding: .day, value: -offsetToStart, to: cal.startOfDay(for: today)) ?? today
-
-                                                    let weekDates: [Date] = (0..<7).compactMap { i in
-                                                        cal.date(byAdding: .day, value: i, to: startOfWeek)
-                                                    }
-
-                                                    ForEach(weekDates, id: \.self) { day in
-                                                        if let entry = weeklySleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
-                                                            // Use existing entry values
-                                                            SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: entry.nightSeconds, napSeconds: entry.napSeconds)
-                                                        } else {
-                                                            // No recorded data for this day yet
-                                                            SleepDayColumn(date: day, tint: workoutTimelineAccent, nightSeconds: 0, napSeconds: 0)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
-                                        .padding(.top, 6)
-                                    }
-                                }
-                                .padding(20)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
-                                .padding(.horizontal, 18)
-                                .padding(.top, 12)
 
                                 ShareWellnessCTA(accentColor: accentOverride ?? .blue) {
                                     showWellnessShareSheet = true
@@ -738,6 +822,7 @@ struct SportsTabView: View {
             let val = (metric.manualValue ?? 0) + (metric.healthKitValue ?? 0)
             let formatted = val.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", val) : String(format: "%.1f", val)
             return WellnessMetricSnapshot(
+                id: metric.id, // Stable ID
                 name: metric.type.displayName,
                 value: formatted,
                 unit: metric.type.unit,
@@ -756,6 +841,7 @@ struct SportsTabView: View {
              return startOfSelected < endOfInjury
         }.map { injury -> BodyInjurySnapshot in
             return BodyInjurySnapshot(
+                id: injury.id, // Stable ID
                 name: injury.name,
                 bodyPart: injury.bodyPart?.rawValue.capitalized ?? "Body",
                 severity: "",
@@ -768,6 +854,7 @@ struct SportsTabView: View {
         let sessions = day.recoverySessions.map { session in
             let mins = Int(session.durationSeconds / 60)
             return RecoverySessionSnapshot(
+                id: session.id, // Stable ID
                 name: session.category.rawValue,
                 detail: "\(mins) min",
                 icon: session.category.icon,
@@ -792,6 +879,28 @@ struct SportsTabView: View {
             score: nil
         )
         
+        let sobrietySnapshots = account.sobrietyMetrics
+            .filter { $0.isEnabled }
+            .map { metric -> SobrietySnapshot in
+                let entry = day.sobrietyEntries.first(where: { $0.metricID == metric.id })
+                var status = "Pending"
+                var isSuccess = false
+                
+                if let entry = entry, let sober = entry.isSober {
+                    status = sober ? "Success" : "Relapsed"
+                    isSuccess = sober
+                }
+                
+                return SobrietySnapshot(
+                    id: metric.id, // Stable ID from metric
+                    name: metric.displayName,
+                    icon: "drop.fill",
+                    status: status,
+                    color: Color(hex: metric.colorHex) ?? .teal,
+                    isSuccess: isSuccess
+                )
+            }
+        
         return WellnessShareSheet(
             accentColor: accentOverride ?? .blue,
             date: selectedDate,
@@ -799,7 +908,8 @@ struct SportsTabView: View {
             metrics: metricsSnapshots,
             injuries: activeInjuries,
             recoverySessions: sessions,
-            sleep: sleepSnap
+            sleep: sleepSnap,
+            sobriety: sobrietySnapshots
         )
     }
 

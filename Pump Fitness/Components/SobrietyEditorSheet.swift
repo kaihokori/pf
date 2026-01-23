@@ -71,10 +71,6 @@ struct SobrietyEditorSheet: View {
                                                 Text(metric.displayName)
                                                     .font(.subheadline.weight(.semibold))
                                             }
-                                            
-                                            Text(metric.type == .alcohol || metric.type == .smoking ? "Standard Challenge" : "Custom Goal")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
                                         }
                                         
                                         Spacer()
@@ -122,9 +118,6 @@ struct SobrietyEditorSheet: View {
                                         VStack(alignment: .leading) {
                                             Text(type.rawValue)
                                                 .font(.subheadline.weight(.semibold))
-                                            Text("Standard Challenge")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
                                         }
                                         
                                         Spacer()

@@ -16,6 +16,7 @@ struct SobrietyTrackingSection: View {
     
     // We need to fetch Day objects for the whole month to fill the calendar
     @State private var monthDays: [Date: Day] = [:]
+    @State private var lastFetchedMonth: Date?
     
     private let calendar = Calendar.current
     
@@ -121,6 +122,12 @@ struct SobrietyTrackingSection: View {
         guard let range = calendar.range(of: .day, in: .month, for: selectedDate),
               let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: selectedDate)) else { return }
         
+        // Determine if we should fetch from Firestore (only once per month session to avoid spamming)
+        var shouldFetchRemote = true
+        if let last = lastFetchedMonth, calendar.isDate(last, equalTo: startOfMonth, toGranularity: .month) {
+            shouldFetchRemote = false
+        }
+        
         var newDays: [Date: Day] = [:]
         
         // Optimize: Fetch range from SwiftData if possible, but fetching one by one is safe for now (max 31 items)
@@ -129,9 +136,24 @@ struct SobrietyTrackingSection: View {
                  // Fetch from SwiftData context synchronously
                  let day = Day.fetchOrCreate(for: date, in: modelContext) 
                  newDays[date] = day
+                 
+                 // Fetch from Firestore if needed
+                 if shouldFetchRemote {
+                     dayService.fetchDay(
+                         for: date,
+                         in: modelContext,
+                         trackedMacros: account.trackedMacros,
+                         soloMetrics: account.soloMetrics,
+                         teamMetrics: account.teamMetrics
+                     ) { _ in }
+                 }
              }
         }
         monthDays = newDays
+        
+        if shouldFetchRemote {
+            lastFetchedMonth = startOfMonth
+        }
     }
     
     private func saveEntries(_ entries: [SobrietyEntry]) {

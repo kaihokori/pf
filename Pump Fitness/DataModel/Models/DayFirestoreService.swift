@@ -347,6 +347,7 @@ class DayFirestoreService {
                 let weightEntriesRemote = (data["weightEntries"] as? [[String: Any]] ?? []).compactMap { self.decodeWeightEntry($0) }
                 let expensesRemote = (data["expenses"] as? [[String: Any]] ?? []).compactMap { self.decodeExpenseEntry($0) }
                 let recoverySessionsRemote = (data["recoverySessions"] as? [[String: Any]] ?? []).compactMap { self.decodeRecoverySession($0) }
+                let sobrietyEntriesRemote = (data["sobrietyEntries"] as? [[String: Any]] ?? []).compactMap { SobrietyEntry(dictionary: $0) }
                 let nightSleepRemote = (data["nightSleepSeconds"] as? NSNumber)?.doubleValue ?? data["nightSleepSeconds"] as? Double
                 let napSleepRemote = (data["napSleepSeconds"] as? NSNumber)?.doubleValue ?? data["napSleepSeconds"] as? Double
                 let teamHomeScoreRemote = data["teamHomeScore"] as? Int ?? 0
@@ -417,6 +418,13 @@ class DayFirestoreService {
                         let remoteDict = Dictionary(grouping: recoverySessionsRemote, by: { $0.id }).compactMapValues { $0.first }
                         let keys = Set(localDict.keys).union(remoteDict.keys)
                         day.recoverySessions = keys.compactMap { remoteDict[$0] ?? localDict[$0] }
+                    }
+                    
+                    if !sobrietyEntriesRemote.isEmpty || !day.sobrietyEntries.isEmpty {
+                        let localDict = Dictionary(grouping: day.sobrietyEntries, by: { $0.metricID }).compactMapValues { $0.first }
+                        let remoteDict = Dictionary(grouping: sobrietyEntriesRemote, by: { $0.metricID }).compactMapValues { $0.first }
+                        let keys = Set(localDict.keys).union(remoteDict.keys)
+                        day.sobrietyEntries = keys.compactMap { remoteDict[$0] ?? localDict[$0] }
                     }
 
                     let mergedIntakes = self.mergeMealIntakes(local: day.mealIntakes, remote: mealIntakesRemote)
@@ -696,6 +704,9 @@ class DayFirestoreService {
         }
         if forceWrite || !day.recoverySessions.isEmpty {
             data["recoverySessions"] = encodeRecoverySessions(day.recoverySessions)
+        }
+        if forceWrite || !day.sobrietyEntries.isEmpty {
+            data["sobrietyEntries"] = day.sobrietyEntries.map { $0.asDictionary }
         }
         if forceWrite || !day.activityMetricAdjustments.isEmpty {
             data["activityMetricAdjustments"] = encodeSoloMetricValues(day.activityMetricAdjustments)

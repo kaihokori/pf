@@ -27,6 +27,7 @@ struct SportsTabView: View {
     @State private var showAccountsView = false
     @ObservedObject var weatherModel: WeatherViewModel
     @State private var showProSheet = false
+    @State private var showWellnessShareSheet = false
     
     // Wellness
     @State private var showWellnessEditor = false
@@ -67,7 +68,7 @@ struct SportsTabView: View {
     // MARK: - Weather Section
 
     // Weather visual grouping used across WeatherSection and surrounding layout
-    private enum WeatherGroup {
+    fileprivate enum WeatherGroup {
         case clear, night, cloudy, rainy, snowy, other
 
         init(symbolName: String) {
@@ -400,253 +401,40 @@ struct SportsTabView: View {
                                 }
 
                             VStack(spacing: 0) {
-                                if Calendar.current.isDateInToday(selectedDate) {
-                                    let _isNight = !(weatherModel.currentSnapshot?.isDaylight ?? true)
-                                    let adjustedGroup: WeatherGroup = {
-                                        guard let snapshot = weatherModel.currentSnapshot else { return .other }
-                                        let base = WeatherGroup(symbolName: snapshot.symbol)
-                                        if _isNight { return base }
-                                        if case .night = base {
-                                            let desc = snapshot.description.lowercased()
-                                            if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") { return .rainy }
-                                            if desc.contains("cloud") || desc.contains("fog") || desc.contains("overcast") { return .cloudy }
-                                            if desc.contains("snow") || desc.contains("sleet") || desc.contains("hail") { return .snowy }
-                                            if desc.contains("clear") || desc.contains("sun") { return .clear }
-                                            return .clear
+                                SportsWeatherHeaderView(
+                                    weatherModel: weatherModel,
+                                    selectedDate: selectedDate,
+                                    isPro: isPro,
+                                    onScrollRequest: {
+                                        withAnimation {
+                                            proxy.scrollTo("teamPlay", anchor: .center)
                                         }
-                                        return base
-                                    }()
-                                    let _overlayOpacity = (_isNight ? 0.45 : 0.28)
-                                    let _imageName: String = {
-                                        switch adjustedGroup {
-                                        case .clear: return _isNight ? "weather_clear_night" : "weather_clear_day"
-                                        case .rainy: return _isNight ? "weather_rainy_night" : "weather_rainy_day"
-                                        case .cloudy: return _isNight ? "weather_cloudy_night" : "weather_cloudy_day"
-                                        case .snowy: fallthrough
-                                        case .other: fallthrough
-                                        case .night: return _isNight ? "weather_clear_night" : "weather_clear_day"
-                                        }
-                                    }()
-
-                                    HStack {
-                                        Text("Weather")
-                                            .font(.title3)
-                                            .fontWeight(.semibold)
-                                            .foregroundStyle(.primary)
-
-                                        Spacer()
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 18)
-                                    .padding(.top, 38)
-
-                                    WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
-                                        .padding(.horizontal, 18)
-                                        .padding(.vertical, 18)
-                                        .background {
-                                            if weatherModel.state == .loaded {
-                                                ZStack {
-                                                    Image(_imageName)
-                                                        .resizable()
-                                                        .scaledToFill()
-                                                        .clipped()
-                                                        .blur(radius: 5)
-                                                    // stronger dark scrim for better contrast
-                                                    LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
-                                                }
-                                            }
-                                        }
-                                        .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
-                                        .padding(.horizontal, 18)
-                                        .frame(height: 500)
-                                        .padding(.top, 18)
-                                        .sportsTip(.weather, isEnabled: isPro, onStepChange: { step in
-                                        if step == 1 {
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                withAnimation {
-                                                    proxy.scrollTo("teamPlay", anchor: .center)
-                                                }
-                                            }
-                                        }
-                                    })
-                                }
+                                )
                                 
-                                HStack {
-                                    Text("Daily Wellness Summary")
-                                        .font(.title3)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
-                                    
-                                    Spacer()
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.horizontal, 18)
-                                .padding(.top, 48)
+                                SportsWellnessSection(
+                                    showWellnessEditor: $showWellnessEditor,
+                                    showWellnessEntry: $showWellnessEntry,
+                                    account: account,
+                                    wellnessHKValues: wellnessHKValues,
+                                    wellnessManualAdjustment: wellnessManualAdjustment,
+                                    accentOverride: accentOverride
+                                )
 
-                                Button {
-                                    showWellnessEditor = true
-                                } label: {
-                                    Label("Change Goals", systemImage: "pencil")
-                                      .font(.callout.weight(.semibold))
-                                      .padding(.vertical, 18)
-                                      .frame(maxWidth: .infinity, minHeight: 52)
-                                      .glassEffect(in: .rect(cornerRadius: 16.0))
-                                      .contentShape(Rectangle())
-                                }
-                                .nutritionTip(.editCalorieGoal)
-                                .padding(.top, 16)
-                                .padding(.horizontal, 18)
-                                .buttonStyle(.plain)
-
-                                if account.dailyWellnessMetrics.isEmpty {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Label("No wellness metrics", systemImage: "heart.text.square")
-                                            .font(.headline.weight(.semibold))
-                                            .foregroundStyle(.primary)
-                                        Text("Add metrics using the Edit button to start tracking your health and wellness.")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(16)
-                                    .glassEffect(in: .rect(cornerRadius: 16.0))
-                                    .padding(.horizontal, 18)
-                                    .padding(.top, 18)
-                                } else {
-                                    WellnessMetricsGrid(
-                                        metrics: account.dailyWellnessMetrics,
-                                        hkValues: wellnessHKValues,
-                                        manualAdjustmentProvider: wellnessManualAdjustment,
-                                        accentColor: accentOverride
-                                    )
-                                    .padding(.horizontal, 18)
-                                    .padding(.top, 18)
-                                    
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "heart.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(accentOverride ?? .pink)
-                                        Text("Synced with Apple Health")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.top, 12)
-                                    .padding(.horizontal, 18)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
+                                SobrietyTrackingSection(
+                                    account: $account,
+                                    selectedDate: $selectedDate
+                                )
                                 
-                                if !account.dailyWellnessMetrics.isEmpty {
-                                    Button {
-                                        showWellnessEntry = true
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            Spacer()
-                                            Label("Submit Data", systemImage: "paperplane.fill")
-                                                .font(.callout.weight(.semibold))
-                                                .foregroundStyle(.white)
-                                            Spacer()
-                                        }
-                                        .padding(.vertical, 18)
-                                        .frame(maxWidth: .infinity, minHeight: 52)
-                                        .background(accentOverride ?? Color.blue, in: RoundedRectangle(cornerRadius: 18))
-                                    }
-                                    .padding(.horizontal, 18)
-                                    .buttonStyle(.plain)
-                                    .contentShape(RoundedRectangle(cornerRadius: 16.0))
-                                    .padding(.top, 16)
-                                }
-                                
-                                InjuryTrackingSection(
+                                SportsInjurySection(
                                     injuries: $account.injuries,
                                     selectedDate: selectedDate,
                                     onSave: {
                                         accountService.saveAccount(account) { _ in }
-                                    }
+                                    },
+                                    isPro: isPro,
+                                    showProSheet: $showProSheet
                                 )
-                                .opacity(isPro ? 1 : 0.5)
-                                .blur(radius: isPro ? 0 : 4)
-                                .disabled(!isPro)
-                                .overlay {
-                                    if !isPro {
-                                        ZStack {
-                                            Color.black.opacity(0.001) // Capture taps
-                                                .onTapGesture {
-                                                    // no-op capture
-                                                }
-
-                                            Button {
-                                                showProSheet = true
-                                            } label: {
-                                                VStack(spacing: 8) {
-                                                    HStack {
-                                                        let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
-
-                                                        if let accent {
-                                                            Image("logo")
-                                                                .resizable()
-                                                                .renderingMode(.template)
-                                                                .foregroundStyle(accent)
-                                                                .aspectRatio(contentMode: .fit)
-                                                                .frame(height: 40)
-                                                                .padding(.leading, 4)
-                                                                .offset(y: 6)
-                                                        } else {
-                                                            Image("logo")
-                                                                .resizable()
-                                                                .renderingMode(.original)
-                                                                .aspectRatio(contentMode: .fit)
-                                                                .frame(height: 40)
-                                                                .padding(.leading, 4)
-                                                                .offset(y: 6)
-                                                        }
-                                                        
-                                                        Text("PRO")
-                                                            .font(.subheadline)
-                                                            .fontWeight(.semibold)
-                                                            .foregroundStyle(Color.white)
-                                                            .padding(.horizontal, 8)
-                                                            .padding(.vertical, 4)
-                                                            .background(
-                                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                                    .fill(
-                                                                        accent.map {
-                                                                            LinearGradient(
-                                                                                gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
-                                                                                startPoint: .topLeading,
-                                                                                endPoint: .bottomTrailing
-                                                                            )
-                                                                        } ?? LinearGradient(
-                                                                            gradient: Gradient(colors: [
-                                                                                Color(red: 0.74, green: 0.43, blue: 0.97),
-                                                                                Color(red: 0.83, green: 0.99, blue: 0.94)
-                                                                            ]),
-                                                                            startPoint: .topLeading,
-                                                                            endPoint: .bottomTrailing
-                                                                        )
-                                                                    )
-                                                            )
-                                                            .offset(y: 6)
-                                                    }
-                                                    .padding(.bottom, 5)
-                                                        
-                                                    Text("Trackerio Pro")
-                                                        .font(.headline)
-                                                        .foregroundStyle(.primary)
-
-                                                    Text("Upgrade to unlock Injury Tracking + More")
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                                .padding()
-                                                .glassEffect(in: .rect(cornerRadius: 16.0))
-                                            }
-                                            .buttonStyle(.plain)
-                                            .sheet(isPresented: $showProSheet) {
-                                                ProSubscriptionView()
-                                            }
-                                        }
-                                    }
-                                }
 
                                 RecoveryTrackingSection(
                                     date: selectedDate,
@@ -815,6 +603,12 @@ struct SportsTabView: View {
                                 .glassEffect(in: .rect(cornerRadius: 16.0))
                                 .padding(.horizontal, 18)
                                 .padding(.top, 12)
+
+                                ShareWellnessCTA(accentColor: accentOverride ?? .blue) {
+                                    showWellnessShareSheet = true
+                                }
+                                .padding(.horizontal, 18)
+                                .padding(.top, 16)
                                 }
                             }
                             .padding(.bottom, 24)
@@ -916,6 +710,10 @@ struct SportsTabView: View {
                     }
                 )
             }
+            .sheet(isPresented: $showWellnessShareSheet) {
+                wellnessShareSheetContent
+            }
+
         }
         .onAppear {
             let metrics = account.dailyWellnessMetrics
@@ -931,6 +729,78 @@ struct SportsTabView: View {
         .onChange(of: account.dailyWellnessMetrics) { _, _ in
             refreshWellnessValues()
         }
+    }
+
+    private var wellnessShareSheetContent: some View {
+        let day = Day.fetchOrCreate(for: selectedDate, in: modelContext)
+        
+        let metricsSnapshots = account.dailyWellnessMetrics.map { metric -> WellnessMetricSnapshot in
+            let val = (metric.manualValue ?? 0) + (metric.healthKitValue ?? 0)
+            let formatted = val.truncatingRemainder(dividingBy: 1) == 0 ? String(format: "%.0f", val) : String(format: "%.1f", val)
+            return WellnessMetricSnapshot(
+                name: metric.type.displayName,
+                value: formatted,
+                unit: metric.type.unit,
+                icon: metric.type.systemImage,
+                color: accentOverride ?? .blue
+            )
+        }
+        
+        let activeInjuries = account.injuries.filter { injury in
+             let calendar = Calendar.current
+             let startOfSelected = calendar.startOfDay(for: selectedDate)
+             let startOfOccurrence = calendar.startOfDay(for: injury.dateOccurred)
+             guard startOfOccurrence <= startOfSelected else { return false }
+             let endDate = calendar.date(byAdding: .day, value: injury.durationDays, to: injury.dateOccurred) ?? injury.dateOccurred
+             let endOfInjury = calendar.startOfDay(for: endDate)
+             return startOfSelected < endOfInjury
+        }.map { injury -> BodyInjurySnapshot in
+            return BodyInjurySnapshot(
+                name: injury.name,
+                bodyPart: injury.bodyPart?.rawValue.capitalized ?? "Body",
+                severity: "",
+                status: "Active",
+                dateOccurred: injury.dateOccurred,
+                color: .pink
+            )
+        }
+        
+        let sessions = day.recoverySessions.map { session in
+            let mins = Int(session.durationSeconds / 60)
+            return RecoverySessionSnapshot(
+                name: session.category.rawValue,
+                detail: "\(mins) min",
+                icon: session.category.icon,
+                color: .orange
+            )
+        }
+        
+        let hNight = Int(nightSleepSeconds) / 3600
+        let mNight = (Int(nightSleepSeconds) % 3600) / 60
+        
+        let hNap = Int(napSleepSeconds) / 3600
+        let mNap = (Int(napSleepSeconds) % 3600) / 60
+        
+        let total = nightSleepSeconds + napSleepSeconds
+        let hTotal = Int(total) / 3600
+        let mTotal = (Int(total) % 3600) / 60
+        
+        let sleepSnap = SleepSnapshot(
+            nightText: "\(hNight)h \(mNight)m",
+            napText: "\(hNap)h \(mNap)m",
+            totalText: "\(hTotal)h \(mTotal)m",
+            score: nil
+        )
+        
+        return WellnessShareSheet(
+            accentColor: accentOverride ?? .blue,
+            date: selectedDate,
+            dailyCheckIn: nil,
+            metrics: metricsSnapshots,
+            injuries: activeInjuries,
+            recoverySessions: sessions,
+            sleep: sleepSnap
+        )
     }
 
     private func refreshSleepValues() {
@@ -1631,5 +1501,286 @@ private struct SleepDayColumn: View {
         let m = (total % 3600) / 60
         if h > 0 { return String(format: "%dh %02dm", h, m) }
         return String(format: "%dm", m)
+    }
+}
+
+fileprivate struct SportsWeatherHeaderView: View {
+    @ObservedObject var weatherModel: WeatherViewModel
+    let selectedDate: Date
+    let isPro: Bool
+    let onScrollRequest: () -> Void
+
+    var body: some View {
+        if Calendar.current.isDateInToday(selectedDate) {
+            let _isNight = !(weatherModel.currentSnapshot?.isDaylight ?? true)
+            let adjustedGroup: SportsTabView.WeatherGroup = {
+                guard let snapshot = weatherModel.currentSnapshot else { return .other }
+                let base = SportsTabView.WeatherGroup(symbolName: snapshot.symbol)
+                if _isNight { return base }
+                if case .night = base {
+                    let desc = snapshot.description.lowercased()
+                    if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") { return .rainy }
+                    if desc.contains("cloud") || desc.contains("fog") || desc.contains("overcast") { return .cloudy }
+                    if desc.contains("snow") || desc.contains("sleet") || desc.contains("hail") { return .snowy }
+                    if desc.contains("clear") || desc.contains("sun") { return .clear }
+                    return .clear
+                }
+                return base
+            }()
+            let _overlayOpacity = (_isNight ? 0.45 : 0.28)
+            let _imageName: String = {
+                switch adjustedGroup {
+                case .clear: return _isNight ? "weather_clear_night" : "weather_clear_day"
+                case .rainy: return _isNight ? "weather_rainy_night" : "weather_rainy_day"
+                case .cloudy: return _isNight ? "weather_cloudy_night" : "weather_cloudy_day"
+                case .snowy: fallthrough
+                case .other: fallthrough
+                case .night: return _isNight ? "weather_clear_night" : "weather_clear_day"
+                }
+            }()
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Weather")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 18)
+                .padding(.top, 38)
+
+                SportsTabView.WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 18)
+                    .background {
+                        if weatherModel.state == .loaded {
+                            ZStack {
+                                Image(_imageName)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipped()
+                                    .blur(radius: 5)
+                                // stronger dark scrim for better contrast
+                                LinearGradient(colors: [Color.black.opacity(0.0), Color.black.opacity(_overlayOpacity)], startPoint: .top, endPoint: .bottom)
+                            }
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 16.0, style: .continuous))
+                    .padding(.horizontal, 18)
+                    .frame(height: 500)
+                    .padding(.top, 18)
+                    .sportsTip(.weather, isEnabled: isPro, onStepChange: { step in
+                        if step == 1 {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                onScrollRequest()
+                            }
+                        }
+                    })
+            }
+        }
+    }
+}
+
+fileprivate struct SportsWellnessSection: View {
+    @Binding var showWellnessEditor: Bool
+    @Binding var showWellnessEntry: Bool
+    let account: Account
+    let wellnessHKValues: [WellnessMetricType: Double]
+    let wellnessManualAdjustment: (WellnessMetricType) -> Double
+    let accentOverride: Color?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Daily Wellness Summary")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 18)
+            .padding(.top, 48)
+
+            Button {
+                showWellnessEditor = true
+            } label: {
+                Label("Change Goals", systemImage: "pencil")
+                  .font(.callout.weight(.semibold))
+                  .padding(.vertical, 18)
+                  .frame(maxWidth: .infinity, minHeight: 52)
+                  .glassEffect(in: .rect(cornerRadius: 16.0))
+                  .contentShape(Rectangle())
+            }
+            .nutritionTip(.editCalorieGoal)
+            .padding(.top, 16)
+            .padding(.horizontal, 18)
+            .buttonStyle(.plain)
+
+            if account.dailyWellnessMetrics.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No wellness metrics", systemImage: "heart.text.square")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("Add metrics using the Edit button to start tracking your health and wellness.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+            } else {
+                WellnessMetricsGrid(
+                    metrics: account.dailyWellnessMetrics,
+                    hkValues: wellnessHKValues,
+                    manualAdjustmentProvider: wellnessManualAdjustment,
+                    accentColor: accentOverride
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                
+                HStack(spacing: 4) {
+                    Image(systemName: "heart.fill")
+                        .font(.caption)
+                        .foregroundStyle(accentOverride ?? .pink)
+                    Text("Synced with Apple Health")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 12)
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            if !account.dailyWellnessMetrics.isEmpty {
+                Button {
+                    showWellnessEntry = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Spacer()
+                        Label("Submit Data", systemImage: "paperplane.fill")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.white)
+                            Spacer()
+                    }
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(accentOverride ?? Color.blue, in: RoundedRectangle(cornerRadius: 18))
+                }
+                .padding(.horizontal, 18)
+                .buttonStyle(.plain)
+                .contentShape(RoundedRectangle(cornerRadius: 16.0))
+                .padding(.top, 16)
+            }
+        }
+    }
+}
+
+fileprivate struct SportsInjurySection: View {
+    @Binding var injuries: [Injury]
+    let selectedDate: Date
+    let onSave: () -> Void
+    let isPro: Bool
+    @Binding var showProSheet: Bool
+    
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        InjuryTrackingSection(
+            injuries: $injuries,
+            selectedDate: selectedDate,
+            onSave: onSave
+        )
+        .opacity(isPro ? 1 : 0.5)
+        .blur(radius: isPro ? 0 : 4)
+        .disabled(!isPro)
+        .overlay {
+            if !isPro {
+                ZStack {
+                    Color.black.opacity(0.001) // Capture taps
+                        .onTapGesture {
+                            // no-op capture
+                        }
+
+                    Button {
+                        showProSheet = true
+                    } label: {
+                        VStack(spacing: 8) {
+                            HStack {
+                                let accent = themeManager.selectedTheme == .multiColour ? nil : themeManager.selectedTheme.accent(for: colorScheme)
+
+                                if let accent {
+                                    Image("logo")
+                                        .resizable()
+                                        .renderingMode(.template)
+                                        .foregroundStyle(accent)
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(height: 40)
+                                        .padding(.leading, 4)
+                                        .offset(y: 6)
+                                } else {
+                                    Image("logo")
+                                        .resizable()
+                                        .renderingMode(.original)
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(height: 40)
+                                        .padding(.leading, 4)
+                                        .offset(y: 6)
+                                }
+                                
+                                Text("PRO")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(
+                                                accent.map {
+                                                    LinearGradient(
+                                                        gradient: Gradient(colors: [$0, $0.opacity(0.85)]),
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                    )
+                                                } ?? LinearGradient(
+                                                    gradient: Gradient(colors: [
+                                                        Color(red: 0.74, green: 0.43, blue: 0.97),
+                                                        Color(red: 0.83, green: 0.99, blue: 0.94)
+                                                    ]),
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    )
+                                    .offset(y: 6)
+                            }
+                            .padding(.bottom, 5)
+                                
+                            Text("Trackerio Pro")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+
+                            Text("Upgrade to unlock Injury Tracking + More")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $showProSheet) {
+                        ProSubscriptionView()
+                    }
+                }
+            }
+        }
     }
 }

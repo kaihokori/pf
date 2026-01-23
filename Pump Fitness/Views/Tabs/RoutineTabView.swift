@@ -9,6 +9,8 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 import TipKit
+import MapKit
+import Contacts
 
 fileprivate struct HabitItem: Identifiable {
     var id: UUID

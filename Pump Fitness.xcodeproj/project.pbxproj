@@ -46,25 +46,7 @@
 		DCDAD2682EFEDEEB0011838E /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		DC2D4C8E2F221CC300804C29 /* Exceptions for "BackgroundUploadExtension" folder in "BackgroundUploadExtension" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = DC2D4C852F221CC300804C29 /* BackgroundUploadExtension */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		DC2D4C872F221CC300804C29 /* BackgroundUploadExtension */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				DC2D4C8E2F221CC300804C29 /* Exceptions for "BackgroundUploadExtension" folder in "BackgroundUploadExtension" target */,
-			);
-			path = BackgroundUploadExtension;
-			sourceTree = "<group>";
-		};
 		DC9E797C2EDB81DD00C57FEE /* Pump Fitness */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Pump Fitness";
@@ -100,7 +82,6 @@
 			isa = PBXGroup;
 			children = (
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
-				DC2D4C872F221CC300804C29 /* BackgroundUploadExtension */,
 				DCDAD2672EFEDEEB0011838E /* Frameworks */,
 				DC9E797B2EDB81DD00C57FEE /* Products */,
 			);
@@ -137,9 +118,6 @@
 			buildRules = (
 			);
 			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				DC2D4C872F221CC300804C29 /* BackgroundUploadExtension */,
 			);
 			name = BackgroundUploadExtension;
 			packageProductDependencies = (
@@ -267,7 +245,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
@@ -301,7 +279,7 @@
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
@@ -461,7 +439,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -513,7 +491,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Pump Fitness/Pump Fitness.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 3LGLXWA468;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

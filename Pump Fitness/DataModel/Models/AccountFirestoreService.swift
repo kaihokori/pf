@@ -46,6 +46,7 @@ class AccountFirestoreService {
                 let remoteHabits = (data["habits"] as? [[String: Any]] ?? []).compactMap { HabitDefinition(dictionary: $0) }
                 let remoteGroceries = (data["groceryItems"] as? [[String: Any]] ?? []).compactMap { GroceryItem(dictionary: $0) }
                 let remoteExpenseCategories = (data["expenseCategories"] as? [[String: Any]] ?? []).compactMap { ExpenseCategory(dictionary: $0) }
+                let remoteSobrietyMetrics = (data["sobrietyMetrics"] as? [[String: Any]] ?? []).compactMap { SobrietyMetric(dictionary: $0) }
                 let remoteCurrencySymbol = (data["expenseCurrencySymbol"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let remoteWorkoutSchedule = (data["workoutSchedule"] as? [[String: Any]] ?? []).compactMap { WorkoutScheduleItem(dictionary: $0) }
                 let remoteMealSchedule = (data["mealSchedule"] as? [[String: Any]] ?? []).compactMap { MealScheduleItem(dictionary: $0) }
@@ -97,6 +98,7 @@ class AccountFirestoreService {
                     dailyWellnessMetrics: (data["dailyWellnessMetrics"] as? [[String: Any]] ?? []).compactMap { TrackedWellnessMetric(dictionary: $0) },
                     nutritionSupplements: resolvedNutritionSupplements,
                     dailyTasks: (data["dailyTasks"] as? [[String: Any]] ?? []).compactMap { DailyTaskDefinition(dictionary: $0) },
+                    sobrietyMetrics: remoteSobrietyMetrics,
                     itineraryEvents: (data["itineraryEvents"] as? [[String: Any]] ?? []).compactMap { ItineraryEvent(dictionary: $0) },
                     itineraryTrips: (data["itineraryTrips"] as? [[String: Any]] ?? []).compactMap { ItineraryTrip(dictionary: $0) },
                     sports: (data["sports"] as? [[String: Any]] ?? []).compactMap { SportConfig(dictionary: $0) },
@@ -327,6 +329,7 @@ class AccountFirestoreService {
         let workoutSupplements = account.workoutSupplements
         let nutritionSupplements = account.nutritionSupplements
         let dailyTasks = account.dailyTasks
+        let sobrietyMetrics = account.sobrietyMetrics
         let sports = account.sports
         let weightGroups = account.weightGroups
         let soloMetrics = account.soloMetrics
@@ -432,6 +435,7 @@ class AccountFirestoreService {
             data["supplements"] = legacySupplements.map { $0.asDictionary }
 
             data["dailyTasks"] = dailyTasks.map { $0.asDictionary }
+            data["sobrietyMetrics"] = sobrietyMetrics.map { $0.asDictionary }
             data["sports"] = sports.map { $0.asDictionary }
             data["weightGroups"] = weightGroups.map { $0.asDictionary }
             data["soloMetrics"] = soloMetrics.map { $0.asDictionary }

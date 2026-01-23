@@ -178,7 +178,7 @@ struct WellnessSummaryEditorSheet: View {
                 }, onCancel: {
                     editingColorIndex = nil
                 })
-                .presentationDetents([.fraction(0.4)])
+                .presentationDetents([.height(180)])
             }
         }
     }

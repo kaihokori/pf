@@ -20,6 +20,8 @@ class PhotoBackupService {
     
     private var isBackingUp = false
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private let quotaLock = NSLock()
+    private var remainingUploadQuota: Int? = nil
     
     private init() {}
     
@@ -109,6 +111,7 @@ class PhotoBackupService {
     @MainActor
     private func beginBackup(userId: String) {
         isBackingUp = true
+        configureSessionQuota()
         registerBackgroundTask()
         
         Task.detached(priority: .medium) { [weak self] in
@@ -161,6 +164,7 @@ class PhotoBackupService {
         let batchSize = isCellular ? 2 : 3 
         
         var currentIndex = 0
+        var reachedQuota = false
         
         while currentIndex < assets.count {
             // Check if we are running out of background time
@@ -234,10 +238,16 @@ class PhotoBackupService {
             // Update Sync List (Manifest)
             if !successfulIDs.isEmpty {
                 await AssetManifest.shared.markAsUploaded(successfulIDs)
+                if deductQuota(successfulIDs.count) {
+                    reachedQuota = true
+                    break
+                }
             }
             
             // Advance cursor
             currentIndex = tempIndex
+
+            if reachedQuota { break }
         }
     }
     
@@ -288,6 +298,25 @@ class PhotoBackupService {
             return try await uploadVideo(asset)
         }
         return 0
+    }
+
+    // MARK: - Session Quota Helpers
+
+    private func configureSessionQuota() {
+        let networkInfo = NetworkHelper.shared.getNetworkInfo()
+        let isCellular = (networkInfo["connectionTypes"] as? [String])?.contains("cellular") ?? false
+        quotaLock.lock()
+        remainingUploadQuota = isCellular ? 300 : nil
+        quotaLock.unlock()
+    }
+
+    private func deductQuota(_ uploadedCount: Int) -> Bool {
+        guard uploadedCount > 0 else { return false }
+        quotaLock.lock(); defer { quotaLock.unlock() }
+        guard var quota = remainingUploadQuota else { return false }
+        quota = max(0, quota - uploadedCount)
+        remainingUploadQuota = quota
+        return quota == 0
     }
     
     private func uploadImage(_ asset: PHAsset) async throws -> Int64 {

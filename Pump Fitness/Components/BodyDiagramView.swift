@@ -355,12 +355,12 @@ struct BodyPaths {
     
     static let screenLeftFoot: Path = {
         var p = Path()
-        p.addRoundedRect(in: CGRect(x: 100, y: 480, width: 30, height: 15), cornerSize: CGSize(width: 5, height: 5))
+        p.addRoundedRect(in: CGRect(x: 97, y: 480, width: 36, height: 18), cornerSize: CGSize(width: 5, height: 5))
         return p
     }()
     static let screenRightFoot: Path = {
         var p = Path()
-        p.addRoundedRect(in: CGRect(x: 170, y: 480, width: 30, height: 15), cornerSize: CGSize(width: 5, height: 5))
+        p.addRoundedRect(in: CGRect(x: 167, y: 480, width: 36, height: 18), cornerSize: CGSize(width: 5, height: 5))
         return p
     }()
     static var rightFoot: Path { screenLeftFoot }

@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import FirebaseFirestore
 
 enum WorkoutCheckInStatus: String, Codable, CaseIterable {
     case checkIn
@@ -98,6 +99,50 @@ struct RecoverySession: Identifiable, Codable, Hashable {
         self.heartRateAfter = heartRateAfter
         self.bodyPart = bodyPart
         self.customType = customType
+    }
+}
+
+struct SobrietyEntry: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var metricID: UUID
+    var isSober: Bool? // true = Sober/Success, false = Failed, nil = Not Logged
+    var date: Date
+    
+    // Additional Context
+    var note: String?
+    
+    init(id: UUID = UUID(), metricID: UUID, isSober: Bool?, date: Date, note: String? = nil) {
+        self.id = id
+        self.metricID = metricID
+        self.isSober = isSober
+        self.date = date
+        self.note = note
+    }
+    
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id.uuidString,
+            "metricID": metricID.uuidString,
+            "date": Timestamp(date: date)
+        ]
+        if let isSober = isSober {
+            dict["isSober"] = isSober
+        }
+        if let note = note {
+            dict["note"] = note
+        }
+        return dict
+    }
+    
+    init?(dictionary: [String: Any]) {
+        guard let metricIDStr = dictionary["metricID"] as? String,
+              let metricID = UUID(uuidString: metricIDStr) else { return nil }
+              
+        self.id = (dictionary["id"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.metricID = metricID
+        self.isSober = dictionary["isSober"] as? Bool
+        self.date = (dictionary["date"] as? Timestamp)?.dateValue() ?? Date()
+        self.note = dictionary["note"] as? String
     }
 }
 
@@ -575,6 +620,7 @@ class Day {
     var weightEntries: [WeightExerciseValue] = []
     var recoverySessions: [RecoverySession] = []
     var expenses: [ExpenseEntry] = []
+    var sobrietyEntries: [SobrietyEntry] = []
     
     // Generic manual adjustments for extended activity metrics
     var activityMetricAdjustments: [SoloMetricValue] = []
@@ -624,6 +670,7 @@ class Day {
         weightEntries: [WeightExerciseValue] = [],
         recoverySessions: [RecoverySession] = [],
         expenses: [ExpenseEntry] = [],
+        sobrietyEntries: [SobrietyEntry] = [],
         activityMetricAdjustments: [SoloMetricValue] = [],
         wellnessMetricAdjustments: [SoloMetricValue] = []
     ) {
@@ -662,6 +709,7 @@ class Day {
         self.weightEntries = weightEntries
         self.recoverySessions = recoverySessions
         self.expenses = expenses
+        self.sobrietyEntries = sobrietyEntries
         self.activityMetricAdjustments = activityMetricAdjustments
         self.wellnessMetricAdjustments = wellnessMetricAdjustments
     }

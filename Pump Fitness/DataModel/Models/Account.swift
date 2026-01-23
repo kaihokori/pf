@@ -6,6 +6,78 @@ import UIKit
 import FirebaseFirestore
 import CoreLocation
 
+
+struct SobrietyMetric: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var type: SobrietyType
+    var customName: String?
+    var isEnabled: Bool
+    var colorHex: String
+    
+    // For UI display
+    var displayName: String {
+        switch type {
+        case .custom: return customName ?? "Challenge"
+        default: return type.rawValue
+        }
+    }
+    
+    init(id: UUID = UUID(), type: SobrietyType, customName: String? = nil, isEnabled: Bool = true, colorHex: String? = nil) {
+        self.id = id
+        self.type = type
+        self.customName = customName
+        self.isEnabled = isEnabled
+        
+        if let hex = colorHex {
+            self.colorHex = hex
+        } else {
+            switch type {
+            case .alcohol: self.colorHex = "#AF52DE"
+            case .smoking: self.colorHex = "#007AFF"
+            case .custom: self.colorHex = "#32ADE6"
+            }
+        }
+    }
+    
+    init?(dictionary: [String: Any]) {
+        guard let typeRaw = dictionary["type"] as? String,
+              let type = SobrietyType(rawValue: typeRaw) else { return nil }
+        self.id = (dictionary["id"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.type = type
+        self.customName = dictionary["customName"] as? String
+        self.isEnabled = dictionary["isEnabled"] as? Bool ?? true
+        
+        if let hex = dictionary["colorHex"] as? String {
+            self.colorHex = hex
+        } else {
+            switch type {
+            case .alcohol: self.colorHex = "#AF52DE"
+            case .smoking: self.colorHex = "#007AFF"
+            case .custom: self.colorHex = "#32ADE6"
+            }
+        }
+    }
+    
+    var asDictionary: [String: Any] {
+        var dict: [String: Any] = [
+            "id": id.uuidString,
+            "type": type.rawValue,
+            "isEnabled": isEnabled,
+            "colorHex": colorHex
+        ]
+        if let customName = customName {
+            dict["customName"] = customName
+        }
+        return dict
+    }
+}
+
+enum SobrietyType: String, Codable, CaseIterable {
+    case alcohol = "Alcohol"
+    case smoking = "Smoking"
+    case custom = "Custom"
+}
+
 struct TrackedMacro: Codable, Hashable, Identifiable {
     var id: String
     var name: String
@@ -1298,6 +1370,7 @@ class Account: ObservableObject {
     var workoutSupplements: [Supplement] = []
     var nutritionSupplements: [Supplement] = []
     var dailyTasks: [DailyTaskDefinition] = []
+    var sobrietyMetrics: [SobrietyMetric] = []
     var groceryItems: [GroceryItem] = GroceryItem.sampleItems()
     var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
     var expenseCurrencySymbol: String = Account.deviceCurrencySymbol
@@ -1362,6 +1435,7 @@ class Account: ObservableObject {
         dailyWellnessMetrics: [TrackedWellnessMetric] = [],
         nutritionSupplements: [Supplement] = [],
         dailyTasks: [DailyTaskDefinition] = [],
+        sobrietyMetrics: [SobrietyMetric] = [],
         itineraryEvents: [ItineraryEvent] = [],
         itineraryTrips: [ItineraryTrip] = [],
         sports: [SportConfig] = [],
@@ -1423,6 +1497,7 @@ class Account: ObservableObject {
         self.workoutSupplements = workoutSupplements
         self.nutritionSupplements = nutritionSupplements
         self.dailyTasks = dailyTasks
+        self.sobrietyMetrics = sobrietyMetrics
         self.itineraryEvents = itineraryEvents
         self.itineraryTrips = itineraryTrips
         self.sports = sports

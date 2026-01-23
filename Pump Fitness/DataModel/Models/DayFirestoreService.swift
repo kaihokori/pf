@@ -271,6 +271,7 @@ class DayFirestoreService {
         if day.weightEntries.contains(where: { $0.hasContent }) { return true }
         if !day.expenses.isEmpty { return true }
         if !day.recoverySessions.isEmpty { return true }
+        if !day.sobrietyEntries.isEmpty { return true }
         if !day.activityMetricAdjustments.isEmpty { return true }
         if !day.wellnessMetricAdjustments.isEmpty { return true }
         if let raw = day.workoutCheckInStatusRaw,

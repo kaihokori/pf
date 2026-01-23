@@ -49,21 +49,17 @@ struct SobrietyTrackingSection: View {
             
             if account.sobrietyMetrics.filter({ $0.isEnabled }).isEmpty {
                 // Empty state
-                VStack(spacing: 12) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("No challenges active")
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No challenges set up yet", systemImage: "drop.fill")
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(.primary)
-                    Text("Use the Edit button to start tracking sobriety for Alcohol, Smoking, or set a custom challenge.")
+                    Text("Add sobriety challenges with the Edit button to start tracking your progress.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity)
-                .glassEffect(in: .rect(cornerRadius: 16))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .glassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 18)
             } else {
                 // Calendar Grid

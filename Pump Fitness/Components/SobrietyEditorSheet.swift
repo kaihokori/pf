@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct SobrietyEditorSheet: View {
     @Binding var account: Account
@@ -7,6 +8,7 @@ struct SobrietyEditorSheet: View {
         self._account = account
     }
 
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
     // Working state
@@ -238,6 +240,7 @@ struct SobrietyEditorSheet: View {
     
     private func save() {
         account.sobrietyMetrics = workingMetrics
+        try? modelContext.save()
         accountService.saveAccount(account) { _ in }
         dismiss()
     }

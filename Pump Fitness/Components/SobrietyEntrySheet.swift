@@ -56,13 +56,6 @@ struct SobrietyEntrySheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Date Header
-                    Text("Log for \(formattedDate)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                        .padding(.top)
-
                     // Metric Selection
                     if !metrics.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -148,7 +141,7 @@ struct SobrietyEntrySheet: View {
                                 .textCase(.uppercase)
                             
                             HStack(spacing: 0) {
-                                ForEach(SobrietyStatus.allCases) { status in
+                                ForEach(Array(SobrietyStatus.allCases.reversed())) { status in
                                     let isSober = (status == .sober)
                                     let isSelected = selections[selected.id] == isSober
                                     let label = isSober ? labels.success : labels.failure
@@ -178,6 +171,12 @@ struct SobrietyEntrySheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .padding(.horizontal)
+
+                        Text("Log for \(formattedDate)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.top)
                         
                     } else {
                         Text("No challenges active. Please add them in the Edit Sobriety sheet.")

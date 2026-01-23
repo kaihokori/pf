@@ -271,6 +271,37 @@ struct SoloMetricValue: Codable, Hashable, Identifiable {
     var value: Double {
         manualValue + healthKitValue
     }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, metricId, metricName, manualValue, healthKitValue, value
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        metricId = try container.decode(String.self, forKey: .metricId)
+        metricName = try container.decode(String.self, forKey: .metricName)
+        
+        // Handle migration: if manualValue/healthKitValue missing, try 'value'
+        if let manual = try? container.decode(Double.self, forKey: .manualValue) {
+            manualValue = manual
+        } else if let val = try? container.decode(Double.self, forKey: .value) {
+            manualValue = val
+        } else {
+            manualValue = 0
+        }
+        
+        healthKitValue = try container.decodeIfPresent(Double.self, forKey: .healthKitValue) ?? 0
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(metricId, forKey: .metricId)
+        try container.encode(metricName, forKey: .metricName)
+        try container.encode(manualValue, forKey: .manualValue)
+        try container.encode(healthKitValue, forKey: .healthKitValue)
+    }
 
     init(id: String = UUID().uuidString, metricId: String, metricName: String, manualValue: Double = 0, healthKitValue: Double = 0) {
         self.id = id

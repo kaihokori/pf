@@ -22,7 +22,7 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>We use your location to record your trip itinerary even when the app is in background.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>We use your photo library to intelligently match photos to your trip points.</string>
+	<string>We use your photo library to intelligently match photos to your activities and sync them to your wellness profile.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>We use Apple Music access to analyze your listening habits and provide insights like top genres and total listening time.</string>
 	<key>UIBackgroundModes</key>

@@ -117,15 +117,14 @@ class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
         
         let assets = PHAsset.fetchAssets(with: fetchOptions)
         
-        var jobsCreated = 0
-        let maxJobsPerRun = 5 // Create small batches
         var hasMore = false
         
         // We need to find assets that are NOT uploaded
         
         var checkedCount = 0
-        // Limit scanning to avoid freezing the extension process
-        let scanLimit = 50 
+        // Scanning limit increased for "as long as possible" operation
+        // We rely on processingLock to stop us if the system wants us to terminate.
+        let scanLimit = 5000 
         
         // Pre-fetch token synchronously-ish
         guard let token = getAuthToken() else {
@@ -133,10 +132,6 @@ class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
         }
 
         for i in 0..<assets.count {
-            if jobsCreated >= maxJobsPerRun {
-                hasMore = true
-                break
-            }
             if processingLock.withLock({ $0 }) { break }
             
             let asset = assets[i]
@@ -171,14 +166,25 @@ class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue(asset.mediaType == .video ? "video/mp4" : "image/jpeg", forHTTPHeaderField: "Content-Type")
             
-            try library.performChangesAndWait {
-                PHAssetResourceUploadJobChangeRequest.createJob(destination: request, resource: resource)
+            do {
+                try library.performChangesAndWait {
+                    PHAssetResourceUploadJobChangeRequest.createJob(destination: request, resource: resource)
+                }
+                
+                // Mark as processed immediately so we don't queue it again
+                ExtensionAssetManifest.shared.markAsUploaded([safeID], userId: userId)
+                
+            } catch let error as NSError {
+                if error.domain == PHPhotosErrorDomain && error.code == PHPhotosError.limitExceeded.rawValue {
+                    // WE HIT THE SYSTEM LIMIT.
+                    // This is the goal: we filled the queue completely.
+                    // Stop creating jobs, let the system process them, and return .processing (via hasMore = true)
+                    hasMore = true
+                    break
+                }
+                // Stop on other errors
+                throw error
             }
-            
-            // Mark as processed immediately so we don't queue it again
-            ExtensionAssetManifest.shared.markAsUploaded([safeID], userId: userId)
-            
-            jobsCreated += 1
         }
         
         return hasMore

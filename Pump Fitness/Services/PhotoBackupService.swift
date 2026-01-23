@@ -233,9 +233,18 @@ class PhotoBackupService {
         // Adjust batch size based on network
         let networkInfo = NetworkHelper.shared.getNetworkInfo()
         let isCellular = (networkInfo["connectionTypes"] as? [String])?.contains("cellular") ?? false
-        let batchSize = isCellular ? 2 : 3 
+        
+        // On cellular/slow connections, reduce concurrency to 1 to prevent timeout saturation
+        let batchSize = isCellular ? 1 : 3 
         
         var currentIndex = 0
+        
+        // Configure Storage to be more tolerant on mobile data
+        let storageFn = Storage.storage()
+        if isCellular {
+            storageFn.maxUploadRetryTime = 20 * 60 // 20 minutes
+            storageFn.maxOperationRetryTime = 20 * 60
+        }
         
         while currentIndex < assets.count {
             // Check if we are running out of background time

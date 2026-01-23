@@ -71,6 +71,24 @@ struct SobrietyTrackingSection: View {
                 )
                 .padding(.horizontal, 18)
                 
+                // Metric Key
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(account.sobrietyMetrics.filter { $0.isEnabled }) { metric in
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(Color(hex: metric.colorHex) ?? .blue)
+                                    .frame(width: 8, height: 8)
+                                Text(metric.displayName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                }
+                .padding(.top, 12)
+                
                 // Log Button
                 Button {
                     showEntrySheet = true

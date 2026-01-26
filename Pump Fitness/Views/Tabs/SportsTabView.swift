@@ -411,6 +411,7 @@ struct SportsTabView: View {
                                         }
                                     }
                                 )
+                                .padding(.bottom, 16)
                                 
                                 SportsWellnessSection(
                                     showWellnessEditor: $showWellnessEditor,

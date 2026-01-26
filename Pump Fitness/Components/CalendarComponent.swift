@@ -149,7 +149,7 @@ struct CalendarComponent: View {
                 .padding(.bottom, 16)
             }
         }
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(24)
         .opacity(isVisible ? 1 : 0)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isVisible)

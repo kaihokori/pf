@@ -113,7 +113,7 @@ struct SleepTrackingSection: View {
             }
         }
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .sheet(item: $editingTimer) { item in
@@ -334,7 +334,7 @@ private struct StopwatchCard: View {
             }
         }
         .padding(12)
-        .glassEffect(in: .rect(cornerRadius: 12.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
             if let edit = editAction {

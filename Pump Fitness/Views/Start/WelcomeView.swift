@@ -120,7 +120,7 @@ struct WelcomeView: View {
                     }
                 }
                 .padding(32)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 24)
             }
             

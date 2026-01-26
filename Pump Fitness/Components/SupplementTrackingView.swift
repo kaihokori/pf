@@ -110,7 +110,7 @@ struct SupplementTrackingView: View {
         }
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 10)
     }

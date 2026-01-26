@@ -117,7 +117,7 @@ struct GoalsSection: View {
         .padding(16)
         .frame(width: cardWidth)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     @ViewBuilder
@@ -188,7 +188,7 @@ struct GoalsSection: View {
         .padding(16)
         .frame(width: cardWidth)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     @ViewBuilder
@@ -259,7 +259,7 @@ struct GoalsSection: View {
         .padding(16)
         .frame(width: cardWidth)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     private func toggleCompletion(_ id: UUID) {

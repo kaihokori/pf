@@ -38,7 +38,7 @@ struct ActivityLevelExplainer: View {
                         }
                     }
                     .padding()
-                    .glassEffect(in: .rect(cornerRadius: 20.0))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 20.0))
                     attribution
                 }
                 .padding(.horizontal, 18)

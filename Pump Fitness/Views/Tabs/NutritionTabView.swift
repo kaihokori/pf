@@ -206,7 +206,7 @@ struct NutritionTabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
     var body: some View {
         NavigationStack {
@@ -251,7 +251,7 @@ struct NutritionTabView: View {
                               .font(.callout.weight(.semibold))
                               .padding(.vertical, 18)
                               .frame(maxWidth: .infinity, minHeight: 52)
-                              .glassEffect(in: .rect(cornerRadius: 16.0))
+                              .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                               .contentShape(Rectangle())
                         }
                         .nutritionTip(.editCalorieGoal)
@@ -266,7 +266,7 @@ struct NutritionTabView: View {
                               .font(.callout.weight(.semibold))
                               .padding(.vertical, 18)
                               .frame(maxWidth: .infinity, minHeight: 52)
-                              .glassEffect(in: .rect(cornerRadius: 16.0))
+                              .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                               .contentShape(Rectangle())
                         }
                         .nutritionTip(.logIntake)
@@ -290,7 +290,7 @@ struct NutritionTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                     .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                             .nutritionTip(.editMacros, onStepChange: { step in
@@ -332,7 +332,7 @@ struct NutritionTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                     .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                             .nutritionTip(.editSupplements)
@@ -407,7 +407,7 @@ struct NutritionTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                     .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
                             .buttonStyle(.plain)
@@ -531,7 +531,7 @@ struct NutritionTabView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -556,7 +556,7 @@ struct NutritionTabView: View {
                                         .fontWeight(.medium)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
@@ -630,7 +630,7 @@ struct NutritionTabView: View {
                                         }
                                     }
                                 }
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                 .padding(.horizontal, 18)
                                 .padding(.top, 12)
                             }
@@ -710,7 +710,7 @@ struct NutritionTabView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -735,7 +735,7 @@ struct NutritionTabView: View {
                                         .fontWeight(.medium)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
@@ -832,7 +832,7 @@ struct NutritionTabView: View {
                                                     .foregroundStyle(.secondary)
                                             }
                                             .padding()
-                                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                         }
                                         .buttonStyle(.plain)
                                         .sheet(isPresented: $showProSheet) {
@@ -1387,7 +1387,7 @@ struct CalorieSummary: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 18)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
     }
 }
@@ -1931,7 +1931,7 @@ struct MacroSummary: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     var body: some View {
@@ -2010,7 +2010,7 @@ struct MacroSummary: View {
                 .padding(.horizontal)
                 .padding(.top, 16)
             }
-            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
             .padding(.horizontal, 18)
             .padding(.top, 14)
         }
@@ -3646,7 +3646,7 @@ struct DailyMealLogSection: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
 
         VStack(alignment: .leading, spacing: 16) {
@@ -3689,7 +3689,7 @@ struct DailyMealLogSection: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
         .onAppear {
@@ -4031,7 +4031,7 @@ private struct MealScheduleSection: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(checkedMeals.contains(cell.mealType.rawValue) ? tint.opacity(0.08) : Color.clear)
                     )
-                    .glassEffect(in: .rect(cornerRadius: 12.0))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -4565,7 +4565,7 @@ struct FastingTimerCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .foregroundStyle(.white)
-                    .glassEffect(
+                    .adaptiveGlassEffect(
                         // Use a red tint when overtime to make the end button prominent
                         accentColorOverride == nil ? .regular.tint(isOverTime ? .red : tint) : .regular,
                         in: .rect(cornerRadius: 16.0)
@@ -4573,7 +4573,7 @@ struct FastingTimerCard: View {
             }
         }
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .onReceive(timer) { date in
             now = date
             if isOverTime {

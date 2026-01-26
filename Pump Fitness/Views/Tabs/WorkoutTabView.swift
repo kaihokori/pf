@@ -398,7 +398,7 @@ struct WorkoutTabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     // MARK: - Models
@@ -685,7 +685,7 @@ struct WorkoutTabView: View {
                           .font(.callout.weight(.semibold))
                           .padding(.vertical, 18)
                           .frame(maxWidth: .infinity, minHeight: 52)
-                          .glassEffect(in: .rect(cornerRadius: 16.0))
+                          .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                           .contentShape(Rectangle())
                     }
                     .nutritionTip(.editCalorieGoal)
@@ -704,7 +704,7 @@ struct WorkoutTabView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                         .padding(.horizontal, 18)
                         .padding(.top, 18)
                     } else {
@@ -761,7 +761,7 @@ struct WorkoutTabView: View {
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                         }
                         .workoutTip(.editSupplements, onStepChange: { step in
                             if step == 4 {
@@ -866,7 +866,7 @@ struct WorkoutTabView: View {
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 18.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                         }
                         .workoutTip(.editTracking, onStepChange: { step in
                             if step == 6 {
@@ -915,7 +915,7 @@ struct WorkoutTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .workoutTip(.weeklyProgress)
                             .buttonStyle(.plain)
@@ -1012,7 +1012,7 @@ struct WorkoutTabView: View {
                                                     .foregroundStyle(.secondary)
                                             }
                                             .padding()
-                                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                         }
                                         .buttonStyle(.plain)
                                         .sheet(isPresented: $showProSheet) {
@@ -1041,7 +1041,7 @@ struct WorkoutTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .sportsTip(.editSports, isEnabled: isPro, onStepChange: { step in
                                 if step == 4 {
@@ -1086,7 +1086,7 @@ struct WorkoutTabView: View {
                                                 .font(.callout.weight(.semibold))
                                                 .padding(.horizontal, 10)
                                                 .padding(.vertical, 6)
-                                                .glassEffect(in: .rect(cornerRadius: 14.0))
+                                                .adaptiveGlassEffect(in: .rect(cornerRadius: 14.0))
                                                 .accessibilityLabel("Edit sport metrics")
                                         }
                                         .buttonStyle(.plain)
@@ -1195,7 +1195,7 @@ struct WorkoutTabView: View {
                                 .padding(20)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                 .padding(.horizontal, 18)
                                 .padding(.top, 12)
                             }
@@ -1278,7 +1278,7 @@ struct WorkoutTabView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding()
-                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                             }
                         }
                     }
@@ -2521,7 +2521,7 @@ private struct WeeklyWorkoutScheduleCard: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -2558,7 +2558,7 @@ private struct WeeklyWorkoutScheduleCard: View {
                 .padding()
             }
             .frame(minHeight: 200)
-            .glassEffect(in: .rect(cornerRadius: 12.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
             .overlay(
                 RoundedRectangle(cornerRadius: 12.0)
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
@@ -2574,7 +2574,7 @@ private struct WeeklyWorkoutScheduleCard: View {
             .foregroundStyle(.secondary)
         }
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 28)
         .sheet(isPresented: $showEditSheet) {
@@ -3102,7 +3102,7 @@ private struct WeeklySessionCard: View {
         .frame(width: 80, alignment: .center)
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
-        .glassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
+        .adaptiveGlassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
     }
 }
 
@@ -3170,7 +3170,7 @@ private struct WorkoutSessionDetailView: View {
                             .lineLimit(3...6)
                             .font(.body)
                             .padding(12)
-                            .glassEffect(in: .rect(cornerRadius: 12.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                             .padding(.top, 4)
                     }
                     .padding(.horizontal)
@@ -3495,7 +3495,7 @@ private struct DailyCheckInSection: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -3522,7 +3522,7 @@ private struct DailyCheckInSection: View {
             }
         }
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 10)
     }
@@ -3556,7 +3556,7 @@ private struct DailyCheckInButtonStyle: ButtonStyle {
             .padding(.vertical, 12)
             .background(background)
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            .glassEffect(in: .rect(cornerRadius: 12.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
     }
 }
 
@@ -4096,7 +4096,7 @@ private struct WeightsTrackingSection: View {
                                 .textInputAutocapitalization(.words)
                                 .padding(.vertical, 6)
                                 .padding(.horizontal, 8)
-                                .glassEffect(in: .rect(cornerRadius: 8.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 8.0))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .frame(height: 40)
                                 .focused(focusBinding, equals: part.id)
@@ -4275,7 +4275,7 @@ private struct WeightsTrackingSection: View {
             }
         }
         .padding(.vertical, 12)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
     }
@@ -4498,7 +4498,7 @@ private struct WeeklyProgressCarousel: View {
                                         .fontWeight(.medium)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .buttonStyle(.plain)
                                 Spacer()
@@ -4508,7 +4508,7 @@ private struct WeeklyProgressCarousel: View {
                         }
                         .padding(16)
                         .frame(width: 220)
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                         .id(entry.id)
                     }
 
@@ -4544,7 +4544,7 @@ private struct WeeklyProgressCarousel: View {
                     }
                     .padding(16)
                     .frame(width: 220)
-                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                     .id("weekly-upcoming")
                 }
                 .padding(.vertical, 6)

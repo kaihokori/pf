@@ -140,7 +140,7 @@ struct TripPointEditorSheet: View {
                     ))
                     .textInputAutocapitalization(.words)
                     .padding()
-                    .glassEffect(in: .rect(cornerRadius: 16))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
                     
                     VStack(spacing: 8) {
                         Image(systemName: "wand.and.stars")
@@ -204,7 +204,7 @@ struct TripPointEditorSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
-                    .glassEffect(in: .rect(cornerRadius: 16))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
 
                     if let images = point.imagesData, !images.isEmpty {
                         VStack(alignment: .leading, spacing: 16) {
@@ -258,7 +258,7 @@ struct TripPointEditorSheet: View {
                             .padding(.bottom, 6)
                         }
                         .padding(.vertical)
-                        .glassEffect(in: .rect(cornerRadius: 16))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
                     }
                 }
                 .padding()

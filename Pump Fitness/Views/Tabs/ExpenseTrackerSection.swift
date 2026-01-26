@@ -213,7 +213,7 @@ struct ExpenseTrackerSection: View {
                                         .fontWeight(.medium)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .buttonStyle(.plain)
                             } else {
@@ -226,7 +226,7 @@ struct ExpenseTrackerSection: View {
                                         .fontWeight(.medium)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -283,7 +283,7 @@ struct ExpenseTrackerSection: View {
         }
         .padding(16)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
         .sheet(item: $editingEntry) { entry in

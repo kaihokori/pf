@@ -24,7 +24,7 @@ struct InjuryTrackingSection: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -61,7 +61,7 @@ struct InjuryTrackingSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 18)
             } else {
                 // Body View & List
@@ -85,7 +85,7 @@ struct InjuryTrackingSection: View {
                     }
                 }
                 .padding(.vertical, 16)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 18)
             }
         }

@@ -384,7 +384,7 @@ struct RoutineTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .routineTip(.editTasks, onStepChange: { step in
                                 if step == 2 {
@@ -432,7 +432,7 @@ struct RoutineTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .buttonStyle(.plain)
                         }
@@ -458,7 +458,7 @@ struct RoutineTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .routineTip(.editGoals, onStepChange: { step in
                                 if step == 4 {
@@ -495,7 +495,7 @@ struct RoutineTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .buttonStyle(.plain)
                         }
@@ -539,7 +539,7 @@ struct RoutineTabView: View {
                                 //         .fontWeight(.medium)
                                 //         .padding(.horizontal, 12)
                                 //         .padding(.vertical, 8)
-                                //         .glassEffect(in: .rect(cornerRadius: 18.0))
+                                //         .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                 // }
                                 // .buttonStyle(.plain)
                             }
@@ -626,7 +626,7 @@ struct RoutineTabView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     }
                                     .buttonStyle(.plain)
                                     .sheet(isPresented: $showProSheet) {
@@ -656,7 +656,7 @@ struct RoutineTabView: View {
                                   .font(.callout.weight(.semibold))
                                   .padding(.vertical, 18)
                                   .frame(maxWidth: .infinity, minHeight: 52)
-                                  .glassEffect(in: .rect(cornerRadius: 16.0))
+                                  .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                   .contentShape(Rectangle())
                             }
                             .padding(.top, 16)
@@ -666,7 +666,7 @@ struct RoutineTabView: View {
                             EntertainmentTrackingSection(watchedItems: $watchedEntertainment)
                             .padding(.vertical, 18)
                             .padding(.horizontal, 8)
-                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                             .padding(.horizontal, 18)
                             .padding(.top, 12)
                             .sheet(isPresented: $showEntertainmentLog) {
@@ -752,7 +752,7 @@ struct RoutineTabView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     }
                                     .buttonStyle(.plain)
                                     .sheet(isPresented: $showProSheet) {
@@ -779,7 +779,7 @@ struct RoutineTabView: View {
                                     .fontWeight(.medium)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
-                                    .glassEffect(in: .rect(cornerRadius: 18.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             }
                             .buttonStyle(.plain)
                         }
@@ -809,7 +809,7 @@ struct RoutineTabView: View {
                                         .fontWeight(.medium)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
-                                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                                 }
                                 .routineTip(.editCategories)
                                 .buttonStyle(.plain)
@@ -907,7 +907,7 @@ struct RoutineTabView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     }
                                     .buttonStyle(.plain)
                                     .sheet(isPresented: $showProSheet) {
@@ -2892,7 +2892,7 @@ private struct HabitTrackingSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     var body: some View {
@@ -2942,7 +2942,7 @@ private struct HabitTrackingSection: View {
                     }
                 }
                 .padding(16)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
             }
         }
         .padding(.horizontal, 18)
@@ -2972,7 +2972,7 @@ private struct HabitTrackingButtonStyle: ButtonStyle {
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .glassEffect(in: .rect(cornerRadius: 12.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
     }
 }
 
@@ -2984,7 +2984,7 @@ private struct HabitCompactButtonStyle: ButtonStyle {
             .foregroundStyle(.primary)
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
-            .glassEffect(in: .rect(cornerRadius: 12.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
     }
 }
 

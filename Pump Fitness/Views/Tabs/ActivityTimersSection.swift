@@ -252,7 +252,7 @@ struct ActivityTimersSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 }
 
@@ -338,11 +338,11 @@ private struct ActivityTimerCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .foregroundStyle(.white)
-                    .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: 16.0))
+                    .adaptiveGlassEffect(.regular.tint(tint), in: .rect(cornerRadius: 16.0))
             }
         }
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 }
 

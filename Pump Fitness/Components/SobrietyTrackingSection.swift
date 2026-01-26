@@ -39,7 +39,7 @@ struct SobrietyTrackingSection: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -60,7 +60,7 @@ struct SobrietyTrackingSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 18)
             } else {
                 // Calendar Grid
@@ -247,7 +247,7 @@ struct SobrietyCalendarView: View {
             }
         }
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 24))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 24))
     }
     
     private func daysInMonth() -> [Date?] {

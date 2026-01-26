@@ -29,7 +29,7 @@ struct QuickAddSheetView: View {
                             .font(.headline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                     }
                     .buttonStyle(.plain)
                 }
@@ -51,7 +51,7 @@ struct QuickAddSectionCard<Content: View>: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 }
 
@@ -133,7 +133,7 @@ private extension QuickAddSheetView {
                             .foregroundStyle(.secondary)
                     }
                     .padding(14)
-                    .glassEffect(in: .rect(cornerRadius: 14.0))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 14.0))
                 }
                 .tint(option.tint)
                 .buttonStyle(.plain)

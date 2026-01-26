@@ -106,7 +106,7 @@ struct ItineraryTrackingSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 
     static func itineraryRow(for event: ItineraryEvent, isFirst: Bool, isLast: Bool, coordinateSpaceName: String? = nil) -> some View {
@@ -169,7 +169,7 @@ struct ItineraryTrackingSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
             }
         }
     }

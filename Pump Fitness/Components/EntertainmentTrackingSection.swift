@@ -219,7 +219,7 @@ struct MusicTrackingSection: View {
             }
             .padding(.vertical, 24)
             .padding(.horizontal, 8)
-            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
             .shadow(color: Color.black.opacity(0.05), radius: 15, x: 0, y: 5)
             .task {
                 await musicService.fetchData()
@@ -267,7 +267,7 @@ struct MusicTrackingSection: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
-            .glassEffect(in: .rect(cornerRadius: 16))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
             .transition(.opacity)
         } else {
             VStack(spacing: 8) {
@@ -303,7 +303,7 @@ struct MusicTrackingSection: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
-            .glassEffect(in: .rect(cornerRadius: 16))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
             .transition(.opacity)
         }
     }

@@ -147,7 +147,7 @@ struct TravelTabView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding()
-                                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -329,7 +329,7 @@ private extension TravelTabView {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
@@ -365,7 +365,7 @@ private extension TravelTabView {
                             .fontWeight(.medium)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.primary)
@@ -378,7 +378,7 @@ private extension TravelTabView {
                             .fontWeight(.medium)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.primary)
@@ -406,7 +406,7 @@ private extension TravelTabView {
                   }
                   .frame(maxWidth: .infinity, alignment: .leading)
                   .padding(16)
-                  .glassEffect(in: .rect(cornerRadius: 16.0))
+                  .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                   .padding(.horizontal, 18)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
@@ -440,7 +440,7 @@ private extension TravelTabView {
                                 }
                             }
                             .padding(10)
-                            .glassEffect(in: .rect(cornerRadius: 16))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
                         }
                         .buttonStyle(.plain)
                     }
@@ -612,7 +612,7 @@ private extension TravelTabView {
         }
         .frame(maxWidth: .infinity)
         .padding(32)
-        .glassEffect(in: .rect(cornerRadius: 16))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16))
     }
     
     var createTripSheet: some View {
@@ -799,7 +799,7 @@ struct TripRowView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 }
 

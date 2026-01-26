@@ -65,7 +65,7 @@ struct LookupComponent: View {
                             .textInputAutocapitalization(.words)
                             .disableAutocorrection(true)
                             .padding()
-                            .glassEffect(in: .rect(cornerRadius: 8.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 8.0))
                             .focused($searchFieldIsFocused)
                             .onSubmit { performSearch() }
 
@@ -80,7 +80,7 @@ struct LookupComponent: View {
                         }
                         .padding()
                         .frame(width: 100)
-                        .glassEffect(in: .rect(cornerRadius: 8.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 8.0))
                         .onChange(of: portionSizeGrams) { _, newValue in
                             let filtered = newValue.filter { "0123456789".contains($0) }
                             if filtered != newValue {
@@ -122,7 +122,7 @@ struct LookupComponent: View {
                                 .font(.callout.weight(.semibold))
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                         }
                         .padding(.leading, 18)
                         .buttonStyle(.plain)
@@ -136,7 +136,7 @@ struct LookupComponent: View {
                                 .font(.title2.weight(.semibold))
                                 .frame(minWidth: 64, minHeight: 44)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                         }
                         .padding(.trailing, 18)
                         .buttonStyle(.plain)
@@ -226,7 +226,7 @@ struct LookupComponent: View {
                             }
                         }
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                         .cornerRadius(16)
                         .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 6)
                         .padding(.horizontal)
@@ -241,7 +241,7 @@ struct LookupComponent: View {
                                 .font(.callout.weight(.semibold))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .glassEffect(in: .rect(cornerRadius: 14.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 14.0))
                         }
                         .padding(.horizontal)
                     }

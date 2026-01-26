@@ -115,7 +115,7 @@ struct ProFeaturesListView: View {
                 }
             }
         }
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
     }
 }

@@ -184,7 +184,7 @@ struct ProSubscriptionView: View {
                             Text("Included with Trackerio Pro")
                                 .font(.footnote)
                                 .padding(10)
-                                .glassEffect(in: .rect(cornerRadius: 12.0))
+                                .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                                 .offset(y: -10)
                         }
                         .padding(.top)
@@ -454,7 +454,7 @@ struct SubscriptionOptionCard: View {
                                     .fontWeight(.semibold)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .glassEffect(in: .rect(cornerRadius: 12.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                             }
                         }
                     }
@@ -465,7 +465,7 @@ struct SubscriptionOptionCard: View {
             }
             .frame(width: 260)
             .frame(minHeight: 100)
-            .glassEffect(in: .rect(cornerRadius: 16.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
             .overlay(
                 RoundedRectangle(cornerRadius: 16.0)
                     .stroke(isSelected ? Color.accentColor.opacity(0.85) : Color.clear, lineWidth: isSelected ? 2 : 0)

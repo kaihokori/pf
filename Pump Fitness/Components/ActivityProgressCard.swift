@@ -67,6 +67,6 @@ struct ActivityProgressCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 150)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
     }
 }

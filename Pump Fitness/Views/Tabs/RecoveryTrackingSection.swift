@@ -76,7 +76,7 @@ struct RecoveryTrackingSection: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -96,7 +96,7 @@ struct RecoveryTrackingSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal)
             } else {
                 ForEach(RecoveryCategory.allCases.filter { visibleCategories.contains($0) }) { category in
@@ -425,7 +425,7 @@ fileprivate struct RecoveryCategoryCard: View {
                 .padding([.leading, .bottom], 12)
             }
         }
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal)
         .onChange(of: isTempFocused) { _, focused in
             if focused {
@@ -1173,7 +1173,7 @@ fileprivate struct RecoverySummarySection: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 16)
     }
 }

@@ -2783,162 +2783,156 @@ private extension RootView {
                         )
 
                         TabView(selection: $selectedTab) {
-                            Tab(
-                                "Nutrition",
-                                systemImage: AppTab.nutrition.systemImage,
-                                value: AppTab.nutrition
-                            ) {
-                                NutritionTabView(
-                                    account: accountBinding,
-                                    consumedCalories: $consumedCalories,
-                                    selectedDate: $selectedDate,
-                                    calorieGoal: $calorieGoal,
-                                    selectedMacroFocus: $selectedWeightGoal,
-                                    trackedMacros: $trackedMacros,
-                                    macroConsumptions: $macroConsumptions,
-                                    cravings: $cravings,
-                                    mealReminders: $mealReminders,
-                                    checkedMeals: $checkedMeals,
-                                    groceryItems: $groceryItems,
-                                    maintenanceCalories: $maintenanceCalories,
-                                    selectedMacroStrategy: $selectedMacroStrategy,
-                                    isPro: isPro
-                                )
-                                .onAppear { handleTabAppear(.nutrition) }
+                            NutritionTabView(
+                                account: accountBinding,
+                                consumedCalories: $consumedCalories,
+                                selectedDate: $selectedDate,
+                                calorieGoal: $calorieGoal,
+                                selectedMacroFocus: $selectedWeightGoal,
+                                trackedMacros: $trackedMacros,
+                                macroConsumptions: $macroConsumptions,
+                                cravings: $cravings,
+                                mealReminders: $mealReminders,
+                                checkedMeals: $checkedMeals,
+                                groceryItems: $groceryItems,
+                                maintenanceCalories: $maintenanceCalories,
+                                selectedMacroStrategy: $selectedMacroStrategy,
+                                isPro: isPro
+                            )
+                            .tabItem {
+                                Label("Nutrition", systemImage: AppTab.nutrition.systemImage)
                             }
-                            Tab(
-                                "Routine",
-                                systemImage: AppTab.routine.systemImage,
-                                value: AppTab.routine
-                            ) {
-                                RoutineTabView(
-                                    account: accountBinding,
-                                    selectedDate: $selectedDate,
-                                    goals: $goals,
-                                    habits: $habits,
-                                    groceryItems: $groceryItems,
-                                    activityTimers: $activityTimers,
-                                    expenseCurrencySymbol: $expenseCurrencySymbol,
-                                    expenseCategories: $expenseCategories,
-                                    expenseEntries: $expenseEntries,
-                                    nightSleepSeconds: $nightSleepSecondsToday,
-                                    napSleepSeconds: $napSleepSecondsToday,
-                                    isPro: isPro,
-                                    watchedEntertainment: $watchedEntertainment,
-                                    onUpdateWatchedEntertainment: { items in
-                                        persistWatchedEntertainment(items)
-                                    },
-                                    onUpdateActivityTimers: { timers in
-                                        persistActivityTimers(timers)
-                                    },
-                                    onUpdateHabits: { defs in
-                                        persistHabits(defs)
-                                    },
-                                    onUpdateGoals: { items in
-                                        persistGoals(items)
-                                    },
-                                    onUpdateGroceryItems: { items in
-                                        persistGroceryItems(items)
-                                    },
-                                    onUpdateExpenseCategories: { categories, currencySymbol in
-                                        persistExpenseSettings(categories, currencySymbol: currencySymbol)
-                                    },
-                                    onSaveExpenseEntry: { entry in
-                                        persistExpenseEntry(entry)
-                                    },
-                                    onDeleteExpenseEntry: { id in
-                                        deleteExpenseEntry(id)
-                                    }
-                                    ,
-                                    onUpdateSleep: { night, nap in
-                                        persistSleep(nightSeconds: night, napSeconds: nap)
-                                    }
-                                    , onLiveSleepUpdate: { night, nap in
-                                        // Live UI-only update (do not persist every tick)
-                                        nightSleepSecondsToday = night
-                                        napSleepSecondsToday = nap
-                                    }
-                                )
-                                .onAppear { handleTabAppear(.routine) }
+                            .tag(AppTab.nutrition)
+                            .onAppear { handleTabAppear(.nutrition) }
+
+                            RoutineTabView(
+                                account: accountBinding,
+                                selectedDate: $selectedDate,
+                                goals: $goals,
+                                habits: $habits,
+                                groceryItems: $groceryItems,
+                                activityTimers: $activityTimers,
+                                expenseCurrencySymbol: $expenseCurrencySymbol,
+                                expenseCategories: $expenseCategories,
+                                expenseEntries: $expenseEntries,
+                                nightSleepSeconds: $nightSleepSecondsToday,
+                                napSleepSeconds: $napSleepSecondsToday,
+                                isPro: isPro,
+                                watchedEntertainment: $watchedEntertainment,
+                                onUpdateWatchedEntertainment: { items in
+                                    persistWatchedEntertainment(items)
+                                },
+                                onUpdateActivityTimers: { timers in
+                                    persistActivityTimers(timers)
+                                },
+                                onUpdateHabits: { defs in
+                                    persistHabits(defs)
+                                },
+                                onUpdateGoals: { items in
+                                    persistGoals(items)
+                                },
+                                onUpdateGroceryItems: { items in
+                                    persistGroceryItems(items)
+                                },
+                                onUpdateExpenseCategories: { categories, currencySymbol in
+                                    persistExpenseSettings(categories, currencySymbol: currencySymbol)
+                                },
+                                onSaveExpenseEntry: { entry in
+                                    persistExpenseEntry(entry)
+                                },
+                                onDeleteExpenseEntry: { id in
+                                    deleteExpenseEntry(id)
+                                }
+                                ,
+                                onUpdateSleep: { night, nap in
+                                    persistSleep(nightSeconds: night, napSeconds: nap)
+                                }
+                                , onLiveSleepUpdate: { night, nap in
+                                    // Live UI-only update (do not persist every tick)
+                                    nightSleepSecondsToday = night
+                                    napSleepSecondsToday = nap
+                                }
+                            )
+                            .tabItem {
+                                Label("Routine", systemImage: AppTab.routine.systemImage)
                             }
-                            Tab(
-                                "Activity",
-                                systemImage: AppTab.workout.systemImage,
-                                value: AppTab.workout
-                            ) {
-                                WorkoutTabView(
-                                    sportConfigs: $sportsConfigs,
-                                    sportActivities: $sportActivities,
-                                    account: accountBinding,
-                                    selectedDate: $selectedDate,
-                                    caloriesBurnGoal: $caloriesBurnGoal,
-                                    stepsGoal: $stepsGoal,
-                                    distanceGoal: $distanceGoal,
-                                    caloriesBurnedToday: $caloriesBurnedToday,
-                                    stepsTakenToday: $stepsTakenToday,
-                                    distanceTravelledToday: $distanceTravelledToday,
-                                    weightGroups: $weightGroups,
-                                    weightEntries: $weightEntries,
-                                    weeklyCheckInStatuses: $weeklyCheckInStatuses,
-                                    autoRestDayIndices: $autoRestDayIndices,
-                                    isPro: isPro,
-                                    lastWeightEntryByExerciseId: lastWeightEntryByExerciseId,
-                                    onUpdateDailyActivity: { calories, steps, distance in
-                                        persistDailyActivity(calories: calories, steps: steps, distance: distance)
-                                    },
-                                    onUpdateDailyGoals: { burnGoal, stepsGoal, distanceGoal in
-                                        persistDailyGoals(calorieGoalBurn: burnGoal, stepsGoal: stepsGoal, distanceGoal: distanceGoal)
-                                    },
-                                    onUpdateWeightGroups: { groups in
-                                        persistWeightGroups(groups)
-                                    },
-                                    onUpdateWeightEntries: { entries in
-                                        persistWeightEntries(entries, for: selectedDate)
-                                    },
-                                    onSelectCheckInStatus: { status, index in
-                                        if let idx = index {
-                                            let dates = datesForWeek(containing: selectedDate)
-                                            guard dates.indices.contains(idx) else {
-                                                persistWorkoutCheckInStatus(for: selectedDate, status: status)
-                                                return
-                                            }
-                                            let target = dates[idx]
-                                            persistWorkoutCheckInStatus(for: target, status: status)
-                                        } else {
+                            .tag(AppTab.routine)
+                            .onAppear { handleTabAppear(.routine) }
+
+                            WorkoutTabView(
+                                sportConfigs: $sportsConfigs,
+                                sportActivities: $sportActivities,
+                                account: accountBinding,
+                                selectedDate: $selectedDate,
+                                caloriesBurnGoal: $caloriesBurnGoal,
+                                stepsGoal: $stepsGoal,
+                                distanceGoal: $distanceGoal,
+                                caloriesBurnedToday: $caloriesBurnedToday,
+                                stepsTakenToday: $stepsTakenToday,
+                                distanceTravelledToday: $distanceTravelledToday,
+                                weightGroups: $weightGroups,
+                                weightEntries: $weightEntries,
+                                weeklyCheckInStatuses: $weeklyCheckInStatuses,
+                                autoRestDayIndices: $autoRestDayIndices,
+                                isPro: isPro,
+                                lastWeightEntryByExerciseId: lastWeightEntryByExerciseId,
+                                onUpdateDailyActivity: { calories, steps, distance in
+                                    persistDailyActivity(calories: calories, steps: steps, distance: distance)
+                                },
+                                onUpdateDailyGoals: { burnGoal, stepsGoal, distanceGoal in
+                                    persistDailyGoals(calorieGoalBurn: burnGoal, stepsGoal: stepsGoal, distanceGoal: distanceGoal)
+                                },
+                                onUpdateWeightGroups: { groups in
+                                    persistWeightGroups(groups)
+                                },
+                                onUpdateWeightEntries: { entries in
+                                    persistWeightEntries(entries, for: selectedDate)
+                                },
+                                onSelectCheckInStatus: { status, index in
+                                    if let idx = index {
+                                        let dates = datesForWeek(containing: selectedDate)
+                                        guard dates.indices.contains(idx) else {
                                             persistWorkoutCheckInStatus(for: selectedDate, status: status)
+                                            return
                                         }
-                                    },
-                                    onUpdateAutoRestDays: { indices in
-                                        persistAutoRestDays(indices)
-                                    },
-                                    onClearWeekCheckIns: {
-                                        clearWeeklyCheckIns(anchorDate: selectedDate)
+                                        let target = dates[idx]
+                                        persistWorkoutCheckInStatus(for: target, status: status)
+                                    } else {
+                                        persistWorkoutCheckInStatus(for: selectedDate, status: status)
                                     }
-                                )
-                                .onAppear { handleTabAppear(.workout) }
+                                },
+                                onUpdateAutoRestDays: { indices in
+                                    persistAutoRestDays(indices)
+                                },
+                                onClearWeekCheckIns: {
+                                    clearWeeklyCheckIns(anchorDate: selectedDate)
+                                }
+                            )
+                            .tabItem {
+                                Label("Activity", systemImage: AppTab.workout.systemImage)
                             }
-                            Tab(
-                                "Wellness",
-                                systemImage: AppTab.sports.systemImage,
-                                value: AppTab.sports
-                            ) {
-                                SportsTabView(
-                                    account: accountBinding,
-                                    selectedDate: $selectedDate,
-                                    isPro: isPro,
-                                    weatherModel: weatherModel,
-                                    weeklySleepEntries: $weeklySleepEntries
-                                )
-                                .onAppear { handleTabAppear(.sports) }
+                            .tag(AppTab.workout)
+                            .onAppear { handleTabAppear(.workout) }
+
+                            SportsTabView(
+                                account: accountBinding,
+                                selectedDate: $selectedDate,
+                                isPro: isPro,
+                                weatherModel: weatherModel,
+                                weeklySleepEntries: $weeklySleepEntries
+                            )
+                            .tabItem {
+                                Label("Wellness", systemImage: AppTab.sports.systemImage)
                             }
-                            Tab(
-                                "Itinerary",
-                                systemImage: AppTab.itinerary.systemImage,
-                                value: AppTab.itinerary,
-                            ) {
-                                TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate, isPro: isPro)
-                                    .onAppear { handleTabAppear(.itinerary) }
-                            }
+                            .tag(AppTab.sports)
+                            .onAppear { handleTabAppear(.sports) }
+
+                            TravelTabView(account: accountBinding, itineraryEvents: $itineraryEvents, selectedDate: $selectedDate, isPro: isPro)
+                                .tabItem {
+                                    Label("Itinerary", systemImage: AppTab.itinerary.systemImage)
+                                }
+                                .tag(AppTab.itinerary)
+                                .onAppear { handleTabAppear(.itinerary) }
                         }
                         .onChange(of: trackedLeagueIdsRaw) { oldValue, newValue in
                             if let local = fetchAccount() {

@@ -501,7 +501,7 @@ struct SportsTabView: View {
                                                         .foregroundStyle(.secondary)
                                                 }
                                                 .padding()
-                                                .glassEffect(in: .rect(cornerRadius: 16.0))
+                                                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                             }
                                             .buttonStyle(.plain)
                                             .sheet(isPresented: $showProSheet) {
@@ -608,7 +608,7 @@ struct SportsTabView: View {
                                     .padding(20)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                    .glassEffect(in: .rect(cornerRadius: 16.0))
+                                    .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                     .padding(.horizontal, 18)
                                     .padding(.top, 12)
                                 }
@@ -684,7 +684,7 @@ struct SportsTabView: View {
                                                     .foregroundStyle(.secondary)
                                             }
                                             .padding()
-                                            .glassEffect(in: .rect(cornerRadius: 16.0))
+                                            .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                                         }
                                     }
                                 }
@@ -1724,7 +1724,7 @@ fileprivate struct SportsWellnessSection: View {
                   .font(.callout.weight(.semibold))
                   .padding(.vertical, 18)
                   .frame(maxWidth: .infinity, minHeight: 52)
-                  .glassEffect(in: .rect(cornerRadius: 16.0))
+                  .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                   .contentShape(Rectangle())
             }
             .nutritionTip(.editCalorieGoal)
@@ -1743,7 +1743,7 @@ fileprivate struct SportsWellnessSection: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
             } else {
@@ -1884,7 +1884,7 @@ fileprivate struct SportsInjurySection: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding()
-                        .glassEffect(in: .rect(cornerRadius: 16.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                     }
                     .buttonStyle(.plain)
                     .sheet(isPresented: $showProSheet) {

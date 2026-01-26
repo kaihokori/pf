@@ -1325,7 +1325,7 @@ private struct SectionCard<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 20.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 20.0))
     }
 }
 

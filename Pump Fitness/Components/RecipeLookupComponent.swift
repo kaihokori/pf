@@ -24,7 +24,7 @@ struct RecipeLookupComponent: View {
                               .textInputAutocapitalization(.words)
                               .disableAutocorrection(true)
                               .padding()
-                              .glassEffect(in: .rect(cornerRadius: 8.0))
+                              .adaptiveGlassEffect(in: .rect(cornerRadius: 8.0))
                               .focused($searchFocused)
                               .onSubmit { runSearch() }
                       }
@@ -36,7 +36,7 @@ struct RecipeLookupComponent: View {
                                   .font(.callout.weight(.semibold))
                                   .frame(maxWidth: .infinity, minHeight: 44)
                                   .padding(.vertical, 8)
-                                  .glassEffect(in: .rect(cornerRadius: 12.0))
+                                  .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
                           }
                           .padding(.horizontal, 18)
                           .buttonStyle(.plain)

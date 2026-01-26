@@ -108,7 +108,7 @@ struct ItineraryDetailView: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
 
@@ -122,7 +122,7 @@ struct ItineraryDetailView: View {
                             .fontWeight(.medium)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .glassEffect(in: .rect(cornerRadius: 18.0))
+                            .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                             .accessibilityLabel("Delete")
                     }
                     .buttonStyle(.plain)
@@ -337,7 +337,7 @@ struct ItineraryDetailView: View {
 
     private func openInAppleMaps(_ coordinate: CLLocationCoordinate2D) {
         let drivingOptions = [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
-        if #available(iOS 17.0, *) {
+        if #available(iOS 26.0, *) {
             let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
             let destination = MKMapItem(location: location, address: nil)
             destination.name = event.name

@@ -39,7 +39,7 @@ struct LiveGamesTrackingView: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -103,7 +103,7 @@ struct LiveGamesTrackingView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
-                .glassEffect(in: .rect(cornerRadius: 16.0))
+                .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
                 .padding(.vertical, 20)
                 .padding(.horizontal, 18)
             }

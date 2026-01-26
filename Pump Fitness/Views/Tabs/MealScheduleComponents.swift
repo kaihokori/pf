@@ -35,7 +35,7 @@ struct WeeklyMealScheduleCard: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .glassEffect(in: .rect(cornerRadius: 18.0))
+                        .adaptiveGlassEffect(in: .rect(cornerRadius: 18.0))
                 }
                 .buttonStyle(.plain)
             }
@@ -102,7 +102,7 @@ struct WeeklyMealScheduleCard: View {
                 .padding()
             }
             .frame(minHeight: 200)
-            .glassEffect(in: .rect(cornerRadius: 12.0))
+            .adaptiveGlassEffect(in: .rect(cornerRadius: 12.0))
             .overlay(
                 RoundedRectangle(cornerRadius: 12.0)
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
@@ -116,7 +116,7 @@ struct WeeklyMealScheduleCard: View {
                     .font(.callout.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .glassEffect(in: .rect(cornerRadius: 12))
+                    .adaptiveGlassEffect(in: .rect(cornerRadius: 12))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -134,7 +134,7 @@ struct WeeklyMealScheduleCard: View {
             .padding(.bottom, -8)
         }
         .padding(20)
-        .glassEffect(in: .rect(cornerRadius: 16.0))
+        .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .sheet(isPresented: $showEditSheet) {
@@ -244,7 +244,7 @@ struct WeeklyMealSessionCard: View {
         .frame(width: 110, alignment: .center)
         .padding(.horizontal, 6)
         .padding(.vertical, 8)
-        .glassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
+        .adaptiveGlassEffect(.regular.tint(resolvedColor), in: .rect(cornerRadius: 12.0))
     }
 }
 

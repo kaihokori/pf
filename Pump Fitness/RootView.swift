@@ -153,8 +153,20 @@ struct RootView: View {
             .onChange(of: macroConsumptions) { _, newValue in handleMacroConsumptionsChange(newValue) }
             .onChange(of: cravings) { _, newValue in handleCravingsChange(newValue) }
             .onChange(of: watchedEntertainment) { _, newValue in persistWatchedEntertainment(newValue) }
+            .onChange(of: subscriptionManager.latestSubscriptionExpiration) { _, _ in
+                let effectiveTrialEnd = trialPeriodEnd ?? fetchAccount()?.trialPeriodEnd
+                updateSubscriptionStatusMetadata(trialEndDate: effectiveTrialEnd)
+            }
+            .onChange(of: subscriptionManager.trialStartDate) { _, _ in
+                let effectiveTrialEnd = subscriptionManager.trialEndDate ?? trialPeriodEnd ?? fetchAccount()?.trialPeriodEnd
+                updateSubscriptionStatusMetadata(trialEndDate: effectiveTrialEnd)
+            }
             // If the user purchases a subscription, clear any stuck proPeriodEnd overrides
             .onChange(of: subscriptionManager.purchasedProductIDs) { _, ids in
+                // Sync status to Firestore whenever products change
+                let effectiveTrialEnd = trialPeriodEnd ?? fetchAccount()?.trialPeriodEnd
+                updateSubscriptionStatusMetadata(trialEndDate: effectiveTrialEnd)
+
                 // Only clear any manual `proPeriodEnd` overrides once entitlements
                 // or trial flags are confirmed to avoid transient UI downgrades.
                 if !ids.isEmpty, let uid = Auth.auth().currentUser?.uid {
@@ -1008,7 +1020,8 @@ private extension RootView {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
         Task {
-            await subscriptionManager.refreshSubscriptionStatus()
+            // State is already managed by SubscriptionManager observers;
+            // just sync the current description to Firestore.
             let status = subscriptionManager.subscriptionStatusDescription(trialEndDate: trialEndDate)
             await accountFirestoreService.updateSubscriptionStatus(for: uid, status: status)
         }

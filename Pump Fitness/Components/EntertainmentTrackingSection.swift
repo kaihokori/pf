@@ -784,7 +784,7 @@ struct EntertainmentTrackingSection: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            .padding(.horizontal, 18)
         }
     }
 }

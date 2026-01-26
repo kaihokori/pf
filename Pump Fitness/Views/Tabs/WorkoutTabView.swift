@@ -4472,7 +4472,6 @@ private struct WeeklyProgressCarousel: View {
                                     .accessibilityLabel("Progress photo")
                                     .padding(.top, 6)
                             } else {
-                                // Rounded Rectangle placeholder with .glassEffect
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(Color.primary.opacity(0.05))
                                     .frame(width: 180, height: 240)

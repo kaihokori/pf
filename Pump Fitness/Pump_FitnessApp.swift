@@ -12,8 +12,16 @@ import FirebaseCore
 import TipKit
 #endif
 
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        return true
+    }
+}
+
 @main
 struct Pump_FitnessApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var themeManager: ThemeManager
     @StateObject private var subscriptionManager = SubscriptionManager.shared
     private let modelContainer: ModelContainer
@@ -42,23 +50,15 @@ struct Pump_FitnessApp: App {
         ])
         _themeManager = StateObject(wrappedValue: ThemeManager())
         do {
-            // Use separate stores to avoid migration failures for users who already have an Account-only store.
-            // Account continues to use the original default store; Day gets a new store file.
+            // Use a single store for all models to ensure consistent context and avoid 'Day' entity missing errors.
+            // Lightweight migration will handle adding 'Day' to the existing 'default.store'.
             let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let dayStoreURL = documentsURL.appendingPathComponent("Day.store")
+            let storeURL = documentsURL.appendingPathComponent("default.store")
 
-            let accountSchema = Schema([Account.self])
-            let daySchema = Schema([Day.self])
+            let schema = Schema([Account.self, Day.self])
+            let config = ModelConfiguration(schema: schema, url: storeURL)
 
-            let accountConfig = ModelConfiguration(schema: accountSchema)
-            let dayConfig = ModelConfiguration("day", schema: daySchema, url: dayStoreURL)
-
-            let combinedSchema = Schema([Account.self, Day.self])
-
-            modelContainer = try ModelContainer(
-                for: combinedSchema,
-                configurations: [accountConfig, dayConfig]
-            )
+            modelContainer = try ModelContainer(for: schema, configurations: [config])
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }

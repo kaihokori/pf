@@ -2991,7 +2991,7 @@ private enum AppTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .nutrition: return "fork.knife.circle.fill"
-        case .routine: return "calendar.and.person"
+        case .routine: return "list.bullet.rectangle.portrait.fill"
         case .workout: return "figure.highintensity.intervaltraining"
         case .sports: return "heart.text.square.fill"
         case .itinerary: return "globe.asia.australia.fill"

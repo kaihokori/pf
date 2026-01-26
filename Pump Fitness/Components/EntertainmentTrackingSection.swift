@@ -775,18 +775,16 @@ struct EntertainmentTrackingSection: View {
     
     private struct EmptyStateView: View {
         var body: some View {
-            VStack(spacing: 12) {
-                Image(systemName: "popcorn")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.secondary)
-                
-                Text("No movies or shows logged yet")
+            VStack(alignment: .leading, spacing: 8) {
+                Label("No entertainment items yet", systemImage: "popcorn")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("Add a new tv show or movie with the Log Watched button to start tracking.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 30)
-            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
         }
     }
 }

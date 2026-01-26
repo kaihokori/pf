@@ -97,7 +97,7 @@ struct ItineraryTrackingSection: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("No itinerary events yet", systemImage: "airplane")
+            Label("No itinerary events yet", systemImage: "map.fill")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(.primary)
             Text("Add a new event with the plus icon to start planning your travel timeline.")

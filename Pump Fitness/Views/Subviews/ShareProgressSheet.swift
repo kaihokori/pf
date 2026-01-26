@@ -43,7 +43,7 @@ struct ShareProgressSheet: View {
                         .frame(width: 40, height: 5)
                         .padding(.top, 12)
                     
-                    Text("Share Your Achievements")
+                    Text("Share Nutrition Summary")
                         .font(.title2)
                         .fontWeight(.bold)
                 }

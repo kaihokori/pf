@@ -15,6 +15,21 @@ struct RoutineExpenseBar: Identifiable {
     let total: Double
 }
 
+struct RoutineMusicTrack: Identifiable {
+    let id: String
+    let title: String
+    let artist: String
+    let artwork: UIImage?
+}
+
+struct RoutineEntertainmentSnapshot: Identifiable {
+    let id: UUID
+    let title: String
+    let type: String
+    let rating: Double
+    let poster: UIImage?
+}
+
 struct RoutineShareSheet: View {
     var accentColor: Color
     var taskCompletionPercent: Int
@@ -22,6 +37,10 @@ struct RoutineShareSheet: View {
     var habitStatuses: [RoutineHabitSnapshot]
     var expenseBars: [RoutineExpenseBar]
     var expenseCategories: [ExpenseCategory] = []
+    
+    // New Properties
+    var musicTracks: [RoutineMusicTrack] = []
+    var entertainmentItems: [RoutineEntertainmentSnapshot] = []
 
     @Environment(\.dismiss) private var dismiss
 
@@ -29,6 +48,8 @@ struct RoutineShareSheet: View {
     @State private var showGoals = true
     @State private var showHabits = true
     @State private var showExpenses = true
+    @State private var showMusic = true
+    @State private var showEntertainment = true
 
     @State private var sharePayload: RoutineSharePayload?
 
@@ -57,6 +78,16 @@ struct RoutineShareSheet: View {
                             ToggleRow(title: "Habits", isOn: $showHabits, icon: "sparkles", color: .blue)
                             Divider().padding(.leading, 44)
                             ToggleRow(title: "Expenses", isOn: $showExpenses, icon: "chart.bar.fill", color: .green)
+                            
+                            if !musicTracks.isEmpty {
+                                Divider().padding(.leading, 44)
+                                ToggleRow(title: "Music", isOn: $showMusic, icon: "music.note", color: .purple)
+                            }
+                            
+                            if !entertainmentItems.isEmpty {
+                                Divider().padding(.leading, 44)
+                                ToggleRow(title: "Entertainment", isOn: $showEntertainment, icon: "film", color: .indigo)
+                            }
                         }
                         .background(Color(UIColor.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -72,10 +103,14 @@ struct RoutineShareSheet: View {
                                 habits: habitStatuses,
                                 expenseBars: expenseBars,
                                 expenseCategories: expenseCategories,
+                                musicTracks: musicTracks,
+                                entertainmentItems: entertainmentItems,
                                 showTasks: showTasks,
                                 showGoals: showGoals,
                                 showHabits: showHabits,
                                 showExpenses: showExpenses,
+                                showMusic: showMusic,
+                                showEntertainment: showEntertainment,
                                 isExporting: false
                             )
                         }
@@ -147,10 +182,14 @@ struct RoutineShareSheet: View {
                 goals: completedGoals,
                 habits: habitStatuses,
                 expenseBars: expenseBars,
+                musicTracks: musicTracks,
+                entertainmentItems: entertainmentItems,
                 showTasks: showTasks,
                 showGoals: showGoals,
                 showHabits: showHabits,
                 showExpenses: showExpenses,
+                showMusic: showMusic,
+                showEntertainment: showEntertainment,
                 isExporting: true
             )
         }
@@ -180,11 +219,17 @@ private struct RoutineShareCard: View {
     var habits: [RoutineHabitSnapshot]
     var expenseBars: [RoutineExpenseBar]
     var expenseCategories: [ExpenseCategory] = []
+    
+    // New props
+    var musicTracks: [RoutineMusicTrack]
+    var entertainmentItems: [RoutineEntertainmentSnapshot]
 
     var showTasks: Bool
     var showGoals: Bool
     var showHabits: Bool
     var showExpenses: Bool
+    var showMusic: Bool
+    var showEntertainment: Bool
 
     var isExporting: Bool
 
@@ -224,6 +269,14 @@ private struct RoutineShareCard: View {
 
                 if showExpenses && !expenseBars.isEmpty {
                     ExpensesShareSection(bars: expenseBars, categories: expenseCategories, color: .green)
+                }
+                
+                if showMusic && !musicTracks.isEmpty {
+                    MusicShareSection(tracks: musicTracks.prefix(3).map { $0 }, color: .purple)
+                }
+
+                if showEntertainment && !entertainmentItems.isEmpty {
+                    EntertainmentShareSection(items: entertainmentItems.prefix(4).map { $0 }, color: .indigo)
                 }
             }
             .padding(20)
@@ -361,6 +414,104 @@ private struct ExpensesShareSection: View {
                 }
             }
             .frame(height: 160)
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct MusicShareSection: View {
+    var tracks: [RoutineMusicTrack]
+    var color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "TOP MUSIC", icon: "music.note", color: color)
+            
+            ForEach(tracks) { track in
+                HStack(spacing: 12) {
+                    if let image = track.artwork {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } else {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(UIColor.tertiarySystemFill))
+                            .frame(width: 40, height: 40)
+                            .overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text(track.artist)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(8)
+                .background(Color(UIColor.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(14)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+private struct EntertainmentShareSection: View {
+    var items: [RoutineEntertainmentSnapshot]
+    var color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "ENTERTAINMENT", icon: "film", color: color)
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(items) { item in
+                    HStack(spacing: 8) {
+                        if let image = item.poster {
+                             Image(uiImage: image)
+                                 .resizable()
+                                 .aspectRatio(contentMode: .fill)
+                                 .frame(width: 32, height: 48)
+                                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                        } else {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(UIColor.tertiarySystemFill))
+                                .frame(width: 32, height: 48)
+                                .overlay(Image(systemName: item.type == "movie" ? "film" : "tv").font(.caption).foregroundStyle(.secondary))
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            
+                            HStack(spacing: 2) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.orange)
+                                Text(String(format: "%.1f", item.rating))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(6)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
         }
         .padding(14)
         .background(Color(UIColor.secondarySystemBackground))

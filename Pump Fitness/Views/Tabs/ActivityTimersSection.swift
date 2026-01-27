@@ -96,13 +96,13 @@ struct ActivityTimerItem: Identifiable, Equatable, Codable {
 
     static let defaultTimers: [ActivityTimerItem] = [
         ActivityTimerItem(
-            name: "Workout",
+            name: "Study",
             startTime: Date(),
             durationMinutes: 60,
             colorHex: "#E39A3B"
         ),
         ActivityTimerItem(
-            name: "Evening Walk",
+            name: "Meditate",
             startTime: Date(),
             durationMinutes: 45,
             colorHex: "#4FB6C6"

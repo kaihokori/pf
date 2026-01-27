@@ -1424,9 +1424,9 @@ private struct ActivityTimersEditorView: View {
 
     private var presets: [ActivityTimerItem] {
         [
-            ActivityTimerItem(name: "Workout", startTime: Date(), durationMinutes: 60, colorHex: "#E39A3B"),
-            ActivityTimerItem(name: "Evening Walk", startTime: Date(), durationMinutes: 45, colorHex: "#4FB6C6"),
-            ActivityTimerItem(name: "Stretch Break", startTime: Date(), durationMinutes: 20, colorHex: "#7A5FD1")
+            ActivityTimerItem(name: "Study", startTime: Date(), durationMinutes: 60, colorHex: "#E39A3B"),
+            ActivityTimerItem(name: "Meditate", startTime: Date(), durationMinutes: 45, colorHex: "#4FB6C6"),
+            ActivityTimerItem(name: "Evening Walk", startTime: Date(), durationMinutes: 20, colorHex: "#7A5FD1")
         ]
     }
 

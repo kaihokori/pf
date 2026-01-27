@@ -4,6 +4,7 @@ import HealthKit
 import PhotosUI
 import TipKit
 import Charts
+import Combine
 
 private extension WorkoutTabView {
     func fetchDayTakenWorkoutSupplements() {
@@ -3808,9 +3809,13 @@ private struct DailySummaryGoalSheet: View {
 private struct WeightsGroupEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var subscriptionManager: SubscriptionManager
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var bodyParts: [BodyPartWeights]
     var isPro: Bool
     var onSave: ([BodyPartWeights]) -> Void
+    
+    @AppStorage("restTimerDuration") private var restTimerDuration: Double = 90
 
     @State private var working: [BodyPartWeights] = []
     @State private var newName: String = ""
@@ -3825,11 +3830,36 @@ private struct WeightsGroupEditorSheet: View {
         return working.count < maxTracked
     }
     private var canAddCustom: Bool { canAddMore && !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    
+    private var effectiveTint: Color {
+        if themeManager.selectedTheme == .multiColour { return .accentColor }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
+                    
+                    // Timer Settings
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Timer Settings")
+                            .font(.subheadline.weight(.semibold))
+                        
+                        HStack {
+                            Label("Rest Timer", systemImage: "timer")
+                                .foregroundStyle(themeManager.selectedTheme == .multiColour ? .orange : effectiveTint)
+                            Spacer()
+                            Text("\(Int(restTimerDuration))s")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            Stepper("", value: $restTimerDuration, in: 10...600, step: 10)
+                                .labelsHidden()
+                        }
+                        .padding()
+                        .surfaceCard(16)
+                    }
+                    
                     if !working.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Tracked Groups")
@@ -3840,10 +3870,10 @@ private struct WeightsGroupEditorSheet: View {
                                     let binding = $working[idx]
                                     HStack(spacing: 12) {
                                         Circle()
-                                            .fill(Color.accentColor.opacity(0.15))
+                                            .fill(effectiveTint.opacity(0.15))
                                             .frame(width: 44, height: 44)
                                             .overlay(Image(systemName: "dumbbell")
-                                                .foregroundStyle(Color.accentColor))
+                                                .foregroundStyle(effectiveTint))
 
                                         VStack {
                                             TextField("Body part", text: binding.name)
@@ -3897,10 +3927,10 @@ private struct WeightsGroupEditorSheet: View {
                                 ForEach(presets.filter { !isPresetSelected($0) }, id: \.self) { preset in
                                     HStack(spacing: 14) {
                                         Circle()
-                                            .fill(Color.accentColor.opacity(0.15))
+                                            .fill(effectiveTint.opacity(0.15))
                                             .frame(width: 44, height: 44)
                                             .overlay(Image(systemName: "dumbbell")
-                                                .foregroundStyle(Color.accentColor))
+                                                .foregroundStyle(effectiveTint))
 
                                         Text(preset)
                                             .font(.subheadline.weight(.semibold))
@@ -3910,7 +3940,7 @@ private struct WeightsGroupEditorSheet: View {
                                         Button(action: { togglePreset(preset) }) {
                                             Image(systemName: "plus.circle.fill")
                                                 .font(.system(size: 24, weight: .semibold))
-                                                .foregroundStyle(Color.accentColor)
+                                                .foregroundStyle(effectiveTint)
                                         }
                                         .buttonStyle(.plain)
                                         .disabled(!canAddMore)
@@ -3929,7 +3959,7 @@ private struct WeightsGroupEditorSheet: View {
                             HStack(alignment: .center) {
                                 Image(systemName: "sparkles")
                                     .font(.title3)
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(effectiveTint)
                                     .padding(.trailing, 8)
 
                                 VStack(alignment: .leading, spacing: 2) {
@@ -3968,7 +3998,7 @@ private struct WeightsGroupEditorSheet: View {
                                 Button(action: addCustomGroup) {
                                     Image(systemName: "plus.circle.fill")
                                         .font(.system(size: 28, weight: .semibold))
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(effectiveTint)
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(!canAddCustom)
@@ -3987,7 +4017,7 @@ private struct WeightsGroupEditorSheet: View {
                 .padding(.vertical, 24)
             }
             .navigationTitle("Edit Weight Groups")
-            .navigationBarTitleDisplayMode(.inline)
+            .accentColor(effectiveTint)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -4068,9 +4098,112 @@ private struct WeightsTrackingSection: View {
     @Binding var bodyParts: [BodyPartWeights]
     var focusBinding: FocusState<UUID?>.Binding
     var onTipStepChange: ((Int) -> Void)? = nil
+    
+    @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
+
+    @AppStorage("restTimerDuration") private var restTimerDuration: Double = 90
+    @State private var workoutTime: TimeInterval = 0
+    @State private var isWorkoutTimerRunning = false
+    @State private var restTimeRemaining: TimeInterval = 90
+    @State private var isRestTimerRunning = false
+    
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
+    private var workoutColor: Color {
+        if themeManager.selectedTheme == .multiColour { return .blue }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+    
+    private var restColor: Color {
+        if themeManager.selectedTheme == .multiColour { return .orange }
+        return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+    
+    private func formatTime(_ totalSeconds: TimeInterval) -> String {
+        let minutes = Int(totalSeconds) / 60
+        let seconds = Int(totalSeconds) % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                // Workout Timer
+                HStack(spacing: 8) {
+                    Image(systemName: "stopwatch")
+                        .foregroundStyle(workoutColor)
+                    Text(formatTime(workoutTime))
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                    Spacer()
+                    Button {
+                        isWorkoutTimerRunning.toggle()
+                    } label: {
+                        Image(systemName: isWorkoutTimerRunning ? "pause.fill" : "play.fill")
+                            .font(.title3)
+                            .foregroundStyle(workoutColor)
+                    }
+                }
+                .padding(12)
+                .background(workoutColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+                
+                // Rest Timer
+                HStack(spacing: 8) {
+                    Image(systemName: "timer")
+                        .foregroundStyle(restColor)
+                    Text(formatTime(restTimeRemaining))
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Button {
+                            if restTimeRemaining == 0 { restTimeRemaining = restTimerDuration }
+                            isRestTimerRunning.toggle()
+                        } label: {
+                            Image(systemName: isRestTimerRunning ? "pause.fill" : "play.fill")
+                                .font(.title3)
+                                .foregroundStyle(restColor)
+                        }
+                        
+                        Button {
+                            isRestTimerRunning = false
+                            restTimeRemaining = restTimerDuration
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(restColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 18)
+            .onReceive(timer) { _ in
+                if isWorkoutTimerRunning {
+                    workoutTime += 1
+                }
+                if isRestTimerRunning {
+                    if restTimeRemaining > 0 {
+                        restTimeRemaining -= 1
+                    } else {
+                        isRestTimerRunning = false
+                    }
+                }
+            }
+            .onChange(of: restTimerDuration) { _, newValue in
+                if !isRestTimerRunning {
+                    restTimeRemaining = newValue
+                }
+            }
+            .onAppear {
+                if !isRestTimerRunning {
+                     restTimeRemaining = restTimerDuration
+                }
+            }
+
             if bodyParts.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("No weight groups yet", systemImage: "list.bullet.rectangle")

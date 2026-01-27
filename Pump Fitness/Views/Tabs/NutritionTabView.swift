@@ -3704,11 +3704,11 @@ struct DailyMealLogSection: View {
                 let compsA = localCal.dateComponents([.year, .month, .day], from: date)
                 let compsB = localCal.dateComponents([.year, .month, .day], from: selectedDate)
                 if compsA == compsB {
-                    refreshMeals()
+                    refreshMeals(fetchFromRemote: false)
                 }
             } else {
                 // If notification doesn't include date, just refresh conservatively
-                refreshMeals()
+                refreshMeals(fetchFromRemote: false)
             }
         }
     }
@@ -3736,15 +3736,18 @@ struct DailyMealLogSection: View {
         [.breakfast, .lunch, .dinner, .snack]
     }
 
-    private func refreshMeals() {
+    private func refreshMeals(fetchFromRemote: Bool = true) {
         let localDay = Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
         mealEntries = localDay.mealIntakes
-        isLoadingMeals = true
-        dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { fetchedDay in
-            DispatchQueue.main.async {
-                let refreshed = fetchedDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
-                mealEntries = refreshed.mealIntakes
-                isLoadingMeals = false
+        
+        if fetchFromRemote {
+            isLoadingMeals = true
+            dayFirestoreService.fetchDay(for: selectedDate, in: modelContext, trackedMacros: trackedMacros) { fetchedDay in
+                DispatchQueue.main.async {
+                    let refreshed = fetchedDay ?? Day.fetchOrCreate(for: selectedDate, in: modelContext, trackedMacros: trackedMacros)
+                    mealEntries = refreshed.mealIntakes
+                    isLoadingMeals = false
+                }
             }
         }
     }

@@ -4158,94 +4158,19 @@ private struct WeightsTrackingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                // Workout Timer
-                HStack(spacing: 8) {
-                    Image(systemName: "stopwatch")
-                        .foregroundStyle(workoutColor)
-                    Text(formatTime(workoutTime))
-                        .fontWeight(.semibold)
-                        .monospacedDigit()
-                    Spacer()
-                    Button {
-                        if isWorkoutRunningPersisted {
-                            // Pausing
-                            workoutElapsedBase += (Date().timeIntervalSince1970 - workoutLastResume)
-                            workoutLastResume = 0
-                            isWorkoutRunningPersisted = false
-                        } else {
-                            // Resuming/Starting
-                            workoutLastResume = Date().timeIntervalSince1970
-                            isWorkoutRunningPersisted = true
-                        }
-                        updateDisplay()
-                    } label: {
-                        Image(systemName: isWorkoutRunningPersisted ? "pause.fill" : "play.fill")
-                            .font(.title3)
-                            .foregroundStyle(workoutColor)
-                    }
-                    
-                    if !isWorkoutRunningPersisted && workoutElapsedBase > 0 {
-                        Button {
-                            workoutElapsedBase = 0
-                            workoutLastResume = 0
-                            isWorkoutRunningPersisted = false
-                            updateDisplay()
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+            
+            ViewThatFits(in: .horizontal) {
+                // Horizontal layout for normal text sizes
+                HStack(spacing: 12) {
+                    workoutTimerCard
+                    restTimerCard
                 }
-                .padding(12)
-                .background(workoutColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
                 
-                // Rest Timer
-                HStack(spacing: 8) {
-                    Image(systemName: "timer")
-                        .foregroundStyle(restColor)
-                    Text(formatTime(restTimeRemaining))
-                        .fontWeight(.semibold)
-                        .monospacedDigit()
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Button {
-                            if isRestRunningPersisted {
-                                // Pause rest timer (optional behavior: most just let it run or reset)
-                                // Let's simplify rest timer: Toggle means Start/Stop (reset)
-                                let currentElapsed = Date().timeIntervalSince1970 - restStartTimestamp
-                                restDurationAtStart = max(0, restDurationAtStart - currentElapsed)
-                                restStartTimestamp = 0
-                                isRestRunningPersisted = false
-                            } else {
-                                if restTimeRemaining <= 0 { restDurationAtStart = restTimerDuration }
-                                else { restDurationAtStart = restTimeRemaining }
-                                
-                                restStartTimestamp = Date().timeIntervalSince1970
-                                isRestRunningPersisted = true
-                            }
-                            updateDisplay()
-                        } label: {
-                            Image(systemName: isRestRunningPersisted ? "pause.fill" : "play.fill")
-                                .font(.title3)
-                                .foregroundStyle(restColor)
-                        }
-                        
-                        Button {
-                            isRestRunningPersisted = false
-                            restStartTimestamp = 0
-                            restDurationAtStart = restTimerDuration
-                            updateDisplay()
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                // Vertical layout for larger accessibility text sizes
+                VStack(spacing: 12) {
+                    workoutTimerCard
+                    restTimerCard
                 }
-                .padding(12)
-                .background(restColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 18)
@@ -4469,6 +4394,106 @@ private struct WeightsTrackingSection: View {
         .adaptiveGlassEffect(in: .rect(cornerRadius: 16.0))
         .padding(.horizontal, 18)
         .padding(.top, 12)
+    }
+
+    private var workoutTimerCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("WORKOUT")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 8) {
+                Image(systemName: "stopwatch")
+                    .foregroundStyle(workoutColor)
+                Text(formatTime(workoutTime))
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                Spacer()
+                HStack(spacing: 12) {
+                    Button {
+                        if isWorkoutRunningPersisted {
+                            workoutElapsedBase += (Date().timeIntervalSince1970 - workoutLastResume)
+                            workoutLastResume = 0
+                            isWorkoutRunningPersisted = false
+                        } else {
+                            workoutLastResume = Date().timeIntervalSince1970
+                            isWorkoutRunningPersisted = true
+                        }
+                        updateDisplay()
+                    } label: {
+                        Image(systemName: isWorkoutRunningPersisted ? "pause.fill" : "play.fill")
+                            .font(.title3)
+                            .foregroundStyle(workoutColor)
+                    }
+                    
+                    if !isWorkoutRunningPersisted && workoutElapsedBase > 0 {
+                        Button {
+                            workoutElapsedBase = 0
+                            workoutLastResume = 0
+                            isWorkoutRunningPersisted = false
+                            updateDisplay()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding(12)
+            .background(workoutColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private var restTimerCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("REST TIMER")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                
+            HStack(spacing: 8) {
+                Image(systemName: "timer")
+                    .foregroundStyle(restColor)
+                Text(formatTime(restTimeRemaining))
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                Spacer()
+                HStack(spacing: 12) {
+                    Button {
+                        if isRestRunningPersisted {
+                            let currentElapsed = Date().timeIntervalSince1970 - restStartTimestamp
+                            restDurationAtStart = max(0, restDurationAtStart - currentElapsed)
+                            restStartTimestamp = 0
+                            isRestRunningPersisted = false
+                        } else {
+                            if restTimeRemaining <= 0 { restDurationAtStart = restTimerDuration }
+                            else { restDurationAtStart = restTimeRemaining }
+                            
+                            restStartTimestamp = Date().timeIntervalSince1970
+                            isRestRunningPersisted = true
+                        }
+                        updateDisplay()
+                    } label: {
+                        Image(systemName: isRestRunningPersisted ? "pause.fill" : "play.fill")
+                            .font(.title3)
+                            .foregroundStyle(restColor)
+                    }
+                    
+                    Button {
+                        isRestRunningPersisted = false
+                        restStartTimestamp = 0
+                        restDurationAtStart = restTimerDuration
+                        updateDisplay()
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(12)
+            .background(restColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+        }
     }
 
     // MARK: - Actions

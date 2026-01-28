@@ -4159,18 +4159,10 @@ private struct WeightsTrackingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             
-            ViewThatFits(in: .horizontal) {
-                // Horizontal layout for normal text sizes
-                HStack(spacing: 12) {
-                    workoutTimerCard
-                    restTimerCard
-                }
-                
-                // Vertical layout for larger accessibility text sizes
-                VStack(spacing: 12) {
-                    workoutTimerCard
-                    restTimerCard
-                }
+            // Stacked timers
+            VStack(spacing: 12) {
+                workoutTimerCard
+                restTimerCard
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 18)

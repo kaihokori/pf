@@ -4103,12 +4103,21 @@ private struct WeightsTrackingSection: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @AppStorage("restTimerDuration") private var restTimerDuration: Double = 90
-    @State private var workoutTime: TimeInterval = 0
-    @State private var isWorkoutTimerRunning = false
-    @State private var restTimeRemaining: TimeInterval = 90
-    @State private var isRestTimerRunning = false
     
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Workout Timer Persistence
+    @AppStorage("workoutTimerElapsedBase") private var workoutElapsedBase: Double = 0
+    @AppStorage("workoutTimerLastResume") private var workoutLastResume: Double = 0 // 0 means paused
+    @AppStorage("isWorkoutTimerRunningPersisted") private var isWorkoutRunningPersisted: Bool = false
+    
+    // Rest Timer Persistence
+    @AppStorage("restTimerStartTimestamp") private var restStartTimestamp: Double = 0
+    @AppStorage("restTimerDurationAtStart") private var restDurationAtStart: Double = 90
+    @AppStorage("isRestTimerRunningPersisted") private var isRestRunningPersisted: Bool = false
+    
+    @State private var workoutTime: TimeInterval = 0
+    @State private var restTimeRemaining: TimeInterval = 90
+    
+    private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     
     private var workoutColor: Color {
         if themeManager.selectedTheme == .multiColour { return .blue }
@@ -4121,9 +4130,30 @@ private struct WeightsTrackingSection: View {
     }
     
     private func formatTime(_ totalSeconds: TimeInterval) -> String {
-        let minutes = Int(totalSeconds) / 60
-        let seconds = Int(totalSeconds) % 60
+        let minutes = Int(max(0, totalSeconds)) / 60
+        let seconds = Int(max(0, totalSeconds)) % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    private func updateDisplay() {
+        // Calculate Workout Time
+        if isWorkoutRunningPersisted && workoutLastResume > 0 {
+            workoutTime = workoutElapsedBase + (Date().timeIntervalSince1970 - workoutLastResume)
+        } else {
+            workoutTime = workoutElapsedBase
+        }
+        
+        // Calculate Rest Time
+        if isRestRunningPersisted && restStartTimestamp > 0 {
+            let elapsed = Date().timeIntervalSince1970 - restStartTimestamp
+            restTimeRemaining = max(0, restDurationAtStart - elapsed)
+            if restTimeRemaining == 0 {
+                isRestRunningPersisted = false
+                restStartTimestamp = 0
+            }
+        } else if !isRestRunningPersisted {
+            restTimeRemaining = restTimerDuration
+        }
     }
 
     var body: some View {
@@ -4138,11 +4168,34 @@ private struct WeightsTrackingSection: View {
                         .monospacedDigit()
                     Spacer()
                     Button {
-                        isWorkoutTimerRunning.toggle()
+                        if isWorkoutRunningPersisted {
+                            // Pausing
+                            workoutElapsedBase += (Date().timeIntervalSince1970 - workoutLastResume)
+                            workoutLastResume = 0
+                            isWorkoutRunningPersisted = false
+                        } else {
+                            // Resuming/Starting
+                            workoutLastResume = Date().timeIntervalSince1970
+                            isWorkoutRunningPersisted = true
+                        }
+                        updateDisplay()
                     } label: {
-                        Image(systemName: isWorkoutTimerRunning ? "pause.fill" : "play.fill")
+                        Image(systemName: isWorkoutRunningPersisted ? "pause.fill" : "play.fill")
                             .font(.title3)
                             .foregroundStyle(workoutColor)
+                    }
+                    
+                    if !isWorkoutRunningPersisted && workoutElapsedBase > 0 {
+                        Button {
+                            workoutElapsedBase = 0
+                            workoutLastResume = 0
+                            isWorkoutRunningPersisted = false
+                            updateDisplay()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(12)
@@ -4158,17 +4211,32 @@ private struct WeightsTrackingSection: View {
                     Spacer()
                     HStack(spacing: 8) {
                         Button {
-                            if restTimeRemaining == 0 { restTimeRemaining = restTimerDuration }
-                            isRestTimerRunning.toggle()
+                            if isRestRunningPersisted {
+                                // Pause rest timer (optional behavior: most just let it run or reset)
+                                // Let's simplify rest timer: Toggle means Start/Stop (reset)
+                                let currentElapsed = Date().timeIntervalSince1970 - restStartTimestamp
+                                restDurationAtStart = max(0, restDurationAtStart - currentElapsed)
+                                restStartTimestamp = 0
+                                isRestRunningPersisted = false
+                            } else {
+                                if restTimeRemaining <= 0 { restDurationAtStart = restTimerDuration }
+                                else { restDurationAtStart = restTimeRemaining }
+                                
+                                restStartTimestamp = Date().timeIntervalSince1970
+                                isRestRunningPersisted = true
+                            }
+                            updateDisplay()
                         } label: {
-                            Image(systemName: isRestTimerRunning ? "pause.fill" : "play.fill")
+                            Image(systemName: isRestRunningPersisted ? "pause.fill" : "play.fill")
                                 .font(.title3)
                                 .foregroundStyle(restColor)
                         }
                         
                         Button {
-                            isRestTimerRunning = false
-                            restTimeRemaining = restTimerDuration
+                            isRestRunningPersisted = false
+                            restStartTimestamp = 0
+                            restDurationAtStart = restTimerDuration
+                            updateDisplay()
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.headline)
@@ -4182,25 +4250,15 @@ private struct WeightsTrackingSection: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 18)
             .onReceive(timer) { _ in
-                if isWorkoutTimerRunning {
-                    workoutTime += 1
-                }
-                if isRestTimerRunning {
-                    if restTimeRemaining > 0 {
-                        restTimeRemaining -= 1
-                    } else {
-                        isRestTimerRunning = false
-                    }
-                }
-            }
-            .onChange(of: restTimerDuration) { _, newValue in
-                if !isRestTimerRunning {
-                    restTimeRemaining = newValue
-                }
+                updateDisplay()
             }
             .onAppear {
-                if !isRestTimerRunning {
-                     restTimeRemaining = restTimerDuration
+                updateDisplay()
+            }
+            .onChange(of: restTimerDuration) { _, newValue in
+                if !isRestRunningPersisted {
+                    restTimeRemaining = newValue
+                    restDurationAtStart = newValue
                 }
             }
 

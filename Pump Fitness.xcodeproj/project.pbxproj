@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		DC7164512F2F866D00E936AF /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DC7164502F2F866D00E936AF /* Localizable.xcstrings */; };
 		DCB003E32EE80CAC003D6BF9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E22EE80CAC003D6BF9 /* FirebaseAuth */; };
 		DCB003E52EE80CAC003D6BF9 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E42EE80CAC003D6BF9 /* FirebaseFirestore */; };
 		DCB003E72EE80CAC003D6BF9 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E62EE80CAC003D6BF9 /* FirebaseStorage */; };
@@ -30,7 +29,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		DC7164502F2F866D00E936AF /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		DC9E797A2EDB81DD00C57FEE /* Trackerio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Trackerio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DCDAD2682EFEDEEB0011838E /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -66,7 +64,6 @@
 				DC9E797C2EDB81DD00C57FEE /* Pump Fitness */,
 				DCDAD2672EFEDEEB0011838E /* Frameworks */,
 				DC9E797B2EDB81DD00C57FEE /* Products */,
-				DC7164502F2F866D00E936AF /* Localizable.xcstrings */,
 			);
 			sourceTree = "<group>";
 		};
@@ -138,11 +135,6 @@
 			knownRegions = (
 				en,
 				Base,
-				id,
-				"zh-Hans",
-				ru,
-				es,
-				fr,
 			);
 			mainGroup = DC9E79712EDB81DD00C57FEE;
 			minimizedProjectReferenceProxies = 1;
@@ -165,7 +157,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DC7164512F2F866D00E936AF /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -243,7 +234,6 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -302,7 +292,6 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -341,7 +330,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -393,7 +382,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.1;
+				MARKETING_VERSION = 1.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

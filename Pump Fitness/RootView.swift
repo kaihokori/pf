@@ -17,6 +17,7 @@ import UserNotifications
 import CoreLocation
 import AVFoundation
 import AVKit
+import StoreKit
 
 struct RootView: View {
     @EnvironmentObject private var themeManager: ThemeManager
@@ -110,6 +111,14 @@ struct RootView: View {
     @State private var isShowingSplash: Bool = true
     @State private var trialPeriodEnd: Date? = nil
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    
+    // MARK: - Review Request Logic
+    @Environment(\.requestReview) private var requestReview
+    @AppStorage("review.launchCount") private var reviewLaunchCount: Int = 0
+    @AppStorage("review.lastStatus") private var reviewLastStatus: String = "unknown"
+    @AppStorage("review.statusTimestamp") private var reviewStatusTimestamp: Double = Date().timeIntervalSince1970
+    @AppStorage("review.hasRequestedForStatus") private var hasRequestedReviewForCurrentStatus: Bool = false
+    
     @AppStorage("alerts.mealsEnabled") private var mealsAlertsEnabled: Bool = true
     @AppStorage("alerts.hasRequestedPermission") private var hasRequestedNotificationPermission: Bool = false
     @StateObject private var authViewModel = AuthViewModel()
@@ -139,6 +148,7 @@ struct RootView: View {
             .task { handleInitialTask() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
+                    checkForReviewRequest()
                     Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .foreground) }
                     Task { await subscriptionManager.refreshSubscriptionStatus() }
                 }
@@ -274,6 +284,56 @@ struct RootView: View {
         accountFirestoreService.saveAccount(account, forceOverwrite: true) { success in
             if !success {
                 print("RootView: failed to persist onboarding completion to Firestore")
+            }
+        }
+    }
+
+    private func checkForReviewRequest() {
+        let currentStatus: String
+        if subscriptionManager.isTrialActive {
+            currentStatus = "trial"
+        } else if isPro {
+            currentStatus = "pro"
+        } else {
+            currentStatus = "free"
+        }
+
+        // Check for status change
+        if currentStatus != reviewLastStatus {
+            reviewLaunchCount = 0
+            reviewStatusTimestamp = Date().timeIntervalSince1970
+            reviewLastStatus = currentStatus
+            hasRequestedReviewForCurrentStatus = false
+        }
+
+        // Increment launch count
+        reviewLaunchCount += 1
+        
+        // Evaluate conditions
+        var shouldRequest = false
+        
+        switch currentStatus {
+        case "trial":
+            // Show after opening the app five times.
+            if reviewLaunchCount == 5 { shouldRequest = true }
+            
+        case "pro":
+            // Show after opening the app three times since they bought the subscription.
+            if reviewLaunchCount == 3 { shouldRequest = true }
+            
+        case "free":
+            // Show when three days have passed AND they've opened the app three times.
+            let daysPassed = (Date().timeIntervalSince1970 - reviewStatusTimestamp) / 86400
+            if reviewLaunchCount >= 3 && daysPassed >= 3 {
+                 shouldRequest = true
+            }
+        default: break
+        }
+        
+        if shouldRequest && !hasRequestedReviewForCurrentStatus {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                requestReview()
+                hasRequestedReviewForCurrentStatus = true
             }
         }
     }

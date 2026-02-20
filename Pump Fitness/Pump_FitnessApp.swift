@@ -27,7 +27,9 @@ struct Pump_FitnessApp: App {
     private let modelContainer: ModelContainer
 
     init() {
-        FirebaseApp.configure()
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
         _ = NetworkHelper.shared // Start network monitoring
         
         #if canImport(TipKit)

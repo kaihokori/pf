@@ -47,7 +47,7 @@ class DayFirestoreService {
                 "trackedMacroId": macro.trackedMacroId,
                 "name": macro.name,
                 "unit": macro.unit,
-                "consumed": macro.consumed
+                "consumed": macro.consumed.isFinite ? macro.consumed : 0
             ]
         }
     }
@@ -87,7 +87,7 @@ class DayFirestoreService {
                         "label": value.label,
                         "unit": value.unit,
                         "colorHex": value.colorHex,
-                        "value": value.value
+                        "value": value.value.isFinite ? value.value : 0
                     ]
                 }
             ]
@@ -100,7 +100,7 @@ class DayFirestoreService {
                 "id": value.id,
                 "metricId": value.metricId,
                 "metricName": value.metricName,
-                "value": value.value
+                "value": value.value.isFinite ? value.value : 0
             ]
         }
     }
@@ -111,7 +111,7 @@ class DayFirestoreService {
                 "id": value.id,
                 "metricId": value.metricId,
                 "metricName": value.metricName,
-                "value": value.value
+                "value": value.value.isFinite ? value.value : 0
             ]
         }
     }
@@ -126,13 +126,13 @@ class DayFirestoreService {
                 "id": session.id.uuidString,
                 "date": Timestamp(date: session.date),
                 "category": session.category.rawValue,
-                "durationSeconds": session.durationSeconds
+                "durationSeconds": session.durationSeconds.isFinite ? session.durationSeconds : 0
             ]
             if let v = session.saunaType { dict["saunaType"] = v.rawValue }
             if let v = session.coldPlungeType { dict["coldPlungeType"] = v.rawValue }
             if let v = session.spaType { dict["spaType"] = v.rawValue }
-            if let v = session.temperature { dict["temperature"] = v }
-            if let v = session.hydrationTimerSeconds { dict["hydrationTimerSeconds"] = v }
+            if let v = session.temperature, v.isFinite { dict["temperature"] = v }
+            if let v = session.hydrationTimerSeconds, v.isFinite { dict["hydrationTimerSeconds"] = v }
             if let v = session.heartRateBefore { dict["heartRateBefore"] = v }
             if let v = session.heartRateAfter { dict["heartRateAfter"] = v }
             if let v = session.bodyPart { dict["bodyPart"] = v.rawValue }
@@ -147,7 +147,7 @@ class DayFirestoreService {
                 "id": entry.id.uuidString,
                 "date": Timestamp(date: entry.date),
                 "name": entry.name,
-                "amount": entry.amount,
+                "amount": entry.amount.isFinite ? entry.amount : 0,
                 "categoryId": entry.categoryId
             ]
         }
@@ -653,19 +653,19 @@ class DayFirestoreService {
         if forceWrite || !day.takenWorkoutSupplements.isEmpty {
             data["takenWorkoutSupplements"] = encodeTakenWorkoutSupplements(day.takenWorkoutSupplements)
         }
-        if forceWrite || day.caloriesBurned > 0 {
+        if forceWrite || (day.caloriesBurned > 0 && day.caloriesBurned.isFinite) {
             data["caloriesBurned"] = day.caloriesBurned
         }
-        if forceWrite || day.stepsTaken > 0 {
+        if forceWrite || (day.stepsTaken > 0 && day.stepsTaken.isFinite) {
             data["stepsTaken"] = day.stepsTaken
         }
-        if forceWrite || day.distanceTravelled > 0 {
+        if forceWrite || (day.distanceTravelled > 0 && day.distanceTravelled.isFinite) {
             data["distanceTravelled"] = day.distanceTravelled
         }
-        if forceWrite || day.nightSleepSeconds > 0 {
+        if forceWrite || (day.nightSleepSeconds > 0 && day.nightSleepSeconds.isFinite) {
             data["nightSleepSeconds"] = day.nightSleepSeconds
         }
-        if forceWrite || day.napSleepSeconds > 0 {
+        if forceWrite || (day.napSleepSeconds > 0 && day.napSleepSeconds.isFinite) {
             data["napSleepSeconds"] = day.napSleepSeconds
         }
         if forceWrite || day.macroConsumptions.contains(where: { $0.consumed != 0 }) {

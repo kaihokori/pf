@@ -102,6 +102,8 @@ struct OnboardingView: View {
                                     EntertainmentStepView(viewModel: viewModel)
                                 case .itinerary:
                                     TravelStepView(viewModel: viewModel)
+                                case .limitedTimeOffer:
+                                    LimitedTimeOfferStepView(viewModel: viewModel)
                                 }
                             }
                             .padding(.vertical, 8)
@@ -121,14 +123,7 @@ struct OnboardingView: View {
                         }
                     }
 
-                    let trialEligible = viewModel.isLastStep && !viewModel.isRetake && !subscriptionManager.hasProAccess && subscriptionManager.trialStartDate == nil
-
-                    if trialEligible {
-                        Text("By continuing you'll begin a 14 day trial of Pro")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else if !viewModel.isLastStep {
+                    if !viewModel.isLastStep {
                         Text("You can modify this later")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -369,11 +364,6 @@ struct OnboardingView: View {
             account.weightGroups = WeightGroupDefinition.defaults
         }
 
-        // Set trial end if not already recorded
-        if account.trialPeriodEnd == nil {
-            account.trialPeriodEnd = Calendar.current.date(byAdding: .day, value: 14, to: Date())
-        }
-
         // Seed today's Day with calorie goals and macro focus so charts reflect onboarding choices immediately.
         let weightUnitRaw = viewModel.unitSystem == .imperial ? "lbs" : "kg"
         let today = Calendar.current.startOfDay(for: Date())
@@ -462,25 +452,7 @@ struct OnboardingView: View {
         let dayService = DayFirestoreService()
 
         accountService.saveAccount(account, forceOverwrite: true) { accountSuccess in
-            if let uid = account.id {
-                accountService.updateTrialPeriodEnd(for: uid, date: account.trialPeriodEnd)
-            }
             dayService.saveDay(day, forceWrite: true) { daySuccess in
-                // Ensure SubscriptionManager immediately reflects the saved trial end
-                    if let end = account.trialPeriodEnd {
-                        Task { @MainActor in
-                            subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
-                        }
-
-                        // Persist a lightweight subscription status metadata for analytics immediately
-                        if let uid = Auth.auth().currentUser?.uid {
-                            Task {
-                                let status = subscriptionManager.subscriptionStatusDescription(trialEndDate: account.trialPeriodEnd, ignoreDebugOverride: true)
-                                await accountService.updateSubscriptionStatus(for: uid, status: status)
-                            }
-                        }
-                    }
-
                 DispatchQueue.main.async {
                     completion(accountSuccess && daySuccess)
                 }
@@ -560,7 +532,6 @@ struct OnboardingView: View {
                         isSaving = false
                     }
                     if success {
-                        _ = subscriptionManager.activateOnboardingTrialIfEligible()
                         hasCompletedOnboarding = true
                         onComplete?()
                         dismiss()
@@ -655,6 +626,8 @@ struct OnboardingView: View {
             return "Please complete all fields."
         case .itinerary:
             return "Please complete all fields."
+        case .limitedTimeOffer:
+            return ""
         }
     }
 
@@ -2271,6 +2244,28 @@ private struct ActivityWellnessStepView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
             
+            // Apple Health Banner
+            HStack(spacing: 12) {
+                Image(systemName: "heart.square.fill")
+                    .font(.title)
+                    .foregroundStyle(.pink)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Apple Health")
+                        .font(.headline)
+                    Text("Connected and syncing metrics automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.title2)
+            }
+            .padding()
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            
             // Activity Section
             VStack(alignment: .leading, spacing: 16) {
                 Text("Activity Metrics")
@@ -2493,6 +2488,63 @@ private struct TravelStepView: View {
             .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
+private struct LimitedTimeOfferStepView: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var showPaywall = false
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 24) {
+            Image(systemName: "gift.fill")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 120)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.orange, .pink],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: .pink.opacity(0.3), radius: 10, x: 0, y: 5)
+                .padding(.bottom, 16)
+            
+            VStack(spacing: 12) {
+                Text("Lock in your progress")
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.center)
+                
+                Text("Get full access to all premium features at our limited-time launch price before you start.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 24)
+            
+            Button {
+                showPaywall = true
+            } label: {
+                Text("View Premium Offer")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+        .sheet(isPresented: $showPaywall) {
+            ProSubscriptionView()
+        }
     }
 }
 
@@ -2796,7 +2848,7 @@ final class OnboardingViewModel: ObservableObject {
     }
     
     // Expenses, Sports, Travel
-    @Published var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
+    @Published var expenseCategories: [ExpenseCategory] = []
     
     @Published var sports: [SportConfig] = []
     @Published var newSportName: String = ""
@@ -2846,7 +2898,8 @@ final class OnboardingViewModel: ObservableObject {
                 .sports,
                 .music,
                 .entertainment,
-                .itinerary
+                .itinerary,
+                .limitedTimeOffer
             ]
         } else {
             return [
@@ -2863,7 +2916,8 @@ final class OnboardingViewModel: ObservableObject {
                 .sports,
                 .music,
                 .entertainment,
-                .itinerary
+                .itinerary,
+                .limitedTimeOffer
             ]
         }
     }
@@ -2930,11 +2984,45 @@ final class OnboardingViewModel: ObservableObject {
     var isFirstStep: Bool { currentStepIndex == 0 }
     var isLastStep: Bool { currentStepIndex == steps.count - 1 }
 
+    var isCurrentStepEmpty: Bool {
+        switch currentStep {
+        case .accountSetup:
+            return false
+        case .nutritionTracking:
+            return selectedWeightGoal == nil && calorieValue.trimmingCharacters(in: .whitespaces).isEmpty && customMacros.isEmpty
+        case .dailySupplements:
+            return dailySupplements.isEmpty
+        case .workoutSupplements:
+            return workoutSupplementsList.isEmpty
+        case .dailyTasks:
+            return dailyTasks.isEmpty
+        case .goals:
+            return goals.isEmpty
+        case .habits:
+            return habits.isEmpty
+        case .workoutTracking:
+            return workoutSchedule.allSatisfy { $0.sessions.isEmpty } && trackedBodyParts.isEmpty
+        case .weightsTracking:
+            return trackedBodyParts.isEmpty
+        case .expenses:
+            return expenseCategories.isEmpty
+        case .sports:
+            return sports.isEmpty
+        case .activityWellness:
+            return activityMetrics.isEmpty && wellnessMetrics.isEmpty
+        case .music, .entertainment, .limitedTimeOffer:
+            return true
+        case .itinerary:
+            return itineraryEvents.isEmpty
+        }
+    }
+
     var buttonTitle: String { 
         if isRetake && isLastStep {
             return "Save"
         }
-        return isLastStep ? "Finish" : "Continue" 
+        let fallback = isLastStep ? "Finish" : "Continue"
+        return isCurrentStepEmpty && !isFirstStep ? "Skip" : fallback
     }
 
     var estimatedMaintenanceCalories: Int? {
@@ -2962,6 +3050,7 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     var canContinue: Bool {
+        if isCurrentStepEmpty && currentStep != .accountSetup { return true }
         switch currentStep {
         case .accountSetup:
             let basicValid = !preferredName.trimmingCharacters(in: .whitespaces).isEmpty && isValidBirthDate && selectedGender != nil
@@ -3001,6 +3090,8 @@ final class OnboardingViewModel: ObservableObject {
         case .entertainment:
             return true
         case .itinerary:
+            return true
+        case .limitedTimeOffer:
             return true
         }
     }
@@ -3485,6 +3576,7 @@ enum OnboardingStep: CaseIterable, Equatable {
     case music
     case entertainment
     case itinerary
+    case limitedTimeOffer
 
     var title: String {
         switch self {
@@ -3503,6 +3595,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .music: return "Music"
         case .entertainment: return "Entertainment"
         case .itinerary: return "Itinerary"
+        case .limitedTimeOffer: return "Special Offer"
         }
     }
 
@@ -3513,6 +3606,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .habits: return "Habits"
         case .expenses: return "Expenses"
         case .activityWellness: return "Summary"
+        case .limitedTimeOffer: return "Pro"
         default: return nil
         }
     }
@@ -3534,6 +3628,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .music: return "music.note"
         case .entertainment: return "tv"
         case .itinerary: return "airplane"
+        case .limitedTimeOffer: return "gift.fill"
         }
     }
 
@@ -3554,6 +3649,7 @@ enum OnboardingStep: CaseIterable, Equatable {
         case .music: return "What do you listen to?"
         case .entertainment: return "Do you watch anything?"
         case .itinerary: return "Keep track of plans before you voyage around the world"
+        case .limitedTimeOffer: return "Don't miss out on this deal before you begin."
         }
     }
 

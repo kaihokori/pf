@@ -1662,6 +1662,7 @@ fileprivate struct SportsWeatherHeaderView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 18)
                 .padding(.top, 38)
+                .padding(.bottom, 8)
 
                 SportsTabView.WeatherSection(viewModel: weatherModel, selectedDate: selectedDate)
                     .padding(.horizontal, 18)

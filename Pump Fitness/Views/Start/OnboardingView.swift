@@ -2788,7 +2788,7 @@ final class OnboardingViewModel: ObservableObject {
             return "Save"
         }
         let fallback = isLastStep ? "Finish" : "Continue"
-        return isCurrentStepEmpty && !isFirstStep ? "Skip" : fallback
+        return isCurrentStepEmpty && !isFirstStep ? "Continue" : fallback
     }
 
     var estimatedMaintenanceCalories: Int? {

@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import StoreKit
+import FirebaseFunctions
 
 @MainActor
 class SubscriptionManager: ObservableObject {
@@ -54,15 +55,17 @@ class SubscriptionManager: ObservableObject {
     }
 
     func startOfferCountdown() {
-        if offerExpiryDate == nil {
-            let expiry = Date().addingTimeInterval(12 * 60 * 60)
-            offerExpiryDate = expiry
-            UserDefaults.standard.set(expiry.timeIntervalSince1970, forKey: Self.offerExpiryKey)
-            
-            // Sync to account if available
-            if let account = account {
-                account.proLimitedOfferExpiry = expiry
-            }
+        if let currentExpiry = offerExpiryDate, currentExpiry > Date() {
+            return
+        }
+
+        let expiry = Date().addingTimeInterval(12 * 60 * 60)
+        offerExpiryDate = expiry
+        UserDefaults.standard.set(expiry.timeIntervalSince1970, forKey: Self.offerExpiryKey)
+        
+        // Sync to account if available
+        if let account = account {
+            account.proLimitedOfferExpiry = expiry
         }
     }
 
@@ -160,7 +163,59 @@ class SubscriptionManager: ObservableObject {
     }
 
     func purchase(_ product: Product) async throws {
-        let result = try await product.purchase()
+        var purchaseOptions = Set<Product.PurchaseOption>()
+        
+        // 1. Generate or retrieve a persistent UUID for this app installation
+        var accountUUID = UUID()
+        if let existingTokenString = UserDefaults.standard.string(forKey: "storeKitAppAccountToken"),
+           let existingToken = UUID(uuidString: existingTokenString) {
+           accountUUID = existingToken
+        } else {
+           UserDefaults.standard.set(accountUUID.uuidString, forKey: "storeKitAppAccountToken")
+        }
+        
+        purchaseOptions.insert(.appAccountToken(accountUUID))
+        
+        // 2. Fetch introductory/promotional offer signature if applicable
+        if isOfferActive && !hasActiveSubscription,
+           let subscription = product.subscription,
+           let firstOffer = subscription.promotionalOffers.first,
+           let offerId = firstOffer.id {
+            
+            let bundleId = Bundle.main.bundleIdentifier ?? "com.ambreon.trackerio"
+            let parameters: [String: Any] = [
+                "appBundleId": bundleId,
+                "productId": product.id,
+                "offerId": offerId,
+                "applicationUsername": accountUUID.uuidString.lowercased()
+            ]
+            
+            do {
+                let result = try await Functions.functions().httpsCallable("generateStoreKitPromotionalOfferSignature").call(parameters)
+                if let data = result.data as? [String: Any],
+                   let keyId = data["keyId"] as? String,
+                   let nonceString = data["nonce"] as? String,
+                   let nonce = UUID(uuidString: nonceString),
+                   let signatureString = data["signature"] as? String,
+                   let signature = Data(base64Encoded: signatureString),
+                   let timestamp = data["timestamp"] as? Int {
+                    
+                    let promoOffer = Product.PurchaseOption.promotionalOffer(
+                        offerID: offerId,
+                        keyID: keyId,
+                        nonce: nonce,
+                        signature: signature,
+                        timestamp: timestamp
+                    )
+                    purchaseOptions.insert(promoOffer)
+                }
+            } catch {
+                print("Failed to fetch promotional offer signature: \(error)")
+                throw error
+            }
+        }
+
+        let result = try await product.purchase(options: purchaseOptions)
 
         switch result {
         case .success(let verification):

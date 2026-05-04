@@ -18,6 +18,10 @@ struct ProBenefitCategory: Identifiable {
 }
 
 struct ProSubscriptionView: View {
+    enum DebugDesignState {
+        case none, loading, error, limitedOffer, onboarding
+    }
+    
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var subscriptionManager: SubscriptionManager
     @Environment(\.colorScheme) var colorScheme
@@ -29,9 +33,29 @@ struct ProSubscriptionView: View {
     var isReassessment: Bool = false
     var onDismiss: (() -> Void)? = nil
     
-    // Internal override to force offer UI if the global offer is active
+    /// Use this flag to force the view into different design states for UI testing and previews
+    var debugState: DebugDesignState = .none
+    
+    // Internal overrides to force UI states
     private var isEffectivelyLimitedOffer: Bool {
-        isLimitedTimeOffer || (subscriptionManager.isOfferActive && !subscriptionManager.hasActiveSubscription)
+        if debugState == .limitedOffer { return true }
+        if subscriptionManager.hasActiveSubscription { return false }
+        return isLimitedTimeOffer || subscriptionManager.isOfferActive
+    }
+    
+    private var effectivelyIsFromOnboarding: Bool {
+        if debugState == .onboarding { return true }
+        return isFromOnboarding
+    }
+    
+    private var effectivelyIsLoading: Bool {
+        if debugState == .loading { return true }
+        return subscriptionManager.isLoading
+    }
+    
+    private var effectivelyErrorMessage: String? {
+        if debugState == .error { return "Unable to connect to the App Store. Please try again later." }
+        return subscriptionManager.errorMessage
     }
     
     @State private var selectedProduct: Product?
@@ -345,10 +369,10 @@ struct ProSubscriptionView: View {
                         
                         
                         // 3. Subscription Options Carousel
-                        if subscriptionManager.isLoading {
+                        if effectivelyIsLoading {
                             ProgressView()
                                 .frame(height: 200)
-                        } else if let error = subscriptionManager.errorMessage {
+                        } else if let error = effectivelyErrorMessage {
                             Text(error)
                                 .font(.caption)
                                 .foregroundStyle(.red)
@@ -410,7 +434,8 @@ struct ProSubscriptionView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal)
-                            .padding(.vertical, 8)
+                            .padding(.top, 8)
+                            .padding(.bottom, 20)
                         
                         // Text("Debug Region: \(subscriptionManager.storefrontLocale.identifier) (Raw: \(subscriptionManager.storefrontCountryCode ?? "nil"))")
                         //     .font(.caption)
@@ -454,27 +479,25 @@ struct ProSubscriptionView: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor)
+                        .background(selectedProduct == nil || effectivelyIsLoading ? Color.gray : Color.accentColor)
                         .cornerRadius(16)
-                        .shadow(color: (selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
+                        .shadow(color: (selectedProduct == nil || effectivelyIsLoading ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
                     }
-                    .disabled(selectedProduct == nil || isPurchasing || subscriptionManager.isLoading)
+                    .disabled(selectedProduct == nil || isPurchasing || effectivelyIsLoading)
                     .padding(.horizontal)
                     
-                    if isFromOnboarding {
-                        Button(action: {
-                            if isEffectivelyLimitedOffer && isLimitedTimeOffer {
-                                onDismiss?()
-                            }
-                            dismiss()
-                        }) {
-                            Text("Continue with 3 Day Trial")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .padding(.vertical, 8)
+                    Button(action: {
+                        if effectivelyIsFromOnboarding || isReassessment {
+                            onDismiss?()
                         }
-                        .padding(.bottom, 10)
+                        dismiss()
+                    }) {
+                        Text(effectivelyIsFromOnboarding ? "Continue with 3 Day Trial" : "Continue without Subscription")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 8)
                     }
+                    .padding(.bottom, 10)
                     
                     HStack {
                         Spacer()
@@ -533,16 +556,6 @@ struct ProSubscriptionView: View {
                     } label: {
                         Text("Redeem")
                             .foregroundStyle(Color.accentColor)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onDismiss?()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -714,7 +727,27 @@ struct SubscriptionOptionCard: View {
     }
 }
 
-#Preview {
-    ProSubscriptionView()
+#Preview("Normal View") {
+    ProSubscriptionView(debugState: .none)
+        .environmentObject(SubscriptionManager.shared)
+}
+
+#Preview("Limited Time Offer") {
+    ProSubscriptionView(debugState: .limitedOffer)
+        .environmentObject(SubscriptionManager.shared)
+}
+
+#Preview("Onboarding (3-Day Trial)") {
+    ProSubscriptionView(debugState: .onboarding)
+        .environmentObject(SubscriptionManager.shared)
+}
+
+#Preview("Loading State") {
+    ProSubscriptionView(debugState: .loading)
+        .environmentObject(SubscriptionManager.shared)
+}
+
+#Preview("Error State") {
+    ProSubscriptionView(debugState: .error)
         .environmentObject(SubscriptionManager.shared)
 }

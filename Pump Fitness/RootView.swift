@@ -133,6 +133,7 @@ struct RootView: View {
     @State private var lastLaunchCaptureAt: Date? = nil
     @State private var lastTabLogDate: Date? = nil
     @State private var showWelcomeVideo: Bool = false
+    @State private var isAIAssistantPresented: Bool = false
     // Empty means allow logging for all signed-in users. Set to a specific UID to restrict.
     private let allowedLoggingUserID: String = ""
     private let dayFirestoreService = DayFirestoreService()
@@ -3011,6 +3012,20 @@ private extension RootView {
                         }
                     }
             }
+            
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    AIAssistantFloatingButton {
+                        isAIAssistantPresented = true
+                    }
+                    .padding(.bottom, 70) // Elevate above the tab bar
+                }
+            }
+        }
+        .sheet(isPresented: $isAIAssistantPresented) {
+            AIAssistantView()
         }
         .tint(currentAccent)
         .accentColor(currentAccent)

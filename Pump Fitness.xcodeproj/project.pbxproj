@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DC7475482F9B615300E8AAAA /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = DC7475472F9B615300E8AAAA /* FirebaseFunctions */; };
 		DCB003E32EE80CAC003D6BF9 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E22EE80CAC003D6BF9 /* FirebaseAuth */; };
 		DCB003E52EE80CAC003D6BF9 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E42EE80CAC003D6BF9 /* FirebaseFirestore */; };
 		DCB003E72EE80CAC003D6BF9 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = DCB003E62EE80CAC003D6BF9 /* FirebaseStorage */; };
@@ -47,6 +48,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DCB003F42EE813B0003D6BF9 /* GoogleSignInSwift in Frameworks */,
+				DC7475482F9B615300E8AAAA /* FirebaseFunctions in Frameworks */,
 				DCB003E32EE80CAC003D6BF9 /* FirebaseAuth in Frameworks */,
 				DCB003F22EE813B0003D6BF9 /* GoogleSignIn in Frameworks */,
 				DCDAD2692EFEDEEB0011838E /* StoreKit.framework in Frameworks */,
@@ -109,6 +111,7 @@
 				DCB003E62EE80CAC003D6BF9 /* FirebaseStorage */,
 				DCB003F12EE813B0003D6BF9 /* GoogleSignIn */,
 				DCB003F32EE813B0003D6BF9 /* GoogleSignInSwift */,
+				DC7475472F9B615300E8AAAA /* FirebaseFunctions */,
 			);
 			productName = Trackerio;
 			productReference = DC9E797A2EDB81DD00C57FEE /* Trackerio.app */;
@@ -330,7 +333,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.2;
+				MARKETING_VERSION = 1.4.4;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -382,7 +385,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.4.2;
+				MARKETING_VERSION = 1.4.4;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.kylegraham.trackerio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -443,6 +446,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		DC7475472F9B615300E8AAAA /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DCB003E12EE80CAC003D6BF9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
 		DCB003E22EE80CAC003D6BF9 /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = DCB003E12EE80CAC003D6BF9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

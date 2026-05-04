@@ -1,5 +1,6 @@
 import SwiftUI
 import StoreKit
+import Combine
 
 struct ProBenefit: Identifiable {
     let id = UUID()
@@ -23,9 +24,52 @@ struct ProSubscriptionView: View {
     @Environment(\.openURL) var openURL
     @Environment(\.offerCodeRedemption) private var offerCodeRedemption
     
+    var isLimitedTimeOffer: Bool = false
+    var isFromOnboarding: Bool = false
+    var isReassessment: Bool = false
+    var onDismiss: (() -> Void)? = nil
+    
+    // Internal override to force offer UI if the global offer is active
+    private var isEffectivelyLimitedOffer: Bool {
+        isLimitedTimeOffer || (subscriptionManager.isOfferActive && !subscriptionManager.hasActiveSubscription)
+    }
+    
     @State private var selectedProduct: Product?
     @State private var isPurchasing: Bool = false
+    @State private var timeRemaining: String = "12:00:00"
     
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    @ViewBuilder
+    private func digitBox(_ char: Character) -> some View {
+        Text(String(char))
+            .font(.system(size: 20, weight: .bold, design: .monospaced))
+            .foregroundColor(.white)
+            .frame(width: 28, height: 36)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.red)
+            )
+    }
+
+    @ViewBuilder
+    private func timerView() -> some View {
+        HStack(spacing: 4) {
+            let digits = Array(timeRemaining)
+            ForEach(0..<digits.count, id: \.self) { index in
+                let char = digits[index]
+                if char == ":" {
+                    Text(":")
+                        .font(.headline)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 2)
+                } else {
+                    digitBox(char)
+                }
+            }
+        }
+    }
+
     private var proBadgeGradient: LinearGradient {
         LinearGradient(
             gradient: Gradient(colors: [
@@ -62,6 +106,37 @@ struct ProSubscriptionView: View {
         return priceDouble / months
     }
 
+    private func currencyFormatter(for product: Product) -> Decimal.FormatStyle.Currency {
+        return product.priceFormatStyle.presentation(.narrow)
+    }
+
+    private func formattedPrice(for product: Product) -> String {
+        product.displayPrice
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: "")
+    }
+
+    private func updateCountdown() {
+        guard let expiry = subscriptionManager.offerExpiryDate else {
+            timeRemaining = "00:00:00"
+            return
+        }
+        
+        let now = Date()
+        let diff = expiry.timeIntervalSince(now)
+        
+        if diff <= 0 {
+            timeRemaining = "EXPIRED"
+            return
+        }
+        
+        let hours = Int(diff) / 3600
+        let minutes = (Int(diff) % 3600) / 60
+        let seconds = Int(diff) % 60
+        
+        timeRemaining = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
     // Determine a baseline monthly price to compare savings against (use the highest per-month price among products)
     private func baselineMonthlyPrice() -> Double? {
         let perMonth = subscriptionManager.products.compactMap { monthlyEquivalentPrice($0) }
@@ -69,12 +144,51 @@ struct ProSubscriptionView: View {
     }
 
     private func savingsString(for product: Product) -> String? {
+        if isEffectivelyLimitedOffer {
+            return "Save 70%"
+        }
         guard let productPerMonth = monthlyEquivalentPrice(product), let baseline = baselineMonthlyPrice(), 
         baseline > 0 else { return nil }
         let fraction = 1.0 - (productPerMonth / baseline)
         let percent = Int(round(fraction * 100.0))
         guard percent > 0 else { return nil }
         return "Save \(percent)%"
+    }
+
+    private func adjustedPriceString(for product: Product) -> String {
+        let priceValue = product.price
+        if isEffectivelyLimitedOffer {
+            let discounted = priceValue * 0.3
+            return discounted.formatted(currencyFormatter(for: product))
+                .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: "\u{00A0}", with: "")
+        }
+        return formattedPrice(for: product)
+    }
+
+    private func adjustedWeeklyPriceString(for product: Product) -> String {
+        guard let subscription = product.subscription else { return adjustedPriceString(for: product) }
+
+        let unit = subscription.subscriptionPeriod.unit
+        let value = subscription.subscriptionPeriod.value
+
+        let weeks: Decimal
+        switch unit {
+        case .day: weeks = Decimal(value) / 7.0
+        case .week: weeks = Decimal(value)
+        case .month: weeks = Decimal(value) * 30.4375 / 7.0
+        case .year: weeks = Decimal(value) * 365.2425 / 7.0
+        @unknown default:
+            weeks = Decimal(value)
+        }
+
+        guard weeks > 0 else { return adjustedPriceString(for: product) }
+        let priceValue = isEffectivelyLimitedOffer ? product.price * 0.3 : product.price
+        let perWeek = priceValue / weeks
+
+        return perWeek.formatted(currencyFormatter(for: product))
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: "") + "/wk"
     }
 
     private var expirationMessage: String? {
@@ -121,37 +235,76 @@ struct ProSubscriptionView: View {
  
                 ScrollView {
                     VStack {
-                        // 1. Header
-                        HStack(alignment: .center, spacing: 8) {
-                            Image("logo")
-                                .resizable()
-                                .renderingMode(.original)
-                                .aspectRatio(contentMode: .fit)
-                                .frame(height: 30)
-                            
-                            Text("Trackerio")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.primary)
-                            
-                            Text("PRO")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .fill(proBadgeGradient)
-                                )
-                        }
+                        if isEffectivelyLimitedOffer {
+                            VStack(spacing: 8) {
+                                Text("LIMITED TIME OFFER")
+                                    .font(.caption)
+                                    .fontWeight(.black)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 4)
+                                    .background(Color.red)
+                                    .cornerRadius(8)
+                                
+                                Text("70% OFF")
+                                    .font(.system(size: 64, weight: .black, design: .rounded))
+                                    .foregroundStyle(proBadgeGradient)
+                                    .padding(.vertical, -10)
+                                
+                                VStack(spacing: 6) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "clock.fill")
+                                        Text("OFFER EXPIRES IN")
+                                    }
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.red)
+                                    
+                                    timerView()
+                                }
+                                .padding(.top, 12)
+                            }
+                            .padding(.top, 20)
+                            .onReceive(timer) { _ in
+                                updateCountdown()
+                            }
+                            .onAppear {
+                                if isEffectivelyLimitedOffer && subscriptionManager.offerExpiryDate == nil {
+                                    subscriptionManager.startOfferCountdown()
+                                }
+                                updateCountdown()
+                            }
+                        } else {
+                            HStack(alignment: .center, spacing: 8) {
+                                Image("logo")
+                                    .resizable()
+                                    .renderingMode(.original)
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(height: 30)
+                                
+                                Text("Trackerio")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.primary)
+                                
+                                Text("PRO")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(proBadgeGradient)
+                                    )
+                            }
 
-                        Text("Get unlimited feature access with Trackerio Pro.")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 4)
+                            Text("Get unlimited feature access with Trackerio Pro.")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.top, 4)
+                        }
 
                         ZStack(alignment: .top) {
                             // 4. Features Summary (now a reusable component)
@@ -218,6 +371,8 @@ struct ProSubscriptionView: View {
                                                     tag: index == 1 ? "Most Popular" : (index == 2 ? "Best Value" : nil),
                                                     savings: savingsString(for: product),
                                                     isSelected: selectedProduct?.id == product.id,
+                                                    priceString: adjustedPriceString(for: product),
+                                                    weeklyPriceString: adjustedWeeklyPriceString(for: product),
                                                     action: { selectedProduct = product }
                                                 )
                                                 .id(product.id)
@@ -268,6 +423,59 @@ struct ProSubscriptionView: View {
                 // Sticky CTA Button
                 VStack {
                     Spacer()
+                    Button(action: {
+                        if let product = selectedProduct {
+                            isPurchasing = true
+                            Task {
+                                do {
+                                    try await subscriptionManager.purchase(product)
+                                    isPurchasing = false
+                                    // Dismiss if purchase granted
+                                    if subscriptionManager.hasProAccess {
+                                        dismiss()
+                                    }
+                                } catch {
+                                    isPurchasing = false
+                                    // Surface error via subscription manager so UI can show it
+                                    subscriptionManager.errorMessage = error.localizedDescription
+                                }
+                            }
+                        }
+                    }) {
+                        ZStack {
+                            if isPurchasing {
+                                ProgressView()
+                                    .tint(.white)
+                            }
+                            Text("Continue")
+                                .opacity(isPurchasing ? 0 : 1)
+                        }
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor)
+                        .cornerRadius(16)
+                        .shadow(color: (selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .disabled(selectedProduct == nil || isPurchasing || subscriptionManager.isLoading)
+                    .padding(.horizontal)
+                    
+                    if isFromOnboarding {
+                        Button(action: {
+                            if isEffectivelyLimitedOffer && isLimitedTimeOffer {
+                                onDismiss?()
+                            }
+                            dismiss()
+                        }) {
+                            Text("Continue with 3 Day Trial")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 8)
+                        }
+                        .padding(.bottom, 10)
+                    }
+                    
                     HStack {
                         Spacer()
                         HStack(spacing: 8) {
@@ -316,49 +524,6 @@ struct ProSubscriptionView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                    Button(action: {
-                        if let product = selectedProduct {
-                            isPurchasing = true
-                            Task {
-                                do {
-                                    try await subscriptionManager.purchase(product)
-                                    isPurchasing = false
-                                    // Dismiss if purchase granted
-                                    if subscriptionManager.hasProAccess {
-                                        dismiss()
-                                    }
-                                } catch {
-                                    isPurchasing = false
-                                    // Surface error via subscription manager so UI can show it
-                                    subscriptionManager.errorMessage = error.localizedDescription
-                                }
-                            }
-                        }
-                    }) {
-                        ZStack {
-                            if isPurchasing {
-                                ProgressView()
-                                    .tint(.white)
-                            }
-                            Text("Continue")
-                                .opacity(isPurchasing ? 0 : 1)
-                        }
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor)
-                        .cornerRadius(16)
-                        .shadow(color: (selectedProduct == nil || subscriptionManager.isLoading ? Color.gray : Color.accentColor).opacity(0.3), radius: 8, x: 0, y: 4)
-                    }
-                    .disabled(selectedProduct == nil || isPurchasing || subscriptionManager.isLoading)
-                    .padding(.horizontal)
-                    .padding(.bottom, 10)
-                    .background(
-                        LinearGradient(colors: [(colorScheme == .dark ? Color.black : Color.white).opacity(0), (colorScheme == .dark ? Color.black : Color.white)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 100)
-                            .padding(.bottom, -20)
-                    )
                 }
             }
             .toolbar {
@@ -372,14 +537,17 @@ struct ProSubscriptionView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        onDismiss?()
                         dismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.gray.opacity(0.5))
-                            .font(.title2)
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
+            .navigationBarBackButtonHidden(true)
+            .interactiveDismissDisabled(isLimitedTimeOffer)
             .task {
                 await subscriptionManager.loadProducts()
                 if selectedProduct == nil, let middle = subscriptionManager.products.dropFirst().first {
@@ -405,6 +573,8 @@ struct SubscriptionOptionCard: View {
     let tag: String?
     let savings: String?
     let isSelected: Bool
+    let priceString: String
+    let weeklyPriceString: String
     let action: () -> Void
     
     var body: some View {
@@ -436,7 +606,7 @@ struct SubscriptionOptionCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(formattedPrice(for: product))
+                        Text(priceString)
                             .font(.title2)
                             .fontWeight(.semibold)
                             .foregroundStyle(.primary)
@@ -444,7 +614,7 @@ struct SubscriptionOptionCard: View {
                             .minimumScaleFactor(0.8)
 
                         HStack(alignment: .center) {
-                            Text(weeklyPriceString(for: product))
+                            Text(weeklyPriceString)
                               .font(.footnote)
                               .foregroundStyle(.primary)
                             Spacer()

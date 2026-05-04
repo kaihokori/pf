@@ -1396,6 +1396,7 @@ class Account: ObservableObject {
     var subscriptionStatus: String? = nil
     var subscriptionStatusUpdatedAt: Date? = nil
     var didCompleteOnboarding: Bool = false
+    var proLimitedOfferExpiry: Date? = nil
     var googleRefreshToken: String? = nil
 
     init(
@@ -1456,6 +1457,7 @@ class Account: ObservableObject {
         subscriptionStatus: String? = nil,
         subscriptionStatusUpdatedAt: Date? = nil,
         didCompleteOnboarding: Bool = false,
+        proLimitedOfferExpiry: Date? = nil,
         googleRefreshToken: String? = nil
     ) {
         self.id = id
@@ -1515,6 +1517,7 @@ class Account: ObservableObject {
         self.subscriptionStatus = subscriptionStatus
         self.subscriptionStatusUpdatedAt = subscriptionStatusUpdatedAt
         self.didCompleteOnboarding = didCompleteOnboarding
+        self.proLimitedOfferExpiry = proLimitedOfferExpiry
         self.googleRefreshToken = googleRefreshToken
     }
 

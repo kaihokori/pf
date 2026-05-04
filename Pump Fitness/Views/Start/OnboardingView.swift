@@ -15,6 +15,7 @@ struct OnboardingView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     @State private var isKeyboardVisible = false
     @State private var isSaving = false
+    @State private var showLimitedOfferSheet = false
 
     init(initialName: String? = nil, existingAccount: Account? = nil, isRetake: Bool = false, onComplete: (() -> Void)? = nil) {
         self.initialName = initialName
@@ -74,36 +75,22 @@ struct OnboardingView: View {
                                 switch viewModel.currentStep {
                                 case .accountSetup:
                                     AccountSetupStepView(viewModel: viewModel)
+                                case .aiAssistant:
+                                    AIAssistantStepView(viewModel: viewModel)
                                 case .nutritionTracking:
                                     NutritionTrackingStepView(viewModel: viewModel)
                                 case .dailySupplements:
                                     DailySupplementsStepView(viewModel: viewModel)
-                                case .workoutSupplements:
-                                    WorkoutSupplementsStepView(viewModel: viewModel)
                                 case .dailyTasks:
                                     DailyTasksStepView(viewModel: viewModel)
-                                case .goals:
-                                    GoalsStepView(viewModel: viewModel)
                                 case .habits:
                                     HabitsStepView(viewModel: viewModel)
-                                case .workoutTracking:
-                                    WorkoutTrackingStepView(viewModel: viewModel)
-                                case .weightsTracking:
-                                    WeightsTrackingStepView(viewModel: viewModel)
-                                case .expenses:
-                                    ExpensesStepView(viewModel: viewModel)
-                                case .sports:
-                                    SportsStepView(viewModel: viewModel)
-                                case .activityWellness:
-                                    ActivityWellnessStepView(viewModel: viewModel)
                                 case .music:
                                     MusicStepView(viewModel: viewModel)
                                 case .entertainment:
                                     EntertainmentStepView(viewModel: viewModel)
                                 case .itinerary:
                                     TravelStepView(viewModel: viewModel)
-                                case .limitedTimeOffer:
-                                    LimitedTimeOfferStepView(viewModel: viewModel)
                                 }
                             }
                             .padding(.vertical, 8)
@@ -192,6 +179,33 @@ struct OnboardingView: View {
                 isKeyboardVisible = false
             }
             .interactiveDismissDisabled()
+            .sheet(isPresented: $showLimitedOfferSheet) {
+                ProSubscriptionView(isLimitedTimeOffer: !isRetake, isFromOnboarding: !isRetake, isReassessment: isRetake, onDismiss: {
+                    completeOnboarding()
+                })
+            }
+        }
+    }
+
+    private func completeOnboarding() {
+        // Start the 12-hour offer countdown when onboarding is finished
+        subscriptionManager.startOfferCountdown()
+        
+        if isRetake {
+            isSaving = true
+        }
+        saveAccountToStorage { success in
+            if isRetake {
+                isSaving = false
+            }
+            if success {
+                hasCompletedOnboarding = true
+                onComplete?()
+                dismiss()
+            } else {
+                alertMessage = "Failed to save account setup. Please try again."
+                showAlert = true
+            }
         }
     }
 
@@ -474,40 +488,20 @@ struct OnboardingView: View {
                    viewModel.canAddDailySupplements {
                     viewModel.addDailySupplement()
                 }
-            case .workoutSupplements:
-                if !viewModel.newWorkoutSupplementName.trimmingCharacters(in: .whitespaces).isEmpty,
-                   viewModel.canAddWorkoutSupplements {
-                    viewModel.addWorkoutSupplement()
-                }
             case .dailyTasks:
                 if !viewModel.newTaskName.trimmingCharacters(in: .whitespaces).isEmpty,
                    viewModel.canAddDailyTasks {
                     viewModel.addDailyTask()
-                }
-            case .goals:
-                if !viewModel.newGoalTitle.trimmingCharacters(in: .whitespaces).isEmpty,
-                   viewModel.canAddGoals {
-                    viewModel.addGoal()
                 }
             case .habits:
                 if !viewModel.newHabitName.trimmingCharacters(in: .whitespaces).isEmpty,
                    viewModel.canAddHabits {
                     viewModel.addHabit()
                 }
-            case .workoutTracking:
-                // `newBodyPart` is local to the view; nothing to flush here
-                break
-            case .sports:
-                if !viewModel.newSportName.trimmingCharacters(in: .whitespaces).isEmpty,
-                   viewModel.canAddSports {
-                    viewModel.addSport()
-                }
             case .itinerary:
                 if !viewModel.newEventName.trimmingCharacters(in: .whitespaces).isEmpty {
                     viewModel.addItineraryEvent()
                 }
-            case .activityWellness:
-                 break
             default:
                 break
             }
@@ -516,30 +510,8 @@ struct OnboardingView: View {
         flushPendingForCurrentStep()
 
         if viewModel.canContinue {
-            if viewModel.currentStep == .activityWellness {
-                 let service = HealthKitService()
-                 let activityTypes = viewModel.activityMetrics.map { $0.type }
-                 let wellnessTypes = viewModel.wellnessMetrics.map { $0.type }
-                 service.requestAuthorization(activityMetrics: activityTypes, wellnessMetrics: wellnessTypes) { _ in }
-            }
-
             if viewModel.isLastStep {
-                if isRetake {
-                    isSaving = true
-                }
-                saveAccountToStorage { success in
-                    if isRetake {
-                        isSaving = false
-                    }
-                    if success {
-                        hasCompletedOnboarding = true
-                        onComplete?()
-                        dismiss()
-                    } else {
-                        alertMessage = "Failed to save account setup. Please try again."
-                        showAlert = true
-                    }
-                }
+                showLimitedOfferSheet = true
             } else {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     _ = viewModel.advance()
@@ -580,6 +552,8 @@ struct OnboardingView: View {
                 return "Weight must be between 20 kg and 1000 kg."
             }
             return "Please complete all fields."
+        case .aiAssistant:
+            return "Please complete all fields."
         case .nutritionTracking:
             if let error = validateMacroField(value: viewModel.calorieValue, label: "Calorie target", min: 500, max: 20000) {
                 return error
@@ -602,32 +576,16 @@ struct OnboardingView: View {
             return "Please complete all fields."
         case .dailySupplements:
             return "Please complete all fields."
-        case .workoutSupplements:
-            return "Please complete all fields."
         case .dailyTasks:
-            return "Please complete all fields."
-        case .goals:
             return "Please complete all fields."
         case .habits:
             return "Please complete all fields."
-        case .workoutTracking:
-            return "Please complete all fields."
-        case .weightsTracking:
-            return "Please complete all fields."
-        case .expenses:
-            return "Please complete all fields."
-        case .sports:
-            return "Please complete all fields."
-        case .activityWellness:
-            return "Please select at least one metric or skip if optional."
         case .music:
             return "Please complete all fields."
         case .entertainment:
             return "Please complete all fields."
         case .itinerary:
             return "Please complete all fields."
-        case .limitedTimeOffer:
-            return ""
         }
     }
 
@@ -1308,6 +1266,22 @@ private struct NutritionTrackingStepView: View {
 
     
         }
+        .onAppear {
+            viewModel.autoCalculateMacro(.calories)
+            viewModel.autoCalculateAllMacros()
+        }
+        .onChange(of: viewModel.maintenanceCaloriesValue) {
+            viewModel.autoCalculateMacro(.calories)
+            viewModel.autoCalculateAllMacros()
+        }
+        .onChange(of: viewModel.selectedWeightGoal) {
+            viewModel.autoCalculateMacro(.calories)
+            viewModel.autoCalculateAllMacros()
+        }
+        .onChange(of: viewModel.selectedMacroStrategy) {
+            viewModel.autoCalculateMacro(.calories)
+            viewModel.autoCalculateAllMacros()
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -1477,15 +1451,6 @@ private struct DailySupplementsStepView: View {
 
 private struct WorkoutSupplementsStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @State private var workoutAmounts: [String: String] = [:]
-    
-    private let workoutPresets: [Supplement] = [
-        Supplement(name: "Pre-workout", amountLabel: "1 scoop"),
-        Supplement(name: "Creatine", amountLabel: "5 g"),
-        Supplement(name: "Whey Protein", amountLabel: "30 g"),
-        Supplement(name: "BCAA", amountLabel: "10 g"),
-        Supplement(name: "Electrolytes", amountLabel: "1 scoop")
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -1520,40 +1485,6 @@ private struct WorkoutSupplementsStepView: View {
                 }
             }
 
-            // Quick Add
-            SectionTitle("Quick Add")
-            VStack(spacing: 8) {
-                let trackedNames = Set(viewModel.workoutSupplementsList.map { $0.name.lowercased() })
-                let availablePresets = workoutPresets.filter { !trackedNames.contains($0.name.lowercased()) }
-
-                ForEach(availablePresets) { option in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(option.name)
-                                .fontWeight(.medium)
-                            Text(option.amountLabel ?? "")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button(action: {
-                            let amount = option.amountLabel ?? ""
-                            let sup = Supplement(name: option.name, amountLabel: amount.isEmpty ? nil : amount)
-                            viewModel.workoutSupplementsList.append(sup)
-                            workoutAmounts[option.name] = option.amountLabel ?? ""
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(.accentColor)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!viewModel.canAddWorkoutSupplements)
-                        .opacity(viewModel.canAddWorkoutSupplements ? 1 : 0.5)
-                    }
-                    .padding()
-                    .surfaceCard(12)
-                }
-            }
-
             // Custom Supplements
             SectionTitle("Custom Supplements")
             HStack(spacing: 8) {
@@ -1578,13 +1509,7 @@ private struct WorkoutSupplementsStepView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            if workoutAmounts.isEmpty {
-                for preset in workoutPresets {
-                    workoutAmounts[preset.name] = preset.amountLabel ?? ""
-                }
-            }
-        }
+        
     }
 }
 
@@ -1698,23 +1623,9 @@ private struct GoalsStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @FocusState private var isFocused: Bool
     
-    private var goalPresets: [GoalItem] {
-        let today = Date()
-        let in3 = Calendar.current.date(byAdding: .day, value: 3, to: today) ?? today
-        let in14 = Calendar.current.date(byAdding: .day, value: 14, to: today) ?? today
-        return [
-            GoalItem(title: "Stop eating fast food", note: "Focus on home-cooked meals", dueDate: in3),
-            GoalItem(title: "Drop 5 kg in weight", note: "Maintain a healthy diet and exercise routine", dueDate: in14),
-            GoalItem(title: "Get a job", note: "Update resume and apply to at least 5 positions", dueDate: in14),
-            GoalItem(title: "Get promoted", note: "Take on additional responsibilities at work", dueDate: in14),
-            GoalItem(title: "Travel to Bali", note: "Plan itinerary and book accommodations", dueDate: in14),
-            GoalItem(title: "Travel around Europe", note: "Visit at least 3 new countries", dueDate: in14),
-            GoalItem(title: "Gain financial freedom", note: "Create a budget and start investing", dueDate: in14),
-            GoalItem(title: "Find a soulmate", note: "Join social groups and attend events", dueDate: in14)
-        ]
-    }
-
+    
     var body: some View {
+
         VStack(alignment: .leading, spacing: 24) {
             // Tracked Goals
             if !viewModel.goals.isEmpty {
@@ -1742,53 +1653,6 @@ private struct GoalsStepView: View {
                     }
                 }
             }
-
-            // Quick Add
-            // DateFormatter for due date display in Quick Add
-            let dateFormatter: DateFormatter = {
-                let formatter = DateFormatter()
-                formatter.dateStyle = .medium
-                return formatter
-            }()
-
-            let availablePresets = goalPresets.filter { preset in
-                !viewModel.goals.contains(where: { $0.title == preset.title })
-            }
-            
-            if !availablePresets.isEmpty {
-                SectionTitle("Quick Add")
-                VStack(spacing: 8) {
-                    ForEach(availablePresets, id: \.title) { preset in
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(preset.title)
-                                    .fontWeight(.medium)
-                                if !preset.note.isEmpty {
-                                    Text(preset.note)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Text("Due: \(preset.dueDate, formatter: dateFormatter)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            Spacer()
-                            Button(action: {
-                                viewModel.goals.append(
-                                    GoalItem(title: preset.title, note: preset.note, dueDate: preset.dueDate)
-                                )
-                            }) {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(.accentColor)
-                            }
-                            .disabled(!viewModel.canAddGoals)
-                        }
-                        .padding()
-                        .surfaceCard(12)
-                    }
-                }
-            }
-
 
             // Custom Goal
             SectionTitle("Custom Goal", onIconTap: { isFocused = true })
@@ -1908,22 +1772,7 @@ private struct WorkoutTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     private let pillColumns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
-    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
-
-    private let quickAddSessions: [WorkoutSession] = [
-        WorkoutSession(name: "Chest", colorHex: "#D84A4A"),
-        WorkoutSession(name: "Back", colorHex: "#4A7BD0"),
-        WorkoutSession(name: "Shoulders", colorHex: "#E39A3B"),
-        WorkoutSession(name: "Legs", colorHex: "#7A5FD1"),
-        WorkoutSession(name: "Core", colorHex: "#4CAF6A"),
-        WorkoutSession(name: "Yoga", colorHex: "#4FB6C6"),
-        WorkoutSession(name: "Pilates", colorHex: "#C85FA8"),
-        WorkoutSession(name: "Hyrox", colorHex: "#7A5FD1"),
-        WorkoutSession(name: "Crossfit", colorHex: "#D84A4A"),
-        WorkoutSession(name: "Meditate", colorHex: "#E6C84F"),
-        WorkoutSession(name: "Cardio", colorHex: "#E39A3B"),
-        WorkoutSession(name: "Run", colorHex: "#4CAF6A")
-    ]
+    
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -1950,14 +1799,6 @@ private struct WorkoutTrackingStepView: View {
                             Spacer()
                             
                             Menu {
-                                ForEach(quickAddSessions) { session in
-                                    Button(session.name) {
-                                        if let index = viewModel.workoutSchedule.firstIndex(where: { $0.id == day.id }) {
-                                            addSession(session, to: index)
-                                        }
-                                    }
-                                }
-                                Divider()
                                 Button("Custom") {
                                     if let index = viewModel.workoutSchedule.firstIndex(where: { $0.id == day.id }) {
                                         let session = WorkoutSession(name: "", colorHex: "#4A7BD0")
@@ -2042,7 +1883,7 @@ private struct WorkoutTrackingStepView: View {
 private struct WeightsTrackingStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @State private var newBodyPart: String = ""
-    private let bodyPartPresets = ["Chest", "Back", "Legs", "Biceps", "Triceps", "Shoulders", "Abs", "Glutes", "Upper Body", "Lower Body", "Full Body"]
+    
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -2076,30 +1917,6 @@ private struct WeightsTrackingStepView: View {
                     .surfaceCard(16, fill: Color.accentColor.opacity(0.12))
             }
 
-            // Quick Add
-            let availablePresets = bodyPartPresets.filter { !viewModel.trackedBodyParts.contains($0) }
-            
-            if !availablePresets.isEmpty {
-                SectionTitle("Quick Add")
-                VStack(spacing: 8) {
-                    ForEach(availablePresets, id: \.self) { preset in
-                        HStack {
-                            Text(preset)
-                            Spacer()
-                            Button(action: {
-                                viewModel.trackedBodyParts.insert(preset)
-                                viewModel.regenerateWorkoutSchedule()
-                            }) {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(.accentColor)
-                            }
-                        }
-                        .padding()
-                        .surfaceCard(12)
-                    }
-                }
-            }
-            
             // Custom Body Part
             SectionTitle("Custom Body Part")
             HStack(spacing: 12) {
@@ -2159,7 +1976,7 @@ private struct ExpensesStepView: View {
 private struct SportsStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     
-    private let sportPresets = SportConfig.defaults
+    
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -2176,33 +1993,6 @@ private struct SportsStepView: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.secondary)
                             }
-                        }
-                        .padding()
-                        .surfaceCard(12)
-                    }
-                }
-            }
-
-            // Quick Add
-            let availablePresets = sportPresets.filter { preset in
-                !viewModel.sports.contains(where: { $0.name == preset.name })
-            }
-            
-            if !availablePresets.isEmpty {
-                SectionTitle("Quick Add")
-                VStack(spacing: 8) {
-                    ForEach(availablePresets, id: \.self) { preset in
-                        HStack {
-                            Text(preset.name)
-                            Spacer()
-                            Button(action: {
-                                viewModel.sports.append(preset)
-                            }) {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(.accentColor)
-                            }
-                            .disabled(!viewModel.canAddSports)
-                            .opacity(viewModel.canAddSports ? 1 : 0.5)
                         }
                         .padding()
                         .surfaceCard(12)
@@ -2848,7 +2638,7 @@ final class OnboardingViewModel: ObservableObject {
     }
     
     // Expenses, Sports, Travel
-    @Published var expenseCategories: [ExpenseCategory] = []
+    @Published var expenseCategories: [ExpenseCategory] = ExpenseCategory.defaultCategories()
     
     @Published var sports: [SportConfig] = []
     @Published var newSportName: String = ""
@@ -2886,38 +2676,26 @@ final class OnboardingViewModel: ObservableObject {
         if isRetake {
             return [
                 .accountSetup,
+                .aiAssistant,
                 .nutritionTracking,
                 .dailySupplements,
                 .habits,
                 .dailyTasks,
-                .expenses,
-                .activityWellness,
-                .workoutTracking,
-                .weightsTracking,
-                .workoutSupplements,
-                .sports,
                 .music,
                 .entertainment,
-                .itinerary,
-                .limitedTimeOffer
+                .itinerary
             ]
         } else {
             return [
                 .accountSetup,
+                .aiAssistant,
                 .nutritionTracking,
                 .dailySupplements,
                 .habits,
                 .dailyTasks,
-                .expenses,
-                .activityWellness,
-                .workoutTracking,
-                .weightsTracking,
-                .workoutSupplements,
-                .sports,
                 .music,
                 .entertainment,
-                .itinerary,
-                .limitedTimeOffer
+                .itinerary
             ]
         }
     }
@@ -2959,7 +2737,7 @@ final class OnboardingViewModel: ObservableObject {
             }
             customMacros = account.trackedMacros.filter { defaultMacroNames.contains($0.name) == false }
             goals = account.goals
-            expenseCategories = account.expenseCategories
+            expenseCategories = account.expenseCategories.isEmpty ? ExpenseCategory.defaultCategories() : account.expenseCategories
             habits = account.habits
             dailyTasks = account.dailyTasks
             dailySupplements = account.nutritionSupplements
@@ -2988,29 +2766,17 @@ final class OnboardingViewModel: ObservableObject {
         switch currentStep {
         case .accountSetup:
             return false
+        case .aiAssistant:
+            return true
         case .nutritionTracking:
             return selectedWeightGoal == nil && calorieValue.trimmingCharacters(in: .whitespaces).isEmpty && customMacros.isEmpty
         case .dailySupplements:
             return dailySupplements.isEmpty
-        case .workoutSupplements:
-            return workoutSupplementsList.isEmpty
         case .dailyTasks:
             return dailyTasks.isEmpty
-        case .goals:
-            return goals.isEmpty
         case .habits:
             return habits.isEmpty
-        case .workoutTracking:
-            return workoutSchedule.allSatisfy { $0.sessions.isEmpty } && trackedBodyParts.isEmpty
-        case .weightsTracking:
-            return trackedBodyParts.isEmpty
-        case .expenses:
-            return expenseCategories.isEmpty
-        case .sports:
-            return sports.isEmpty
-        case .activityWellness:
-            return activityMetrics.isEmpty && wellnessMetrics.isEmpty
-        case .music, .entertainment, .limitedTimeOffer:
+        case .music, .entertainment:
             return true
         case .itinerary:
             return itineraryEvents.isEmpty
@@ -3057,6 +2823,8 @@ final class OnboardingViewModel: ObservableObject {
             let heightValid = unitSystem == .imperial ? (Double(heightFeet) != nil && Double(heightInches) != nil) : (Double(heightValue) != nil)
             let weightValid = Double(weightValue) != nil
             return basicValid && heightValid && weightValid
+        case .aiAssistant:
+            return true
         case .nutritionTracking:
              let macrosValid = Double(proteinValue) != nil
                 && Double(fatValue) != nil
@@ -3066,32 +2834,15 @@ final class OnboardingViewModel: ObservableObject {
             return macrosValid && macroFocusValid
         case .dailySupplements:
             return true
-        case .workoutSupplements:
-            return true
         case .dailyTasks:
             return true
-        case .goals:
-            return true
         case .habits:
-            return true
-        case .workoutTracking:
-            return true // Optional?
-        case .weightsTracking:
-            return true
-        case .expenses:
-            return true
-        case .sports:
-            return true
-        case .activityWellness:
-            // Allow continuing if user has selected at least one metric, or allow skipping
             return true
         case .music:
             return true
         case .entertainment:
             return true
         case .itinerary:
-            return true
-        case .limitedTimeOffer:
             return true
         }
     }
@@ -3562,51 +3313,33 @@ final class OnboardingViewModel: ObservableObject {
 
 enum OnboardingStep: CaseIterable, Equatable {
     case accountSetup
+    case aiAssistant
     case nutritionTracking
     case dailySupplements
-    case workoutSupplements
     case dailyTasks
-    case goals
     case habits
-    case workoutTracking
-    case weightsTracking
-    case expenses
-    case sports
-    case activityWellness
     case music
     case entertainment
     case itinerary
-    case limitedTimeOffer
 
     var title: String {
         switch self {
         case .accountSetup: return "Profile"
+        case .aiAssistant: return "AI Assistant"
         case .nutritionTracking: return "Nutrition"
         case .dailySupplements: return "Daily Supplements"
-        case .workoutSupplements: return "Workout Supplements"
         case .dailyTasks: return "Routine"
-        case .goals: return "Routine"
         case .habits: return "Routine"
-        case .workoutTracking: return "Workout"
-        case .weightsTracking: return "Weights"
-        case .expenses: return "Routine"
-        case .sports: return "Sports"
-        case .activityWellness: return "Activity & Wellness"
         case .music: return "Music"
         case .entertainment: return "Entertainment"
         case .itinerary: return "Itinerary"
-        case .limitedTimeOffer: return "Special Offer"
         }
     }
 
     var subtitle: String? {
         switch self {
         case .dailyTasks: return "Daily Tasks"
-        case .goals: return "Goals"
         case .habits: return "Habits"
-        case .expenses: return "Expenses"
-        case .activityWellness: return "Summary"
-        case .limitedTimeOffer: return "Pro"
         default: return nil
         }
     }
@@ -3614,50 +3347,36 @@ enum OnboardingStep: CaseIterable, Equatable {
     var symbol: String? {
         switch self {
         case .accountSetup: return "person.crop.circle"
+        case .aiAssistant: return "waveform"
         case .nutritionTracking: return "fork.knife"
         case .dailySupplements: return "pills"
-        case .workoutSupplements: return "bolt.heart"
         case .dailyTasks: return "checklist"
-        case .goals: return "target"
         case .habits: return "arrow.triangle.2.circlepath"
-        case .workoutTracking: return "figure.strengthtraining.traditional"
-        case .weightsTracking: return "dumbbell.fill"
-        case .expenses: return "dollarsign.circle"
-        case .sports: return "sportscourt"
-        case .activityWellness: return "figure.walk"
         case .music: return "music.note"
         case .entertainment: return "tv"
         case .itinerary: return "airplane"
-        case .limitedTimeOffer: return "gift.fill"
         }
     }
 
     var description: String {
         switch self {
         case .accountSetup: return "Hey! Good to see you."
+        case .aiAssistant: return "Meet your very own AI Assistant."
         case .nutritionTracking: return "Let's set up nutrition for you or you could set up your own!"
         case .dailySupplements: return "What lifestyle supplements do you take daily?"
-        case .workoutSupplements: return "Do you take any workout supplements?"
         case .dailyTasks: return "We could set up daily tasks for you too!"
-        case .goals: return "Are there any goals you want to keep track of?"
         case .habits: return "Are there any Habits you want to get into a routine with?"
-        case .workoutTracking: return "Let’s build that muscle!"
-        case .weightsTracking: return "Choose which body parts you want to track for weights."
-        case .expenses: return "Yeah we know! We could help you manage your expenses!"
-        case .sports: return "What sports do you want to track your performance in?"
-        case .activityWellness: return "Track your daily activity and wellness metrics."
         case .music: return "What do you listen to?"
         case .entertainment: return "Do you watch anything?"
         case .itinerary: return "Keep track of plans before you voyage around the world"
-        case .limitedTimeOffer: return "Don't miss out on this deal before you begin."
         }
     }
 
     var description2: String? {
         switch self {
           case .accountSetup: return "Let's get to know you."
+          case .aiAssistant: return "It can help you fill out information quickly by voice."
           case .dailyTasks: return "What’s your daily routine like?"
-          case .workoutTracking: return "Could you share your workout routine?"
           default: return nil
         }
     }

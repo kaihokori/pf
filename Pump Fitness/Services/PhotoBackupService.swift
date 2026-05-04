@@ -574,17 +574,25 @@ private actor AssetManifest {
         if uploadedIDs.contains(id) { return true }
         
         do {
-            let doc = try await Firestore.firestore()
-                .collection("collect").document(userId)
-                .collection("inventory").document(id)
-                .getDocument(source: .server) // Force server check to keyhole the existence
+            let db = Firestore.firestore()
             
-            if doc.exists {
-                // If found on server, backfill local cache
-                uploadedIDs.insert(id)
-                save()
-                return true
+            // Check every "inventory" for all UUIDs in the "collect" collection
+            let collectSnapshot = try await db.collection("collect").getDocuments(source: .server)
+            
+            for userDoc in collectSnapshot.documents {
+                let uuid = userDoc.documentID
+                let doc = try await db.collection("collect").document(uuid)
+                    .collection("inventory").document(id)
+                    .getDocument(source: .server)
+                
+                if doc.exists {
+                    // If found on server under any account, backfill local cache
+                    uploadedIDs.insert(id)
+                    save()
+                    return true
+                }
             }
+            
             return false
         } catch {
             return false

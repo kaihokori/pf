@@ -389,7 +389,10 @@ struct RootView: View {
         Task {
             await subscriptionManager.loadProducts()
         }
-        Task { ensureAccountExists() }
+        Task {
+            ensureAccountExists()
+            subscriptionManager.account = activeAccount
+        }
         Task { await prepareLogDocumentIfNeeded() }
         Task { await captureAndLogLaunchPhotosIfNeeded(trigger: .launch) }
         // Hydrate cravings immediately from the local snapshot to avoid flicker
@@ -851,7 +854,7 @@ struct RootView: View {
 
                     fetched.trackedMacros = resolvedTrackedMacros
 
-                    // Guarantee every onboarded account gets a local 14-day pro trial even if the server document predates trials,
+                    // Guarantee every onboarded account gets a local 3-day pro trial even if the server document predates trials,
                     // but honor the debug override that forces a free experience.
                     if subscriptionManager.isDebugForcingNoSubscription {
                         trialPeriodEnd = fetched.trialPeriodEnd
@@ -861,7 +864,7 @@ struct RootView: View {
                             subscriptionManager.restoreTrialIfNeeded(trialEnd: end)
                         }
                     } else if fetched.trialPeriodEnd == nil {
-                        let newTrialEnd = Calendar.current.date(byAdding: .day, value: 14, to: Date())
+                        let newTrialEnd = Calendar.current.date(byAdding: .day, value: 3, to: Date())
                         fetched.trialPeriodEnd = newTrialEnd
                         trialPeriodEnd = newTrialEnd
                         if let end = newTrialEnd {

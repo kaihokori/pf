@@ -123,6 +123,7 @@ class AccountFirestoreService {
                     subscriptionStatus: data["subscriptionStatus"] as? String,
                     subscriptionStatusUpdatedAt: (data["subscriptionStatusUpdatedAt"] as? Timestamp)?.dateValue(),
                     didCompleteOnboarding: data["didCompleteOnboarding"] as? Bool ?? false,
+                    proLimitedOfferExpiry: (data["proLimitedOfferExpiry"] as? Timestamp)?.dateValue(),
                     googleRefreshToken: data["googleRefreshToken"] as? String
                     )
 
@@ -344,6 +345,7 @@ class AccountFirestoreService {
         let itineraryEvents = account.itineraryEvents
         let itineraryTrips = account.itineraryTrips
         let activityLevel = account.activityLevel
+        let proLimitedOfferExpiry = account.proLimitedOfferExpiry
         let googleRefreshToken = account.googleRefreshToken
 
         func proceedWithSave(avatarURL: String?) {
@@ -400,6 +402,9 @@ class AccountFirestoreService {
 
             if forceOverwrite || didCompleteOnboarding {
                 data["didCompleteOnboarding"] = didCompleteOnboarding
+            }
+            if let expiry = proLimitedOfferExpiry {
+                data["proLimitedOfferExpiry"] = Timestamp(date: expiry)
             }
             if forceOverwrite || (googleRefreshToken?.isEmpty == false) {
                 // Only write if we have a token, or if we are overwriting everything (though usually token is only added/updated, not removed)

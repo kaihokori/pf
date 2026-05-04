@@ -20,8 +20,20 @@ class SubscriptionManager: ObservableObject {
         }
     }
     @Published private(set) var trialStartDate: Date? = SubscriptionManager.loadTrialStartDate()
+    @Published var offerExpiryDate: Date? = SubscriptionManager.loadOfferExpiryDate()
+    
+    // Set from RootView or Account loading
+    var account: Account? {
+        didSet {
+            if let accountExpiry = account?.proLimitedOfferExpiry {
+                offerExpiryDate = accountExpiry
+            }
+        }
+    }
+    
     private static let trialStartDateKey = "proTrialStartDate"
     private static let trialActivatedKey = "proTrialActivated"
+    private static let offerExpiryKey = "proLimitedOfferExpiry"
     
     // Check if the user has pro access (respects debug override)
     var hasProAccess: Bool {
@@ -31,9 +43,32 @@ class SubscriptionManager: ObservableObject {
         return isTrialActive || !purchasedProductIDs.isEmpty
     }
 
+    var isOfferActive: Bool {
+        guard let expiry = offerExpiryDate else { return false }
+        return Date() < expiry
+    }
+
+    static func loadOfferExpiryDate() -> Date? {
+        let timestamp = UserDefaults.standard.double(forKey: offerExpiryKey)
+        return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
+    }
+
+    func startOfferCountdown() {
+        if offerExpiryDate == nil {
+            let expiry = Date().addingTimeInterval(12 * 60 * 60)
+            offerExpiryDate = expiry
+            UserDefaults.standard.set(expiry.timeIntervalSince1970, forKey: Self.offerExpiryKey)
+            
+            // Sync to account if available
+            if let account = account {
+                account.proLimitedOfferExpiry = expiry
+            }
+        }
+    }
+
     var trialEndDate: Date? {
         guard let start = trialStartDate else { return nil }
-        return Calendar.current.date(byAdding: .day, value: 14, to: start)
+        return Calendar.current.date(byAdding: .day, value: 3, to: start)
     }
 
     /// Convenience mirrors for view code that expects explicit flags.
@@ -49,7 +84,7 @@ class SubscriptionManager: ObservableObject {
     var isTrialActive: Bool {
         guard let start = trialStartDate,
               UserDefaults.standard.bool(forKey: Self.trialActivatedKey),
-              let end = Calendar.current.date(byAdding: .day, value: 14, to: start) else { return false }
+              let end = Calendar.current.date(byAdding: .day, value: 3, to: start) else { return false }
         return Date() < end
     }
 
@@ -141,7 +176,7 @@ class SubscriptionManager: ObservableObject {
         }
     }
 
-    /// Activates a single-use 14-day trial if it has never been started.
+    /// Activates a single-use 3-day trial if it has never been started.
     /// Returns true if the trial was started during this call.
     func activateOnboardingTrialIfEligible() -> Bool {
         let alreadyActivated = UserDefaults.standard.bool(forKey: Self.trialActivatedKey)
@@ -156,7 +191,7 @@ class SubscriptionManager: ObservableObject {
     /// Restores trial state from a known trial end date (e.g., persisted on the Account).
     /// Updates local state even if the trial is expired, ensuring we respect the server's record.
     func restoreTrialIfNeeded(trialEnd: Date) {
-        let expectedStart = Calendar.current.date(byAdding: .day, value: -14, to: trialEnd) ?? Date()
+        let expectedStart = Calendar.current.date(byAdding: .day, value: -3, to: trialEnd) ?? Date()
         
         // If the calculated start date differs significantly (>1s) from our local record, sync it.
         // This handles both "future trial from server" and "past/expired trial from server".

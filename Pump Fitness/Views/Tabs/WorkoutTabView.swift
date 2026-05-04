@@ -3486,7 +3486,7 @@ private struct DailyCheckInSection: View {
 
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Daily Check-In")
+                Text("Workout Daily Check-In")
                     .font(.headline)
                     .fontWeight(.semibold)
                 Spacer()

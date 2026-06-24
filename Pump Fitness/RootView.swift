@@ -134,6 +134,7 @@ struct RootView: View {
     @State private var lastTabLogDate: Date? = nil
     @State private var showWelcomeVideo: Bool = false
     @State private var isAIAssistantPresented: Bool = false
+    @State private var isAssistantFloatingButtonHidden: Bool = false
     // Empty means allow logging for all signed-in users. Set to a specific UID to restrict.
     private let allowedLoggingUserID: String = ""
     private let dayFirestoreService = DayFirestoreService()
@@ -232,6 +233,9 @@ struct RootView: View {
                 .transition(.opacity)
                 .zIndex(2)
             }
+        }
+        .onPreferenceChange(AssistantFloatingButtonHiddenPreferenceKey.self) { hidden in
+            isAssistantFloatingButtonHidden = hidden
         }
         .onReceive(NotificationCenter.default.publisher(for: .showSplash)) { _ in
             withAnimation(.easeIn(duration: 0.35)) {
@@ -3015,12 +3019,14 @@ private extension RootView {
             
             VStack {
                 Spacer()
-                HStack {
-                    Spacer()
-                    AIAssistantFloatingButton {
-                        isAIAssistantPresented = true
+                if !isAssistantFloatingButtonHidden {
+                    HStack {
+                        Spacer()
+                        AIAssistantFloatingButton {
+                            isAIAssistantPresented = true
+                        }
+                        .padding(.bottom, 40)
                     }
-                    .padding(.bottom, 70) // Elevate above the tab bar
                 }
             }
         }
@@ -3049,6 +3055,14 @@ extension RootView {
             return .accentColor
         }
         return themeManager.selectedTheme.accent(for: colorScheme)
+    }
+}
+
+struct AssistantFloatingButtonHiddenPreferenceKey: PreferenceKey {
+    static var defaultValue: Bool = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
     }
 }
 

@@ -168,6 +168,7 @@ struct TravelTabView: View {
         .navigationDestination(isPresented: $showAccountsView) {
             AccountsView(account: $account)
         }
+        .preference(key: AssistantFloatingButtonHiddenPreferenceKey.self, value: showAccountsView)
         .sheet(isPresented: $isShowingEditor) {
             ItineraryEventEditorView(
                 event: editingEvent,

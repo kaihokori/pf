@@ -864,6 +864,7 @@ struct NutritionTabView: View {
                 AccountsView(account: $account)
                     .toolbar(.hidden, for: .tabBar)
             }
+            .preference(key: AssistantFloatingButtonHiddenPreferenceKey.self, value: showAccountsView)
         }
         .onAppear {
             // Ensure meal schedule is populated

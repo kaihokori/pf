@@ -985,6 +985,7 @@ struct RoutineTabView: View {
                 AccountsView(account: $account)
                     .toolbar(.hidden, for: .tabBar)
             }
+            .preference(key: AssistantFloatingButtonHiddenPreferenceKey.self, value: showAccountsView)
             .sheet(isPresented: $showDailyTasksEditor) {
                 DailyTasksEditorView(tasks: $dailyTaskItems, isPro: isPro && !subscriptionManager.purchasedProductIDs.isEmpty, onSave: applyTaskEditorChanges)
             }

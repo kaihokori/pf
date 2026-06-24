@@ -25,10 +25,3 @@ struct AIAssistantFloatingButton: View {
         .padding(.bottom, 20) // Adjust if interfering with tab bar
     }
 }
-
-#Preview {
-    ZStack(alignment: .bottomTrailing) {
-        Color.gray.opacity(0.1).edgesIgnoringSafeArea(.all)
-        AIAssistantFloatingButton(action: {})
-    }
-}

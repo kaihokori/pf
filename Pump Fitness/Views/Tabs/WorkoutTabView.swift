@@ -1306,6 +1306,7 @@ struct WorkoutTabView: View {
         .navigationDestination(isPresented: $showAccountsView) {
             AccountsView(account: $account)
         }
+        .preference(key: AssistantFloatingButtonHiddenPreferenceKey.self, value: showAccountsView)
         .navigationTitle("Workout")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showAddSheet) {

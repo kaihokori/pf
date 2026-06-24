@@ -736,6 +736,7 @@ struct SportsTabView: View {
             .navigationDestination(isPresented: $showAccountsView) {
                 AccountsView(account: $account)
             }
+            .preference(key: AssistantFloatingButtonHiddenPreferenceKey.self, value: showAccountsView)
             .sheet(isPresented: $showWellnessEditor) {
                 let metricsBinding = Binding<[TrackedWellnessMetric]>(
                     get: { account.dailyWellnessMetrics },
